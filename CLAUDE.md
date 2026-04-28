@@ -21,3 +21,8 @@ pyproject.toml
 - Add a blank line after closing `with` blocks before the next statement.
 - Add a blank line after `if` / `try-except` blocks before the next statement, but not before the block itself.
 
+## Notes
+
+- Architecture and AI component decisions are documented in `docs/architecture.md`, `docs/seshat-sdd.md`, and the specs under `docs/superpowers/specs/`.
+- `docs/claude-behavior.md` is a personal Claude config file, not project documentation — ignore it.
+- `pyproject.toml` is the single source of truth for dependencies, tool config (ruff, pytest), and project metadata.
