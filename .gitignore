@@ -44,3 +44,6 @@ data/
 
 # Miscellaneous
 todos.md
+
+# Git worktrees
+.worktrees/
