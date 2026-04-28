@@ -1,0 +1,6 @@
+{
+  "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": true,
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true
+  }
+}
