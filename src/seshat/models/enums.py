@@ -88,3 +88,9 @@ class CallType(StrEnum):
     LLM_OUTPUT = auto()
     EMBEDDING = auto()
     TRANSCRIPTION = auto()
+
+
+class GraphDirection(StrEnum):
+    INBOUND = auto()
+    OUTBOUND = auto()
+    BOTH = auto()
