@@ -2,9 +2,11 @@ import os
 import socket
 
 import pytest
+from dotenv import load_dotenv
 
-POSTGRES_PORT = int(os.environ.get("POSTGRES_PORT", 5432))
-LOCALSTACK_PORT = int(os.environ.get("LOCALSTACK_PORT", 4566))
+load_dotenv()
+
+_LOCALSTACK_PORT = int(os.environ.get("LOCALSTACK_PORT", 4566))
 
 
 def _port_open(host: str, port: int) -> bool:
@@ -15,17 +17,23 @@ def _port_open(host: str, port: int) -> bool:
         return False
 
 
-SKIP_IF_NO_POSTGRES = pytest.mark.skipif(
-    not _port_open("localhost", POSTGRES_PORT),
-    reason="Postgres not reachable — run: docker compose up -d postgres",
-)
-
 SKIP_IF_NO_LOCALSTACK = pytest.mark.skipif(
     not _port_open("localhost", LOCALSTACK_PORT),
     reason="LocalStack not reachable — run: docker compose up -d localstack",
 )
 
-SKIP_IF_NO_OPENAI = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set",
-)
+
+@pytest.fixture(scope="session")
+async def localstack_secretsmanager_url():
+    """Create a throw-away Secrets Manager in LocalStack, yield the endpoint URL, then delete it.
+
+    Keeps secrets-manager integration tests isolated from the dev secrets.
+    Skipped automatically when LocalStack is not reachable.
+    """
+    return _get_localstack_url()
+
+
+def _get_localstack_url():
+    if not _port_open("localhost", _LOCALSTACK_PORT):
+        pytest.skip("LocalStack not reachable — run: docker compose up -d localstack")
+    return f"http://localhost:{_LOCALSTACK_PORT}"
