@@ -1,5 +1,7 @@
+import asyncio
 import os
 import socket
+import sys
 
 import pytest
 from dotenv import load_dotenv
@@ -55,6 +57,16 @@ def _port_open(host: str, port: int) -> bool:
         return False
 
 
+def _openai_reachable() -> bool:
+    import httpx
+
+    try:
+        response = httpx.get("https://api.openai.com/v1/models", timeout=5)
+        return response.status_code == 200
+    except httpx.RequestError:
+        return False
+
+
 SKIP_IF_NO_POSTGRES = pytest.mark.skipif(
     not _port_open("localhost", _PG_PORT),
     reason="Postgres not reachable — run: docker compose up -d postgres",
@@ -65,6 +77,19 @@ SKIP_IF_NO_LOCALSTACK = pytest.mark.skipif(
     not _port_open("localhost", _LOCALSTACK_PORT),
     reason="LocalStack not reachable — run: docker compose up -d localstack",
 )
+
+SKIP_IF_NO_OPENAI = pytest.mark.skipif(
+    not os.environ.get("OPENAI_API_KEY") or not _openai_reachable(),
+    reason="OpenAI API not reachable or OPENAI_API_KEY not set",
+)
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy():
+    # psycopg async requires SelectorEventLoop; Windows defaults to ProactorEventLoop
+    if sys.platform == "win32":
+        return asyncio.WindowsSelectorEventLoopPolicy()
+    return asyncio.DefaultEventLoopPolicy()
 
 
 @pytest.fixture(scope="session")
