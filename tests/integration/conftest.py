@@ -1,6 +1,7 @@
 import asyncio
 import os
 import socket
+import subprocess
 import sys
 
 import pytest
@@ -15,40 +16,13 @@ LOCALSTACK_TEST_BUCKET = "seshat-test"
 _PG_USER = os.environ.get("POSTGRES_USER", "seshat")
 _PG_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "seshat")
 _PG_PORT = int(os.environ.get("POSTGRES_PORT", 5432))
-_PG_DB = os.environ.get("POSTGRES_DB", "seshat")
-_PG_ADMIN_URL = f"postgresql://{_PG_USER}:{_PG_PASSWORD}@localhost:{_PG_PORT}/{_PG_DB}"
-_PG_TEST_DB = "seshat_test"
-_PG_TEST_URL = f"postgresql://{_PG_USER}:{_PG_PASSWORD}@localhost:{_PG_PORT}/{_PG_TEST_DB}"
+_PG_BASE = f"postgresql://{_PG_USER}:{_PG_PASSWORD}@localhost:{_PG_PORT}"
 
-# DDL mirroring alembic/versions/001_initial_ops_schema.py.
-# TODO(task10): replace with `alembic upgrade head` once migrations are in place.
-_OPS_DDL = """
-CREATE SCHEMA IF NOT EXISTS ops;
-CREATE TABLE IF NOT EXISTS ops.kb_nodes (
-    node_id         TEXT PRIMARY KEY,
-    schema_version  TEXT NOT NULL DEFAULT '1.0',
-    job_id          TEXT NOT NULL,
-    type            TEXT NOT NULL,
-    title           TEXT NOT NULL,
-    description     TEXT NOT NULL,
-    confidence      FLOAT NOT NULL,
-    source_quote    TEXT NOT NULL,
-    status          TEXT NOT NULL,
-    state           TEXT NOT NULL DEFAULT 'current',
-    metadata        JSONB NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL
-);
-CREATE TABLE IF NOT EXISTS ops.kb_relationships (
-    source_id   TEXT NOT NULL REFERENCES ops.kb_nodes(node_id),
-    target_id   TEXT NOT NULL REFERENCES ops.kb_nodes(node_id),
-    rel_type    TEXT NOT NULL,
-    job_id      TEXT NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (source_id, target_id, rel_type)
-);
-CREATE INDEX IF NOT EXISTS ix_kb_relationships_target_id
-    ON ops.kb_relationships (target_id);
-"""
+_PG_DB = os.environ.get("POSTGRES_DB", "seshat")
+_PG_ADMIN_URL = f"{_PG_BASE}/{_PG_DB}"
+
+_PG_TEST_DB = "seshat_test"
+_PG_TEST_URL = f"{_PG_BASE}/{_PG_TEST_DB}"
 
 
 def _port_open(host: str, port: int) -> bool:
@@ -59,7 +33,11 @@ def _port_open(host: str, port: int) -> bool:
         return False
 
 
-def _openai_reachable() -> bool:
+def _openai_reachable(openai_api_key_env_var: str | None = None) -> bool:
+    openai_api_key_env_var = openai_api_key_env_var or "OPENAI_API_KEY"
+    if not os.environ.get(openai_api_key_env_var):
+        return False
+
     import httpx
 
     try:
@@ -74,15 +52,14 @@ SKIP_IF_NO_POSTGRES = pytest.mark.skipif(
     reason="Postgres not reachable — run: docker compose up -d postgres",
 )
 
-
 SKIP_IF_NO_LOCALSTACK = pytest.mark.skipif(
     not _port_open("localhost", _LOCALSTACK_PORT),
     reason="LocalStack not reachable — run: docker compose up -d localstack",
 )
 
 SKIP_IF_NO_OPENAI = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY") or not _openai_reachable(),
-    reason="OpenAI API not reachable or OPENAI_API_KEY not set",
+    not _openai_reachable(),
+    reason="OpenAI API not reachable — OPENAI_API_KEY not set or network issue",
 )
 
 
@@ -111,17 +88,19 @@ async def pg_test_url():
     await admin.execute(f"CREATE DATABASE {_PG_TEST_DB} OWNER {_PG_USER}")
     await admin.close()
 
-    test_url = _PG_TEST_URL
-    conn = await asyncpg.connect(test_url)
-    await conn.execute(_OPS_DDL)
-    await conn.close()
+    _run_alembric_migrations(database_url=_PG_TEST_URL)
 
-    yield test_url
+    yield _PG_TEST_URL
 
     admin = await asyncpg.connect(_PG_ADMIN_URL)
     await admin.execute(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='{_PG_TEST_DB}'")
     await admin.execute(f"DROP DATABASE IF EXISTS {_PG_TEST_DB}")
     await admin.close()
+
+
+def _run_alembric_migrations(database_url: str):
+    env = os.environ | {"DATABASE_URL": database_url}
+    subprocess.run(["uv", "run", "alembic", "upgrade", "head"], env=env, check=True)
 
 
 @pytest.fixture(scope="session")

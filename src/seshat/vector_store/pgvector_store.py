@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.documents import Document
 from langchain_postgres import PGVector
 
+from seshat.utils.db import ensure_psycopg_scheme
 from seshat.vector_store.base_store import AbstractVectorStore
 
 if TYPE_CHECKING:
@@ -31,22 +31,13 @@ class PGVectorStore(AbstractVectorStore):
 
     @staticmethod
     def _validate_connection_string(connection_string: str) -> str:
-        match = re.match(r"^postgresql(\+\w+)?://", connection_string)
-        if match is None:
-            raise ValueError("Invalid connection string: must start with 'postgresql://' or 'postgresql+<driver>://'")
-
-        qualifier = match.group(1)
-        if qualifier == "+psycopg":
-            return connection_string
-
-        if qualifier is not None:
-            logger.warning(
-                "Invalid driver in connection string %r; replacing with 'psycopg' for langchain-postgres compatibility",
-                qualifier,
-            )
-
-        # langchain-postgres requires postgresql+psycopg://
-        return re.sub(r"^postgresql(\+\w+)?://", "postgresql+psycopg://", connection_string)
+        return ensure_psycopg_scheme(
+            connection_string,
+            warn_msg=(
+                "Unexpected driver %r in vector store connection string; "
+                "replacing with '+psycopg' for langchain-postgres compatibility."
+            ),
+        )
 
     @staticmethod
     def get_supported_filter_fields() -> frozenset[str]:
