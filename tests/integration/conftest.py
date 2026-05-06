@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 _LOCALSTACK_PORT = int(os.environ.get("LOCALSTACK_PORT", 4566))
+LOCALSTACK_REGION = os.environ.get("AWS_DEFAULT_REGION", "eu-west-1")
+LOCALSTACK_TEST_BUCKET = "seshat-test"
 
 _PG_USER = os.environ.get("POSTGRES_USER", "seshat")
 _PG_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "seshat")
@@ -130,6 +132,34 @@ async def localstack_secretsmanager_url():
     Skipped automatically when LocalStack is not reachable.
     """
     return _get_localstack_url()
+
+
+@pytest.fixture(scope="session")
+async def localstack_s3_url():
+    """Create a throw-away S3 bucket in LocalStack, yield the endpoint URL, then delete it.
+
+    Keeps blob-store integration tests isolated from the dev bucket.
+    Skipped automatically when LocalStack is not reachable.
+    """
+    endpoint = _get_localstack_url()
+
+    import aioboto3
+
+    session = aioboto3.Session()
+    async with session.client("s3", region_name=LOCALSTACK_REGION, endpoint_url=endpoint) as s3:
+        await s3.create_bucket(
+            Bucket=LOCALSTACK_TEST_BUCKET,
+            CreateBucketConfiguration={"LocationConstraint": LOCALSTACK_REGION},
+        )
+
+    yield endpoint
+
+    async with session.client("s3", region_name=LOCALSTACK_REGION, endpoint_url=endpoint) as s3:
+        paginator = s3.get_paginator("list_objects_v2")
+        async for page in paginator.paginate(Bucket=LOCALSTACK_TEST_BUCKET):
+            for obj in page.get("Contents", []):
+                await s3.delete_object(Bucket=LOCALSTACK_TEST_BUCKET, Key=obj["Key"])
+        await s3.delete_bucket(Bucket=LOCALSTACK_TEST_BUCKET)
 
 
 def _get_localstack_url():
