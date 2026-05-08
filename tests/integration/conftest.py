@@ -34,15 +34,19 @@ def _port_open(host: str, port: int) -> bool:
 
 
 def _openai_reachable(openai_api_key_env_var: str | None = None) -> bool:
-    openai_api_key_env_var = openai_api_key_env_var or "OPENAI_API_KEY"
-    if not os.environ.get(openai_api_key_env_var):
+    key = os.environ.get(openai_api_key_env_var or "OPENAI_API_KEY")
+    if not key:
         return False
 
     import httpx
 
     try:
-        response = httpx.get("https://api.openai.com/v1/models", timeout=5)
-        return response.status_code == 200
+        response = httpx.get(
+            "https://api.openai.com/v1/models",
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=5,
+        )
+        return response.status_code < 400
     except httpx.RequestError:
         return False
 
