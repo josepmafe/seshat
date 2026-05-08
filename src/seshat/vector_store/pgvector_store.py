@@ -67,11 +67,7 @@ def _build_filter(node_filter: NodeFilter | None) -> dict | None:
     if node_filter is None:
         return None
 
-    unsupported = {
-        f
-        for f in type(node_filter).model_fields
-        if f not in PGVectorStore.get_supported_filter_fields() and getattr(node_filter, f) is not None
-    }
+    unsupported = {f for f in node_filter.model_fields_set if f not in PGVectorStore.get_supported_filter_fields()}
     if unsupported:
         raise NotImplementedError(
             f"PGVector metadata filter does not support: {sorted(unsupported)}. "
