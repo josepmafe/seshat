@@ -12,7 +12,7 @@ dependencies = [
     "langchain-postgres>=0.0.17",
     "psycopg[binary]>=3.3",
     # Config & validation
-    "pydantic>=2.13",
+    "pydantic>=2.13.4",
     "pydantic-settings>=2.14",
     # AI / NLP
     # en_core_web_sm pinned as a direct URL so no manual download step is needed
