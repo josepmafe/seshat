@@ -10,7 +10,7 @@ dependencies = [
     "asyncpg>=0.31",
     "boto3>=1.40",
     "langchain-postgres>=0.0.17",
-    "psycopg[binary]>=3.3",
+    "psycopg[binary]>=3.3.4",
     # Config & validation
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14",
