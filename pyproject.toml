@@ -23,7 +23,7 @@ dependencies = [
     "langchain-openai>=1.2",
     "nltk>=3.9",
     # Observability / eval
-    "mlflow[langchain]>=3.11",
+    "mlflow[langchain]>=3.12.0",
     # Web & CLI
     "bcrypt>=5.0",
     "fastapi>=0.136",
