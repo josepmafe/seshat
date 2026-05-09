@@ -39,7 +39,7 @@ dev = [
     { include-group = "complexity" },
 ]
 lint = [
-    "boto3-stubs[secretsmanager,s3]>=1.40",
+    "boto3-stubs[secretsmanager,s3]>=1.43.6",
     "mypy>=1.20",
     "pre-commit>=4.6",
     "ruff>=0.15",
