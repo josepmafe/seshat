@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import aioboto3
 from botocore.exceptions import ClientError
 
+from seshat.utils.log import get_logger
 from seshat.utils.retry import async_retry
 
 if TYPE_CHECKING:
@@ -36,7 +36,7 @@ def _s3_should_retry(exc: Exception) -> bool:
 
 _S3_ASYNC_RETRY = async_retry(retryable_exceptions=(ClientError,), should_retry=_s3_should_retry)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class S3BlobStore:

@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import logging
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from seshat.models.enums import SecretsProvider
+from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from seshat.config.settings import SecretsConfig, SeshatConfig
     from seshat.secrets.base_resolver import AbstractSecretsResolver
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def get_secrets_resolver(config: SeshatConfig) -> AbstractSecretsResolver:

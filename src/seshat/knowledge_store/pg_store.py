@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import re
 import textwrap
 from contextlib import asynccontextmanager
@@ -14,6 +13,7 @@ import asyncpg
 
 from seshat.models.enums import GraphDirection, NodeState, RelationshipType
 from seshat.models.nodes import KBNode, KBRelationship
+from seshat.utils.log import get_logger
 
 type _Conn = asyncpg.Connection | asyncpg.pool.PoolConnectionProxy
 
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from seshat.config.settings import KBStoreConfig
     from seshat.models.api import NodeFilter
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PostgresKBStore:
