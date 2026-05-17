@@ -46,9 +46,11 @@ data/
 .vscode/
 
 # Miscellaneous
-todos.md
+development
 docs/*/plans/
 docs/*/code/
+todos.md
+
 
 # Git worktrees
 .worktrees/

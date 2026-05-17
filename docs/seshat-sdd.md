@@ -28,7 +28,7 @@ Translates Seshat's high-level architecture into an implementation-oriented blue
 
 ## System Overview
 
-Seshat is an API-first GenAI application that ingests technical meeting recordings or pre-formatted transcripts, extracts structured decisions, risks, agreements, and action items via a multi-agent LLM pipeline, and persists the results to a graph-shaped knowledge base backed by Postgres and pgvector. A Streamlit UI sits on top of the API to let reviewers submit meetings, monitor progress, and approve or reject extracted nodes.
+Seshat is an API-first GenAI application that ingests technical meeting recordings or pre-formatted transcripts, extracts structured decisions, risks, open questions, and action items via a multi-agent LLM pipeline, and persists the results to a graph-shaped knowledge base backed by Postgres and pgvector. A Streamlit UI sits on top of the API to let reviewers submit meetings, monitor progress, and approve or reject extracted nodes.
 
 ```
 Streamlit UI → FastAPI → Pipeline Worker → Storage Layer
@@ -121,7 +121,7 @@ Dequeues jobs from `AsyncioTaskQueue` and orchestrates the pipeline stages. Main
 
 5. **Pass 2 — RAG + Resolution** — uses the deduplicated node set as the working candidate list. Queries the existing KB and vector store to attach `KBRelationship` objects (`SUPERSEDES`, `AMENDS`, `CONFLICTS_WITH`, `DEPENDS_ON`) and resolve action item assignees against `TranscriptMetadata.participants`. RAG runs after extraction; extraction agents receive only a lightweight hint context.
 
-6. **Confidence Scoring** — combines logprob-based confidence, verification agent output, and spaCy heuristics via weighted normalised sum. Unavailable signals are excluded from both numerator and denominator.
+6. **Confidence Scoring** — combines verification agent output and spaCy heuristics via weighted normalised sum. When verification is disabled, heuristics carry the full weight.
 
 7. **Review Gating / WRITING** — decides per-node whether to auto-approve (operator role + auto-mode, or high confidence + policy) or route to human review (`AWAITING_REVIEW`). Writes `curated/extraction.json` at the start of `WRITING` so the artifact exists even if all nodes are later rejected.
 
@@ -173,7 +173,7 @@ This section captures only the "spine" models used to connect components. Full f
 
 **`TranscriptDocument`** — `job_id: UUID`, `raw_text: str`, token count metadata, segments/chunks (when attached), `metadata: TranscriptMetadata` (participants, meeting title, date, optional tags).
 
-**`KBNode`** — `id: UUID`, `job_id: UUID`, `concept_type: ConceptType` (ADR, risk, agreement, action item), `title: str`, `content: str`, `source_quote: str`, `chunk_index: int`, `confidence: float`, `assignee: str | None` (action items only).
+**`KBNode`** — `id: UUID`, `job_id: UUID`, `concept_type: ConceptType` (`DECISION`, `RISK`, `ACTION_ITEM`, `OPEN_QUESTION`), `title: str`, `content: str`, `source_quote: str`, `chunk_index: int`, `confidence: float`, `assignee: str | None` (action items only), `due: str | None` (action items only).
 
 **`KBRelationship`** — `id: UUID`, `from_node_id: UUID`, `to_node_id: UUID`, `relationship_type` (`SUPERSEDES`, `AMENDS`, `CONFLICTS_WITH`, `DEPENDS_ON`, `ASSIGNED_TO`).
 
@@ -227,10 +227,10 @@ Central registry maps `ConceptType` → agent implementation:
 
 | `ConceptType` | Agent |
 |---------------|-------|
-| `ADR` | `AdrExtractionAgent` |
+| `DECISION` | `DecisionExtractionAgent` |
 | `RISK` | `RiskExtractionAgent` |
-| `AGREEMENT` | `AgreementExtractionAgent` |
 | `ACTION_ITEM` | `ActionItemExtractionAgent` |
+| `OPEN_QUESTION` | `OpenQuestionExtractionAgent` |
 
 Adding a concept type: implement an agent class (LangChain chain/tool) and add it to the registry.
 
@@ -264,9 +264,9 @@ Default: TextTiling (NLTK), tuned for long-form transcripts. If the chunking san
 
 ### Confidence Scoring
 
-Three signals (logprobs, verification agent, spaCy heuristics) combined via weighted normalised sum. Missing signals are excluded from both numerator and denominator. Result is a float in [0, 1]. Used for reviewer prioritisation and auto-approval threshold policies.
+Two signals (verification agent, spaCy heuristics) combined via weighted normalised sum. When verification is disabled, its weight redistributes to heuristics. Result is a float in [0, 1]. Used for reviewer prioritisation and auto-approval threshold policies.
 
-Full formula, default weights, and signal availability are defined in [docs/superpowers/specs/2026-04-27-prompt-interaction-design.md §5](superpowers/specs/2026-04-27-prompt-interaction-design.md).
+Full formula, default weights, and signal availability are defined in [docs/superpowers/specs/2026-04-21-seshat-design.md](superpowers/specs/2026-04-21-seshat-design.md).
 
 ---
 

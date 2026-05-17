@@ -8,7 +8,7 @@ A narrative introduction to the system. After reading this you should have a wor
 
 Technical meetings produce decisions that matter — which database to use, which risk to accept, who owns which action. In practice these end up scattered across notes, Slack threads, and memory, with no record of the reasoning behind them.
 
-Seshat ingests a meeting recording (audio or pre-formatted transcript), extracts structured items from it — Architecture Decision Records, risks, agreements, and action items — and writes them to a queryable graph-shaped knowledge base. Relationships between decisions across meetings are tracked explicitly: a later decision can supersede, amend, or conflict with an earlier one.
+Seshat ingests a meeting recording (audio or pre-formatted transcript), extracts structured items from it — decisions, risks, open questions, and action items — and writes them to a queryable graph-shaped knowledge base. Relationships between decisions across meetings are tracked explicitly: a later decision can supersede, amend, or conflict with an earlier one.
 
 ---
 
@@ -62,7 +62,7 @@ The job transitions to `EXTRACTING`. This is the most expensive stage and the he
 
 **First, the transcript is chunked.** TextTiling (NLTK) detects topic-shift boundaries and produces variable-length, topically coherent chunks. A hard ceiling (`max_chunk_count=50`) prevents cost blowup.
 
-**Pass 1 — fan-out:** for each chunk, four extraction agents run concurrently — one per concept type (`ADR`, `RISK`, `AGREEMENT`, `ACTION_ITEM`). Each agent receives the chunk text, a static system prompt, a small "KB hint" (the most recent same-type nodes already in the knowledge base, to avoid re-extracting known decisions), and any relevant context retrieved from the KB via RAG. Agents return a list of `KBNode` objects with empty relationship lists — relationships are always created in Pass 2.
+**Pass 1 — fan-out:** for each chunk, four extraction agents run concurrently — one per concept type (`DECISION`, `RISK`, `ACTION_ITEM`, `OPEN_QUESTION`). Each agent receives the chunk text, a static system prompt, a small "KB hint" (the most recent same-type nodes already in the knowledge base, to avoid re-extracting known decisions), and any relevant context retrieved from the KB via RAG. Agents return a list of `KBNode` objects with empty relationship lists — relationships are always created in Pass 2.
 
 Before agents run, each one gets a **prompt cache benefit**: system prompts are static per concept type and reused across every job. On Anthropic the `cache_control` header is set explicitly; on OpenAI, prefix caching is automatic.
 
@@ -70,22 +70,21 @@ Outputs from all chunks are merged. Two nodes of the same type are considered du
 
 **Pass 2 — RAG + Resolution:** runs once, after the complete merged node list is in memory. This is where relationships are born. For each new node, the RAG service embeds it, runs a vector similarity search against the existing KB, then traverses the graph one hop out from the top matches. Two parallel LLM calls then classify relationships:
 
-- *Same-type resolution* — is this new ADR superseding, amending, or conflicting with an existing one?
-- *Cross-type resolution* — does this Risk mitigate an ADR? Does this Agreement support one?
+- *Same-type resolution* — is this new Decision superseding, amending, or conflicting with an existing one?
+- *Cross-type resolution* — does this Risk mitigate or block a Decision? Does a Decision resolve an Open Question?
 
 A heuristic validation step follows: malformed relationships (wrong direction, contradictory types) are dropped and logged without failing the job.
 
 ### 4. Confidence Scoring
 
-Every node gets a confidence score before the job moves to review. Three signals contribute:
+Every node gets a confidence score before the job moves to review. Two signals contribute:
 
-- **Logprobs** (OpenAI only) — token probability of the extracted content
 - **Verification agent** — a cheap model from a *different* provider that answers "is this claim well-supported by the source quote?" Using a different provider is required; same-provider verification produces correlated errors.
 - **Heuristics** (always active) — spaCy-based rule classifiers measuring quote length, title specificity, and description directness
 
-The formula is a weighted normalised average. Signals that are unavailable (logprobs on Anthropic, verification when not configured) are excluded from both numerator and denominator — the remaining weights redistribute proportionally so the result always lies in [0, 1].
+The formula is a weighted normalised average. When verification is not configured, heuristics carry the full weight so the result always lies in [0, 1].
 
-Nodes above `confidence_threshold` get `status=AUTO_APPROVED`. Nodes below it get `status=PENDING_REVIEW` and will need a human decision before they enter the KB.
+Nodes above `confidence_threshold` get `status=APPROVED`. Nodes below it get `status=PENDING_REVIEW` and will need a human decision before they enter the KB.
 
 ### 5. Human Review
 
