@@ -25,9 +25,6 @@ class KBRelationship(SeshatModel):
 
 
 class ConfidenceBreakdown(SeshatModel):
-    logprobs: float | None = Field(
-        default=None, ge=0, le=1, description="Log-probability signal from the LLM (optional, provider-dependent)."
-    )
     verification: float | None = Field(
         default=None, ge=0, le=1, description="Score from the verification LLM call; None means disabled verification."
     )

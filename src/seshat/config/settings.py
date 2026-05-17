@@ -1,4 +1,3 @@
-import logging
 import math
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -14,8 +13,9 @@ from seshat.models.enums import (
     TranscriptionProvider,
     VectorStoreProvider,
 )
+from seshat.utils.log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BaseConfig(BaseModel):
@@ -34,18 +34,17 @@ class VerificationConfig(BaseConfig):
 
 
 class ConfidenceWeights(BaseConfig):
-    logprobs: float = Field(default=0.5, ge=0, lt=1)
-    verification: float = Field(default=0.35, ge=0, lt=1)
-    heuristics: float = Field(default=0.15, gt=0, le=1)
+    verification: float = Field(default=0.70, ge=0, lt=1)
+    heuristics: float = Field(default=0.30, gt=0, le=1)
 
     @model_validator(mode="after")
     def _weights_sum_to_one(self) -> "ConfidenceWeights":
-        total = self.logprobs + self.verification + self.heuristics
+        total = self.verification + self.heuristics
         if not math.isclose(total, 1.0, abs_tol=1e-6):
             raise ValueError(f"ConfidenceWeights must sum to 1.0, got {total:.6f}")
         return self
 
-    _DISABLEABLE_SIGNALS: frozenset[str] = frozenset({"logprobs", "verification"})
+    _DISABLEABLE_SIGNALS: frozenset[str] = frozenset({"verification"})
 
     def redistribute(self, disabled_signals: set[str]) -> "ConfidenceWeights":
         """Return new weights with disabled signals zeroed and remaining weights scaled to sum to 1.0."""
