@@ -54,7 +54,7 @@ class TestRowToNode:
             "title": node.title,
             "description": node.description,
             "confidence": node.confidence,
-            "source_quote": node.source_quote,
+            "quote_anchors": json.dumps([anchor.model_dump() for anchor in node.quote_anchors]),
             "status": node.status.value,
             "state": node.state.value,
             "chunk_index": None,

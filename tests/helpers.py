@@ -3,6 +3,7 @@ from uuid import NAMESPACE_DNS, uuid5
 
 from seshat.models.enums import ConceptType, IngestionSource, NodeStatus
 from seshat.models.nodes import KBNode, NodeMetadata
+from seshat.models.quote_anchor import QuoteAnchor
 
 
 def make_node(
@@ -20,7 +21,7 @@ def make_node(
         title=title,
         description=description,
         confidence=confidence,
-        source_quote="we will use PostgreSQL",
+        quote_anchors=[QuoteAnchor(transcript_file="test.txt", char_start=0, char_end=22)],
         status=status,
         metadata=NodeMetadata(
             job_id="job-1",
