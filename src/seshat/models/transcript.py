@@ -35,5 +35,5 @@ class TranscriptDocument(SeshatModel):
     source_type: Literal["audio", "text"] = Field(
         description="Whether the source was audio (transcribed) or pre-existing text."
     )
-    raw_text: str = Field(min_length=1)
+    blob_key: str = Field(description="Blob storage key where the transcript text is stored.")
     metadata: TranscriptMetadata
