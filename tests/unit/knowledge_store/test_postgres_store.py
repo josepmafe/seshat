@@ -31,8 +31,8 @@ class TestNodeToRowArgs:
         created_at = datetime(2026, 4, 21, 12, 0, tzinfo=UTC)
         row = PostgresKBStore._node_to_row_args(node, created_at)
         assert row[0] == node.id
-        assert row[2] == "adr"
-        assert row[7] == "auto_approved"
+        assert row[2] == "decision"
+        assert row[7] == "approved"
         assert row[8] == "current"
         assert row[9] is None  # chunk_index
         assert row[11] == created_at
@@ -66,7 +66,7 @@ class TestRowToNode:
         assert restored.type == node.type
         assert restored.state == NodeState.CURRENT
         assert restored.metadata.job_id == "job-1"
-        assert restored.type == ConceptType.ADR
+        assert restored.type == ConceptType.DECISION
 
 
 class TestPool:

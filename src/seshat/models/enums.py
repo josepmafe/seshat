@@ -2,24 +2,24 @@ from enum import StrEnum, auto
 
 
 class ConceptType(StrEnum):
-    ADR = auto()
+    DECISION = auto()
     RISK = auto()
-    AGREEMENT = auto()
     ACTION_ITEM = auto()
+    OPEN_QUESTION = auto()
 
 
 class RelationshipType(StrEnum):
     MITIGATES = auto()
-    SUPPORTS = auto()
+    BLOCKS = auto()
     CONFLICTS_WITH = auto()
     DEPENDS_ON = auto()
     SUPERSEDES = auto()
     AMENDS = auto()
-    ASSIGNED_TO = auto()
+    RESOLVES = auto()
 
 
 class NodeStatus(StrEnum):
-    AUTO_APPROVED = auto()
+    APPROVED = auto()
     PENDING_REVIEW = auto()
     REJECTED = auto()
 
