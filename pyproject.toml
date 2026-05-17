@@ -20,6 +20,7 @@ dependencies = [
     "spacy>=3.8",
     "langchain>=1.2",
     "langchain-anthropic>=1.4.3",
+    "langchain-aws>=1.1.0",
     "langchain-openai>=1.2",
     "nltk>=3.9",
     # Observability / eval
@@ -92,7 +93,6 @@ select = [
     "PT",    # flake8-pytest-style — pytest idioms
     "RUF",   # Ruff-native — catch-all extras
 ]
-
 [tool.mypy]
 files = ["src"]
 disallow_untyped_defs = true

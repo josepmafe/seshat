@@ -24,7 +24,12 @@ class TestGetVectorStore:
     def test_resolves_connection_string_from_secret_key(self, minimal_config: SeshatConfig, mocked_secrets_resolver):
         with patch("seshat.vector_store.pgvector_store.PGVector"), patch("langchain_openai.OpenAIEmbeddings"):
             get_vector_store(minimal_config)
-        mocked_secrets_resolver.get_secret.assert_called_once_with(minimal_config.vector_store.connection_secret_key)
+        mocked_secrets_resolver.get_secret.assert_any_call(minimal_config.vector_store.connection_secret_key)
+
+    def test_resolves_embedding_api_key(self, minimal_config: SeshatConfig, mocked_secrets_resolver):
+        with patch("seshat.vector_store.pgvector_store.PGVector"), patch("langchain_openai.OpenAIEmbeddings"):
+            get_vector_store(minimal_config)
+        mocked_secrets_resolver.get_secret.assert_any_call(minimal_config.vector_index.api_key_secret_key)
 
     def test_propagates_connection_string(self, minimal_config: SeshatConfig):
         with patch("seshat.vector_store.pgvector_store.PGVector"), patch("langchain_openai.OpenAIEmbeddings"):

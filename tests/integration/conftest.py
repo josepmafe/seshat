@@ -33,7 +33,23 @@ def _port_open(host: str, port: int) -> bool:
         return False
 
 
+def _bedrock_available() -> bool:
+    try:
+        import boto3
+
+        return boto3.Session().get_credentials() is not None
+    except Exception:
+        return False
+
+
+def _azure_available() -> bool:
+    return bool(os.environ.get("AZURE_OPENAI_ENDPOINT") and os.environ.get("AZURE_OPENAI_API_KEY"))
+
+
 def _openai_reachable(openai_api_key_env_var: str | None = None) -> bool:
+    if _azure_available():
+        return True
+
     key = os.environ.get(openai_api_key_env_var or "OPENAI_API_KEY")
     if not key:
         return False
@@ -50,6 +66,19 @@ def _openai_reachable(openai_api_key_env_var: str | None = None) -> bool:
     except httpx.RequestError:
         return False
 
+
+# Anthropic key presence is sufficient — no network probe needed (unlike OpenAI which validates the endpoint).
+def _anthropic_reachable() -> bool:
+    return bool(os.environ.get("ANTHROPIC_API_KEY")) or _bedrock_available()
+
+
+SKIP_IF_NO_LLM_API = pytest.mark.skipif(
+    not _anthropic_reachable() and not _openai_reachable(),
+    reason=(
+        "No LLM API available — set ANTHROPIC_API_KEY, OPENAI_API_KEY, "
+        "AZURE_OPENAI_* vars, or configure AWS credentials for Bedrock"
+    ),
+)
 
 SKIP_IF_NO_POSTGRES = pytest.mark.skipif(
     not _port_open("localhost", _PG_PORT),

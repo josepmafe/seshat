@@ -146,9 +146,19 @@ class VectorIndexConfig(BaseConfig):
     )
     embedding_provider: EmbeddingProvider = EmbeddingProvider.OPENAI
     embedding_model: str = "text-embedding-3-small"
+    api_key_secret_key: str | None = Field(
+        default=None,
+        description="Secrets key for the embedding API key. Defaults to '<provider>_api_key' if not set.",
+    )
     max_indexing_tokens: int = Field(
         default=500_000, gt=0, description="Maximum total tokens that may be embedded in a single RAG indexing run."
     )
+
+    @model_validator(mode="after")
+    def _default_api_key_secret_key(self) -> "VectorIndexConfig":
+        if self.api_key_secret_key is None:
+            object.__setattr__(self, "api_key_secret_key", f"{self.embedding_provider}_api_key")
+        return self
 
 
 class RAGConfig(BaseConfig):
@@ -162,6 +172,9 @@ class RAGConfig(BaseConfig):
     )
     traversal_rel_types: list[RelationshipType] | None = Field(
         default=None, description="Relationship types to follow during traversal; None means all."
+    )
+    max_concurrent_retrievals: int = Field(
+        default=20, gt=0, description="Maximum number of simultaneous RAG retrieval calls."
     )
 
 

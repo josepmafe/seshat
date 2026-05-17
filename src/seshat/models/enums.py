@@ -55,6 +55,8 @@ class JobStatus(StrEnum):
 class LLMProvider(StrEnum):
     OPENAI = auto()
     ANTHROPIC = auto()
+    AZURE_OPENAI = auto()
+    BEDROCK_CONVERSE = auto()
 
 
 class TranscriptionProvider(StrEnum):
@@ -69,9 +71,8 @@ class VectorStoreProvider(StrEnum):
 
 class EmbeddingProvider(StrEnum):
     OPENAI = auto()
+    AZURE_OPENAI = auto()
     ANTHROPIC = auto()
-    COHERE = auto()
-    FASTEMBED = auto()
 
 
 class SecretsProvider(StrEnum):
