@@ -5,9 +5,9 @@ from seshat.models.api import NodeFilter
 from seshat.models.enums import ConceptType, SecretsProvider
 from seshat.vector_store.factory import _build_embeddings
 from seshat.vector_store.pgvector_store import PGVectorStore
-from tests.integration.conftest import SKIP_IF_NO_OPENAI, SKIP_IF_NO_POSTGRES
+from tests.integration.conftest import SKIP_IF_NO_LLM_API, SKIP_IF_NO_POSTGRES
 
-pytestmark = [pytest.mark.integration, SKIP_IF_NO_POSTGRES, SKIP_IF_NO_OPENAI]
+pytestmark = [pytest.mark.integration, pytest.mark.llm, SKIP_IF_NO_POSTGRES, SKIP_IF_NO_LLM_API]
 
 _TEST_NODE_ID = "test-node-1"
 
