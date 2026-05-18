@@ -116,7 +116,11 @@ disallow_untyped_defs = true
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = "--cov=src/seshat --cov-report=term-missing"
+addopts = '--cov=src/seshat --cov-report=term-missing -m "not llm"'
 asyncio_mode = "auto"
-markers = ["integration: requires external services (Postgres, LocalStack, MLflow)"]
+markers = [
+    "integration: requires external services (Postgres, LocalStack, MLflow)",
+    "agents: requires a live LLM API key; subset of llm",
+    "llm: requires a live LLM API key (any provider)",
+]
 testpaths = ["tests"]

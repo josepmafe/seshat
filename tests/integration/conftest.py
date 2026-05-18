@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+_BEDROCK_PROFILE = os.environ.get("AWS_PROFILE", "ClaudeCode")
+
 _LOCALSTACK_PORT = int(os.environ.get("LOCALSTACK_PORT", 4566))
 LOCALSTACK_REGION = os.environ.get("AWS_DEFAULT_REGION", "eu-west-1")
 LOCALSTACK_TEST_BUCKET = "seshat-test"
@@ -33,17 +35,21 @@ def _port_open(host: str, port: int) -> bool:
         return False
 
 
-def _bedrock_available() -> bool:
+def _bedrock_available(profile_name: str | None = None) -> bool:
     try:
         import boto3
 
-        return boto3.Session().get_credentials() is not None
+        return boto3.Session(profile_name=profile_name).get_credentials() is not None
     except Exception:
         return False
 
 
 def _azure_available() -> bool:
-    return bool(os.environ.get("AZURE_OPENAI_ENDPOINT") and os.environ.get("AZURE_OPENAI_API_KEY"))
+    return bool(
+        os.environ.get("AZURE_OPENAI_ENDPOINT")
+        and os.environ.get("AZURE_OPENAI_DEPLOYMENT")
+        and os.environ.get("AZURE_OPENAI_API_KEY")
+    )
 
 
 def _openai_reachable(openai_api_key_env_var: str | None = None) -> bool:
@@ -69,7 +75,7 @@ def _openai_reachable(openai_api_key_env_var: str | None = None) -> bool:
 
 # Anthropic key presence is sufficient — no network probe needed (unlike OpenAI which validates the endpoint).
 def _anthropic_reachable() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY")) or _bedrock_available()
+    return bool(os.environ.get("ANTHROPIC_API_KEY")) or _bedrock_available(profile_name=_BEDROCK_PROFILE)
 
 
 SKIP_IF_NO_LLM_API = pytest.mark.skipif(
