@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.documents import Document
 from langchain_postgres import PGVector
 
 from seshat.utils.db import ensure_psycopg_scheme
+from seshat.utils.log import get_logger
 from seshat.vector_store.base_store import AbstractVectorStore
 
 if TYPE_CHECKING:
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from seshat.config.settings import VectorIndexConfig, VectorStoreConfig
     from seshat.models.api import NodeFilter, SearchResult
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PGVectorStore(AbstractVectorStore):
@@ -52,10 +52,11 @@ class PGVectorStore(AbstractVectorStore):
         query: str,
         top_k: int,
         node_filter: NodeFilter | None = None,
+        exclude_job_id: str | None = None,
     ) -> list[SearchResult]:
         from seshat.models.api import SearchResult
 
-        filter_dict = _build_filter(node_filter)
+        filter_dict = _build_filter(node_filter, exclude_job_id)
         results = await self._store.asimilarity_search_with_relevance_scores(query, k=top_k, filter=filter_dict)
         return [SearchResult(node_id=doc.metadata["node_id"], score=score) for doc, score in results]
 
@@ -63,22 +64,27 @@ class PGVectorStore(AbstractVectorStore):
         await self._store.adelete(ids=[node_id])
 
 
-def _build_filter(node_filter: NodeFilter | None) -> dict | None:
-    if node_filter is None:
+def _build_filter(node_filter: NodeFilter | None, exclude_job_id: str | None = None) -> dict | None:
+    if node_filter is None and exclude_job_id is None:
         return None
 
-    unsupported = {f for f in node_filter.model_fields_set if f not in PGVectorStore.get_supported_filter_fields()}
-    if unsupported:
-        raise NotImplementedError(
-            f"PGVector metadata filter does not support: {sorted(unsupported)}. "
-            "Use PostgresKBStore.query() for full NodeFilter support."
-        )
-
     result: dict[str, Any] = {}
-    if node_filter.node_type:
-        result["node_type"] = node_filter.node_type.value
-    if node_filter.min_confidence is not None:
-        result["confidence"] = {"$gte": node_filter.min_confidence}
-    if node_filter.ingestion_source:
-        result["ingestion_source"] = node_filter.ingestion_source.value
+
+    if node_filter is not None:
+        unsupported = {f for f in node_filter.model_fields_set if f not in PGVectorStore.get_supported_filter_fields()}
+        if unsupported:
+            raise NotImplementedError(
+                f"PGVector metadata filter does not support: {sorted(unsupported)}. "
+                "Use PostgresKBStore.query() for full NodeFilter support."
+            )
+        if node_filter.node_type:
+            result["node_type"] = node_filter.node_type.value
+        if node_filter.min_confidence is not None:
+            result["confidence"] = {"$gte": node_filter.min_confidence}
+        if node_filter.ingestion_source:
+            result["ingestion_source"] = node_filter.ingestion_source.value
+
+    if exclude_job_id is not None:
+        result["job_id"] = {"$ne": exclude_job_id}
+
     return result

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
+
+from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from seshat.config.settings import SecretsConfig
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AbstractSecretsResolver(ABC):

@@ -5,7 +5,7 @@
 
 ## Overview
 
-Seshat is an API-first GenAI application that transcribes technical meeting recordings, extracts structured decisions (ADRs, risks, agreements, action items) using a multi-agent pipeline, and writes them to a graph-shaped knowledge base. It is designed for technical users (staff engineers, data architects, heads of engineering), to help them document architecture decisions, and keep them updated.
+Seshat is an API-first GenAI application that transcribes technical meeting recordings, extracts structured decisions, risks, open questions, and action items using a multi-agent pipeline, and writes them to a graph-shaped knowledge base. It is designed for technical users (staff engineers, data architects, heads of engineering), to help them document architecture decisions, and keep them updated.
 
 ---
 
@@ -17,7 +17,7 @@ Technical council members make architecture decisions, surface risks, and assign
 
 ### Goals
 
-- Extract structured decisions (ADRs, risks, agreements, action items) from meeting recordings and write them to a queryable, graph-shaped knowledge base.
+- Extract structured decisions, risks, open questions, and action items from meeting recordings and write them to a queryable, graph-shaped knowledge base.
 - Surface relationships between decisions across meetings (supersession, amendment, conflict, dependency).
 - Provide a human review step before any node enters the knowledge base, with confidence scoring to guide reviewer attention.
 - Enable seeding the KB from an existing documentation corpus (`seshat init`).
@@ -36,7 +36,7 @@ Technical council members make architecture decisions, surface risks, and assign
 
 1. `seshat eval` passes the release gate: recall@5 ≥ 0.7 and per-type precision/recall targets met (§12) — no real meeting data is processed until this gate is cleared.
 2. A reviewer can process a meeting end-to-end — submit → transcribe → extract → review → KB written — using the Streamlit UI without touching the API directly.
-3. The KB is queryable and returns nodes consistent with what was discussed in the source meeting, traceable via `source_quote`.
+3. The KB is queryable and returns nodes consistent with what was discussed in the source meeting, traceable via `quote_anchors`.
 
 ---
 
@@ -86,15 +86,14 @@ class TranscriptDocument(BaseModel):
     idempotency_key: str | None      # echoed from JobSubmissionRequest; used for deduplication on POST /jobs
     schema_version: str = "1.0"
     source_type: Literal["audio", "text"]   # "video" deferred to v2 (ffmpeg dependency)
-    raw_text: str                    # populated by the transcription stage; or by the text validator for source_type="text"
+    blob_key: str                    # blob storage key where the transcript text is stored; populated after the transcription stage
     metadata: TranscriptMetadata
 
 class TranscriptMetadata(BaseModel):
     meeting_date: date
-    participants: list[str] | None = None  # caller-supplied; required for ASSIGNED_TO resolution
+    participants: list[str] | None = None  # caller-supplied; used for action item assignee resolution
     duration: timedelta | None = None
     language: str = "en"
-    turns: list[Turn] | None = None   # reserved for diarization (v2)
 ```
 
 ### Transcription
@@ -109,7 +108,7 @@ class AbstractTranscriptionService(ABC):
     # Returns the plain-text transcript. Diarization output (speaker turns) is reserved for v2.
 ```
 
-**Diarization:** skipped for MVP. `turns` field reserved for when AssemblyAI (recommended provider) is configured — best-in-class speaker diarization in a single API call.
+**Diarization:** skipped for MVP. AssemblyAI is the recommended provider for v2 — best-in-class speaker diarization in a single API call.
 
 ### Blob Storage
 
@@ -136,7 +135,7 @@ Artifacts are written at two points per path:
 
 **Regular job (`jobs/`):**
 1. **After ingestion** — `raw/input.*` (original file) and `raw/transcript.txt` (normalised plain text output). For `source_type="text"`, `input.*` is the uploaded YAML/JSON file and `transcript.txt` is the `content` field extracted by the validator.
-2. **At the start of WRITING** — `curated/extraction.json` is written unconditionally at the beginning of the WRITING stage, before any KB writes. It contains the full `ExtractionResult` including all nodes with their final `status` values (`AUTO_APPROVED`, `PENDING_REVIEW`, or `REJECTED`). This means the artifact is always present after a job completes, including the all-reject case — which is precisely when a complete audit trail matters most.
+2. **At the start of WRITING** — `curated/extraction.json` is written unconditionally at the beginning of the WRITING stage, before any KB writes. It contains the full `ExtractionResult` including all nodes with their final `status` values (`APPROVED`, `PENDING_REVIEW`, or `REJECTED`). This means the artifact is always present after a job completes, including the all-reject case — which is precisely when a complete audit trail matters most.
 
 **Init pipeline (`init/`):**
 1. **After corpus load (step 1)** — `init/{job_id}/source/` is written immediately after all markdown files are loaded, before any LLM calls. Present even for runs the user later aborts; skipped only for `--dry-run`.
@@ -150,7 +149,7 @@ This provides a full recovery path (reprocess from raw transcript without re-tra
 
 ### Text Input Schema
 
-Pre-formatted text input must conform to a defined YAML/JSON schema with required fields: `date`, `content`. `participants` is optional — include it when known to enable `ASSIGNED_TO` relationship extraction. The validator rejects non-conforming input at the boundary.
+Pre-formatted text input must conform to a defined YAML/JSON schema with required fields: `date`, `content`. `participants` is optional — include it when known to enable action item assignee resolution. The validator rejects non-conforming input at the boundary.
 
 ### Init Pipeline (KB Seeding)
 
@@ -173,7 +172,7 @@ Init Summary (stdout)
   [user confirms]
       │
       ▼
-KB Store + Vector Store   (nodes written as AUTO_APPROVED, ingestion_source=INIT)
+KB Store + Vector Store   (nodes written as APPROVED, ingestion_source=INIT)
 ```
 
 **Command:**
@@ -197,7 +196,7 @@ seshat init --source ./docs/ --force   # run even if the KB is already populated
    - Confidence distribution (mean, min, max per type)
    - A sample of extracted titles (up to 5 per type)
 6. Prompts `Approve and write to KB? [y/N]`. On rejection, no KB or vector store writes are made; blob artifacts from steps 1 and 4 are retained.
-7. On approval, all nodes are written as `AUTO_APPROVED` with `ingestion_source=INIT`.
+7. On approval, all nodes are written as `APPROVED` with `ingestion_source=INIT`.
 
 **Rollback and recovery:** if `seshat init` crashes mid-write, re-running it is safe — each node write is a single Postgres transaction (KB row + vector embedding), so no partial state can be left behind. The init `job_id` is recorded in `init_runs`; re-running queries `init_runs` to detect the previous incomplete run and resumes from where it stopped. Resume is defined as **path (a) — skip, not upsert**: on detecting an incomplete `init_runs` entry, query `ops.kb_nodes WHERE job_id = X` to load already-written nodes, skip re-extraction for documents whose nodes are already present, and continue from the first document whose nodes are absent. This is consistent with the Node Lifecycle Invariant (append-only) and does not require upsert semantics. A full undo of a completed init is `DELETE FROM ops.kb_nodes WHERE job_id = X` (cascades to `ops.kb_relationships`) followed by deleting the corresponding pgvector embeddings and clearing the `init_runs` row.
 
@@ -261,6 +260,8 @@ All provider fields use `StrEnum` with `auto()` — values are lowercased member
 class LLMProvider(StrEnum):
     OPENAI = auto()
     ANTHROPIC = auto()
+    AZURE_OPENAI = auto()
+    BEDROCK_CONVERSE = auto()
 
 class TranscriptionProvider(StrEnum):
     ASSEMBLYAI = auto()
@@ -275,9 +276,8 @@ class VectorStoreProvider(StrEnum):
 
 class EmbeddingProvider(StrEnum):
     OPENAI = auto()
+    AZURE_OPENAI = auto()
     ANTHROPIC = auto()
-    COHERE = auto()
-    FASTEMBED = auto()  # local ONNX-based inference, no API cost; evaluate during RAG implementation
 
 class SecretsProvider(StrEnum):
     ENV = auto()
@@ -311,10 +311,15 @@ class LLMConfig(BaseModel):
     provider: LLMProvider = LLMProvider.ANTHROPIC
     model: str = "claude-sonnet-4-6"
     temperature: float = 0.0
+    max_retries: int = 3                  # per-call retry attempts on transient errors (API timeout, HTTP 429)
+    timeout_seconds: float = 300.0        # per-request HTTP timeout in seconds
+    max_concurrent_calls: int = 50        # maximum number of simultaneous LLM calls
+    api_key_secret_key: str | None = None # Secrets key for the LLM API key; defaults to '<provider>_api_key' if not set
 
-class VerificationConfig(BaseModel):
-    provider: LLMProvider      # must differ from ExtractionConfig.llm.provider — enforced by model_validator at startup
-    model: str                 # e.g. "gpt-4o-mini" or "claude-haiku-4-5-20251001"
+class VerificationConfig(LLMConfig):
+    provider: LLMProvider = LLMProvider.OPENAI   # must differ from ExtractionConfig.llm.provider — enforced by model_validator at startup
+    model: str = "gpt-5.4-nano"
+    use_full_transcript: bool = True      # When False, verification uses only the extracted quote
 
 class ExtractionConfig(BaseModel):
     llm: LLMConfig = LLMConfig()
@@ -325,29 +330,26 @@ class ExtractionConfig(BaseModel):
     max_chunk_count: int = 50                       # hard ceiling; prevents O(agents × chunks) cost blowup
     max_output_tokens: int = 2048                   # output (generation) tokens per agent call
     max_total_input_tokens: int = 2_000_000         # aggregate input token cap across all agent calls in the extraction stage
-    max_total_output_tokens: int = 400_000          # aggregate output token cap across all agent calls in the extraction stage
+    max_total_output_tokens: int = 500_000          # aggregate output token cap across all agent calls in the extraction stage
     max_transcript_chunk_tokens: int = 8000         # per-chunk input ceiling; see prompt budget note below
     max_hint_nodes: int = 20                        # most recent same-type KB nodes included in extraction-time hint
     max_hint_tokens: int = 1000                     # hard token cap on the hint; oldest nodes dropped first if exceeded
-    merge_similarity_threshold: float = 0.85        # cosine similarity floor for within-meeting deduplication fallback; see Chunking
-    max_retries: int = 3                            # per-call retry attempts on transient errors (API timeout, HTTP 429)
     verification: VerificationConfig | None = None  # None = heuristics-only scoring; see Confidence Scoring
     confidence_weights: ConfidenceWeights = ConfidenceWeights()
     result_cache_enabled: bool = False              # in-memory extraction result cache keyed on hash(chunk_text + concept_type + model + prompt_hash); auto-set True by seshat eval regardless of config; False for production to avoid stale results across jobs
+    grouped_extraction_types: set[ConceptType] = {ConceptType.DECISION}  # types passed through the grouping step; toggleable without code deploy
 
     # model_validator enforces: verification.provider != llm.provider (startup error if violated)
-    # and issues a UserWarning when llm.provider=ANTHROPIC and verification=None (heuristics-only)
+    # and logs a warning when verification=None (heuristics-only)
 
 class ConfidenceWeights(BaseModel):
-    logprobs: float = 0.5       # weight when provider supports logprobs (OpenAI); ignored otherwise
-    verification: float = 0.35  # weight when verification agent is configured; ignored otherwise
-    heuristics: float = 0.15    # always active
+    verification: float = 0.70  # weight when verification agent is configured; ignored otherwise
+    heuristics: float = 0.30    # always active
 
     # Unavailable signals are excluded from both numerator and denominator — weights redistribute
     # proportionally rather than collapsing to zero. Examples:
-    #   logprobs + verification + heuristics → (0.5*lp + 0.35*vf + 0.15*h) / 1.0
-    #   verification + heuristics only       → (0.35*vf + 0.15*h) / 0.5
-    #   heuristics only                      → h / 1.0
+    #   verification + heuristics → (0.70*vf + 0.30*h) / 1.0
+    #   heuristics only           → h / 1.0
 
 # These are the baseline values. Adjust only after running seshat eval on the labelled corpus
 # and confirming the calibration — the formula and weights are fixed until eval data justifies a change.
@@ -365,7 +367,7 @@ class ConfidenceWeights(BaseModel):
 > total input           ≤13700t  well within claude-sonnet-4-6's 200k context window
 > ```
 >
-> The practical ceiling is cost, not the model context limit. `max_transcript_chunk_tokens=8000` keeps per-call input tokens manageable; combined with `max_chunk_count=50` and `max_output_tokens=2048` this bounds per-call token usage. The aggregate caps `max_total_input_tokens` and `max_total_output_tokens` enforce a ceiling across all agent calls in the extraction stage — at the defaults (2M input / 400k output), worst case (50 chunks × 4 agents × 13,700 input + 2,048 output ≈ 2.74M input / 410k output) will trip the caps on a max-length transcript. This is intentional: the defaults are a conservative ceiling, not an expected operating point. Calibrate both caps after running `seshat eval` on representative transcripts.
+> The practical ceiling is cost, not the model context limit. `max_transcript_chunk_tokens=8000` keeps per-call input tokens manageable; combined with `max_chunk_count=50` and `max_output_tokens=2048` this bounds per-call token usage. The aggregate caps `max_total_input_tokens` and `max_total_output_tokens` enforce a ceiling across all agent calls in the extraction stage — at the defaults (2M input / 500k output), worst case (50 chunks × 4 agents × 13,700 input + 2,048 output ≈ 2.74M input / 410k output) will trip the input cap on a max-length transcript; the output cap has headroom at 500k. This is intentional: the defaults are a conservative ceiling, not an expected operating point. Calibrate both caps after running `seshat eval` on representative transcripts.
 
 ### RAGConfig
 
@@ -376,13 +378,14 @@ class RAGConfig(BaseModel):
     max_context_tokens: int = 4000
     traversal_max_depth: int = 1                            # direct neighbours only for MVP
     traversal_rel_types: list[RelationshipType] | None = None  # None = all relationship types
+    max_concurrent_retrievals: int = 20                     # maximum number of simultaneous RAG retrieval calls
 ```
 
 Metadata filters for retrieval are **not** config — they are passed per-job in the request payload.
 
 > **Traversal risk:** unbounded `traversal_max_depth` or large graphs can inflate retrieved context beyond `max_context_tokens`. The assembler truncates at `max_context_tokens` — but a high depth combined with a dense graph will silently drop nodes from the end of the context window. Keep `traversal_max_depth=1` for MVP; increase only after measuring context token usage on real data.
 
-> **Truncation ordering:** before serialising retrieved nodes into the context window, the assembler estimates each node's token cost using `len(title + description + source_quote) / 4` and greedily includes nodes in order (see below) until `max_context_tokens` is reached. Nodes that would exceed the budget are pre-empted — not serialised at all. The count of pre-empted nodes is logged to MLflow before serialisation begins (alongside the count of any nodes dropped after-the-fact for other reasons). Ordering: `meeting_date DESC NULLS LAST` (most recent first; init-sourced nodes with `meeting_date=None` sort last). Within the same `meeting_date`, nodes that appear in `resolution_candidates` for the current job rank above unrelated nodes — these are the nodes the resolution agent is most likely to need for accurate resolution.
+> **Truncation ordering:** before serialising retrieved nodes into the context window, the assembler estimates each node's token cost using `len(title + description) / 4` and greedily includes nodes in order (see below) until `max_context_tokens` is reached. Nodes that would exceed the budget are pre-empted — not serialised at all. The count of pre-empted nodes is logged to MLflow before serialisation begins (alongside the count of any nodes dropped after-the-fact for other reasons). Ordering: `meeting_date DESC NULLS LAST` (most recent first; init-sourced nodes with `meeting_date=None` sort last). Within the same `meeting_date`, nodes that appear in `resolution_candidates` for the current job rank above unrelated nodes — these are the nodes the resolution agent is most likely to need for accurate resolution.
 
 ### VectorStoreConfig
 
@@ -402,6 +405,7 @@ class VectorIndexConfig(BaseModel):
     collection: str = "seshat-docs"
     embedding_provider: EmbeddingProvider = EmbeddingProvider.OPENAI
     embedding_model: str = "text-embedding-3-small"
+    api_key_secret_key: str | None = None  # Secrets key for the embedding API key; defaults to '<provider>_api_key' if not set
     max_indexing_tokens: int = 500_000   # aggregate token cap across all embedding calls in the RAG stage
 ```
 
@@ -459,10 +463,10 @@ TranscriptDocument
               │
     ┌─────────┼──────────┬─────────────┬──────────────┐
     ▼         ▼          ▼             ▼              ▼
-ADR Agent  Risk Agent  Agreement   Action Item   [custom via
-(+ADR      (+Risk      Agent        Agent         registry]
- hints)     hints)    (+Agreement  (+ActionItem
-                        hints)       hints)
+Decision   Risk Agent  Open Ques.  Action Item   [custom via
+Agent      (+Risk      Agent        Agent         registry]
+(+Decision  hints)    (+OpenQues.  (+ActionItem
+  hints)                hints)       hints)
     │         │          │             │              │
     └─────────┴──────────┴─────────────┴──────────────┘
                               │
@@ -483,9 +487,9 @@ ADR Agent  Risk Agent  Agreement   Action Item   [custom via
 **Ordering invariant:** all agent calls in the fan-out phase must complete and their outputs merged before the RAG + Resolution pass begins. All `KBRelationship` objects — without exception — are created in Pass 2.
 
 - **Pass 1 — Fan-out:** agents run concurrently, one per `ConceptType` per chunk. Agents return `KBNode` objects — no relationships. `KBNode` has no `relationships` field; the model itself enforces this. The Action Item agent is the sole exception in output schema: it includes an additional field `assignee: str | None = None` (the participant name it identifies as owner). This field is not a `KBRelationship` — it is a named extraction output that Pass 2 resolves.
-- **Pass 2 — RAG + Resolution:** runs only after the complete merged Pass 1 node list is in memory. Constructs all relationships, including `ASSIGNED_TO` (by matching `assignee` against `TranscriptMetadata.participants` — exact match first, then case-insensitive prefix). The `assignee` field is consumed here and does not appear on the final `KBNode` or in the KB store.
+- **Pass 2 — RAG + Resolution:** runs only after the complete merged Pass 1 node list is in memory. Constructs all relationships. The `assignee` field from the Action Item agent is resolved against `TranscriptMetadata.participants` (exact match first, then case-insensitive prefix) and stored in `KBNode.metadata.concept_fields`; it does not become a `KBRelationship`.
 
-  **`participants=None` fallback:** when `TranscriptMetadata.participants` is `None`, `ASSIGNED_TO` resolution is skipped for all action items — no `ASSIGNED_TO` relationships are created. The `assignee` value is discarded. The action item node is written without an assignee relationship; it is not rejected or downgraded. This is logged as a warning per affected node so the reviewer is aware the assignee could not be resolved.
+  **`participants=None` fallback:** when `TranscriptMetadata.participants` is `None`, assignee resolution is skipped for all action items — the `assignee` value is discarded. The action item node is written without an assignee; it is not rejected or downgraded. This is logged as a warning per affected node so the reviewer is aware the assignee could not be resolved.
 
 Cross-chunk assignment (e.g. "as we agreed earlier, you handle this") is handled correctly under this contract: the agent records the assignee name it can see; resolution runs once against the full participant list after all chunks are processed.
 
@@ -501,19 +505,19 @@ Agent system prompts are static per `ConceptType` and reused across every job. P
 
 ```python
 class ConceptType(StrEnum):
-    ADR = auto()
+    DECISION = auto()
     RISK = auto()
-    AGREEMENT = auto()
     ACTION_ITEM = auto()
+    OPEN_QUESTION = auto()
 
 class RelationshipType(StrEnum):
-    MITIGATES = auto()       # Risk → ADR
-    SUPPORTS = auto()        # Agreement → ADR
-    CONFLICTS_WITH = auto()  # X → X (same ConceptType only; any type)
-    DEPENDS_ON = auto()      # ADR → ADR
-    SUPERSEDES = auto()      # ADR/Agreement → ADR/Agreement (fully replaces)
-    AMENDS = auto()          # ADR/Agreement → ADR/Agreement (partial update or clarification)
-    ASSIGNED_TO = auto()     # Action Item → participant
+    MITIGATES = auto()       # Risk → Decision
+    BLOCKS = auto()          # Risk → Decision | Risk → OpenQuestion (active blocker)
+    CONFLICTS_WITH = auto()  # Decision → Decision (same ConceptType only)
+    DEPENDS_ON = auto()      # Decision → Decision
+    SUPERSEDES = auto()      # Decision → Decision (fully replaces)
+    AMENDS = auto()          # Decision → Decision (partial update or clarification)
+    RESOLVES = auto()        # Decision → OpenQuestion (closes a deferred question)
 ```
 
 ### KBNode (graph-shaped from day one)
@@ -526,9 +530,10 @@ class KBNode(BaseModel):
     title: str
     description: str
     confidence: float
-    source_quote: str        # exact transcript excerpt (grounding)
+    quote_anchors: list[QuoteAnchor] = []  # anchored positions of source quotes within the transcript blob
     status: NodeStatus
     state: NodeState = NodeState.CURRENT
+    chunk_index: int | None = None         # source chunk position; tiebreaker in within-meeting deduplication
     metadata: NodeMetadata
 
 class KBRelationship(BaseModel):
@@ -543,7 +548,7 @@ class KBRelationship(BaseModel):
     # If duplication becomes a maintenance concern, drop job_id and use the join instead.
 
 class NodeStatus(StrEnum):
-    AUTO_APPROVED = auto()
+    APPROVED = auto()
     PENDING_REVIEW = auto()
     REJECTED = auto()
 
@@ -578,46 +583,40 @@ class NodeMetadata(BaseModel):
 ```
 
 ```python
-class ResolutionCandidate(BaseModel):
-    node_id: str                      # existing KB node flagged by the resolution step
-    rel_type: RelationshipType        # SUPERSEDES, AMENDS, or CONFLICTS
-    candidate_title: str              # title of the existing KB node (read-only; for display)
-    target_node_confidence: float     # echoed from KBNode.confidence of the target node
-
 class ExtractionResult(BaseModel):
     job_id: str
     nodes: list[KBNode]
-    relationships: list[KBRelationship]           # all relationships produced by Pass 2; written to KB separately from nodes
-    confidence_breakdowns: dict[str, UUID]         # node.id → breakdown
-    resolution_candidates: dict[str, list[ResolutionCandidate]]  # node.id → candidates flagged for that node
+    confidence_breakdowns: dict[UUID, ConfidenceBreakdown]  # node.id → breakdown
+    failed_concept_types: list[ConceptType] = []            # types whose extraction failed entirely
 ```
 
-`ExtractionResult` is the output of the extraction + resolution pass and the payload returned by `GET /jobs/{id}/results`. Relationships are a top-level list rather than embedded on nodes — `KBNode` has no `relationships` field. The writing stage iterates `ExtractionResult.relationships` and calls `write_relationship()` for each after all nodes are written. `resolution_candidates` surfaces the SUPERSEDES/AMENDS/CONFLICTS_WITH candidates identified by the resolution step for each new node — the reviewer UI uses these to show the reviewer what existing KB nodes may be affected by an approval decision.
+`ExtractionResult` is the output of the extraction pass and the payload returned by `GET /jobs/{id}/results` while a job is in `AWAITING_REVIEW`. Relationships are produced in a separate `ResolutionResult` after node approval (see §5).
 
-> **Vector store indexing:** one vector per `KBNode` — the embedding is generated from `title` + `description` + `source_quote` after extraction. `NodeMetadata` travels with the vector for runtime metadata filtering (applied as `>=` comparisons for `min_confidence`, equality for all other fields). The `confidence`, `node_type`, and `node_state` fields are duplicated from `KBNode` intentionally — the vector store needs them for filtering without a round-trip to the KB store. **Invariant:** `NodeMetadata.confidence`, `NodeMetadata.node_type`, and `NodeMetadata.node_state` must always equal the corresponding fields on `KBNode` — they are written together in the same transaction and neither is ever updated independently.
+> **Deviation from original spec:** the original spec included `relationships` and `resolution_candidates` in `ExtractionResult`, with resolution running before review. The implementation separates these: resolution runs after node approval, against approved nodes only. This ensures relationships only connect nodes that actually exist in the KB, and eliminates wasted LLM calls on rejected nodes. `ResolutionCandidate` is removed entirely — since resolution runs post-approval there is no review-time window to surface candidates to the reviewer. A node grounded in the transcript should be approved regardless of its relationship to existing nodes; downstream conflict is expressed as a relationship after the fact, not a gate at approval time.
+
+> **Vector store indexing:** one vector per `KBNode` — the embedding is generated from `title` + `description` after extraction. `NodeMetadata` travels with the vector for runtime metadata filtering (applied as `>=` comparisons for `min_confidence`, equality for all other fields). The `confidence`, `node_type`, and `node_state` fields are duplicated from `KBNode` intentionally — the vector store needs them for filtering without a round-trip to the KB store. **Invariant:** `NodeMetadata.confidence`, `NodeMetadata.node_type`, and `NodeMetadata.node_state` must always equal the corresponding fields on `KBNode` — they are written together in the same transaction and neither is ever updated independently.
 >
 > **Indexing timing:** vectors are written to the vector store during the `WRITING` stage, as part of the same Postgres transaction as the KB row (§4, Node Lifecycle Invariant). They are **not** written after extraction. Nodes from a job in `AWAITING_REVIEW` are not yet retrievable via RAG — invisible to concurrent jobs until the reviewing job reaches `DONE`. This is intentional: unreviewed nodes should not influence future extractions.
 
 ### Confidence Scoring
 
-Confidence is derived from three signals, weighted and normalised:
+Confidence is derived from two signals, weighted and normalised:
 
 ```
 final = sum(w_i * s_i  for each available signal i)
       / sum(w_i         for each available signal i)
 ```
 
-Weights come from `ExtractionConfig.confidence_weights`. Unavailable signals (logprobs when using Anthropic; verification when `verification=None`) are excluded from both numerator and denominator — their weight redistributes proportionally. `final` always lies in [0, 1] regardless of which signals are active.
+Weights come from `ExtractionConfig.confidence_weights`. When verification is disabled (`verification=None`), it is excluded from both numerator and denominator — its weight redistributes to heuristics. `final` always lies in [0, 1] regardless of which signals are active.
 
-1. **Logprobs** — used when provider supports it (OpenAI). Derives confidence from token probability of extracted content.
-2. **Verification agent** — a separate lightweight agent (cheap model: `gpt-4o-mini`, `claude-haiku`) that receives the extraction and source quote and answers a binary "is this well-supported?" question. Must use a different `LLMProvider` than the extraction agent — same-provider verification produces correlated errors (enforced by `model_validator`). Example pairing: extraction on `anthropic`, verification on `openai`.
-3. **Heuristics** — always active. Formula:
+1. **Verification agent** — a separate lightweight agent (cheap model: `gpt-4o-mini`, `claude-haiku`) that receives the extraction and source quote and answers a binary "is this well-supported?" question. Must use a different `LLMProvider` than the extraction agent — same-provider verification produces correlated errors (enforced by `model_validator`). Example pairing: extraction on `anthropic`, verification on `openai`.
+2. **Heuristics** — always active. Formula:
 
 ```
 heuristics_score = (
-    0.4 * clamp(len(source_quote) / 200, 0.0, 1.0)    # quote length: saturates at 200 chars
-  + 0.4 * title_specificity(title)                      # 1.0 if specific, 0.5 if generic, 0.0 if empty
-  + 0.2 * directness(description)                       # 1.0 if direct, 0.5 if passive/vague, 0.0 if absent
+    0.4 * quote_length_signal(quote_anchors)           # based on anchor coverage; saturates at 200 chars total
+  + 0.4 * title_specificity(title)                     # 1.0 if specific, 0.5 if generic, 0.0 if empty
+  + 0.2 * directness(description)                      # 1.0 if direct, 0.5 if passive/vague, 0.0 if absent
 )
 ```
 
@@ -635,18 +634,15 @@ heuristics_score = (
 
 **Active signals per configuration:**
 
-| `llm.provider` | `verification` | Active signals | Effective weights (default) |
-|---|---|---|---|
-| `openai` | configured (anthropic) | logprobs + verification + heuristics | 0.50 / 0.35 / 0.15 |
-| `openai` | `None` | logprobs + heuristics | 0.77 / 0.23 |
-| `anthropic` | configured (openai) | verification + heuristics | 0.70 / 0.30 |
-| `anthropic` | `None` | **heuristics only** | 1.0 — weakest configuration; startup warning issued |
+| `verification` | Active signals | Effective weights (default) |
+|---|---|---|
+| configured | verification + heuristics | 0.70 / 0.30 |
+| `None` | **heuristics only** | 1.0 — weakest configuration; startup warning issued |
 
-The `anthropic` + `verification=None` combination is the weakest: no logprobs, no verification agent. Valid but must be used with awareness — the `confidence_threshold` calibrated against heuristics-only scores is not comparable to one calibrated with verification enabled.
+The `verification=None` combination is the weakest: no verification agent. Valid but must be used with awareness — the `confidence_threshold` calibrated against heuristics-only scores is not comparable to one calibrated with verification enabled.
 
 ```python
 class ConfidenceBreakdown(BaseModel):
-    logprobs: float | None = None        # None when provider does not support logprobs (e.g. Anthropic)
     verification: float | None = None    # None when verification agent not configured
     heuristics: float                    # always present
     final: float                         # normalised weighted sum per formula above; echoes KBNode.confidence
@@ -665,13 +661,13 @@ Transcript text and retrieved KB context are untrusted inputs injected into agen
 Agents run per chunk. Results are deduplicated and merged before returning. The merge criterion is:
 
 1. **Primary — title exact-match + type equality:** two nodes of the same `ConceptType` with identical normalised titles (lowercased, whitespace-collapsed) are unconditionally the same concept. No embedding call needed.
-2. **Fallback — cosine similarity:** two nodes of the same `ConceptType` whose titles are not exact-match but whose embeddings (title + description) exceed `ExtractionConfig.merge_similarity_threshold` are considered the same concept. Uses the same embedding model as `RAGConfig.embedding_provider` — no additional model needed.
+2. **Fallback — cosine similarity:** two nodes of the same `ConceptType` whose titles are not exact-match but whose embeddings (title + description) exceed a cosine similarity threshold (default 0.85) are considered the same concept. Uses the same embedding model as `RAGConfig.embedding_provider` — no additional model needed.
 
 Two nodes that satisfy either criterion are merged: the final settled position is kept — "settled" means the node with the highest chunk index (later in the transcript is assumed to reflect the settled discussion outcome; chunk start-token position as tiebreaker if ambiguous). The earlier node is discarded. No `SUPERSEDES` relationship is created within a single job — `SUPERSEDES` is reserved for cross-meeting evolution only.
 
 > **Asymmetric failure modes:** a threshold too high leaves duplicate nodes for the same decision, which the resolution pass may then flag as spurious CONFLICTS. A threshold too low silently collapses distinct decisions about different components into one node. The eval corpus must include both near-duplicate pairs (should merge) and near-distinct pairs (should not merge) to validate the threshold — see §12, Labelled Corpus.
 
-> **Trade-off:** within-meeting deduplication prioritises a clean final KB over preserving debate history. The reversal is intentionally discarded — only the final settled position survives. The `source_quote` on the surviving node must reflect the final position, not the earlier reversed one. The count of within-meeting merges per job is logged to MLflow as a quality signal: a job with many merges may indicate a contentious or poorly-transcribed meeting worth manual review.
+> **Trade-off:** within-meeting deduplication prioritises a clean final KB over preserving debate history. The reversal is intentionally discarded — only the final settled position survives. The `quote_anchors` on the surviving node must reflect the final position, not the earlier reversed one. The count of within-meeting merges per job is logged to MLflow as a quality signal: a job with many merges may indicate a contentious or poorly-transcribed meeting worth manual review.
 
 **v2 upgrade path (if `RecursiveCharacterTextSplitter` fallback is also insufficient):**
 - **Diarization-based splitting:** AssemblyAI speaker diarization splits on speaker turn boundaries. Highest coherence for multi-speaker meetings; requires production audio samples to validate quality.
@@ -679,13 +675,13 @@ Two nodes that satisfy either criterion are merged: the final settled position i
 
 ### Status Assignment
 
-- `confidence >= threshold` → `status=AUTO_APPROVED`, `approval_method=THRESHOLD`, `approved_by="system"`, `approved_at=<extraction timestamp>`
+- `confidence >= threshold` → `status=APPROVED`, `approval_method=THRESHOLD`, `approved_by="system"`, `approved_at=<extraction timestamp>`
 - `confidence < threshold` → `status=PENDING_REVIEW`; `approval_method`, `approved_by`, `approved_at` remain `None` until `POST /jobs/{id}/approve`
-- `auto_mode=True` → all nodes `status=AUTO_APPROVED`, `approval_method=AUTO`, `approved_by=<submitting user_id>`, `approved_at=<job submission timestamp>`, regardless of confidence
+- `auto_mode=True` → all nodes `status=APPROVED`, `approval_method=AUTO`, `approved_by=<submitting user_id>`, `approved_at=<job submission timestamp>`, regardless of confidence
 
 ### Node Lifecycle Invariant
 
-The pipeline is **append-and-state-only** — extracted content is never modified after creation. A node's `title`, `description`, `source_quote`, and `confidence` are immutable once written. The only permitted mutation is `update_node_state()` on existing nodes when a `SUPERSEDES` or `AMENDS` relationship is established by the resolution step. If a later meeting revisits an existing decision, the resolution step creates a new node and expresses the relationship via `SUPERSEDES`, `AMENDS`, or `CONFLICTS_WITH` — it never overwrites the original. This preserves the full decision history in the graph.
+The pipeline is **append-and-state-only** — extracted content is never modified after creation. A node's `title`, `description`, `quote_anchors`, and `confidence` are immutable once written. The only permitted mutation is `update_node_state()` on existing nodes when a `SUPERSEDES` or `AMENDS` relationship is established by the resolution step. If a later meeting revisits an existing decision, the resolution step creates a new node and expresses the relationship via `SUPERSEDES`, `AMENDS`, or `CONFLICTS_WITH` — it never overwrites the original. This preserves the full decision history in the graph.
 
 Consequences:
 - **State transitions:** when a new node carries a `SUPERSEDES` or `AMENDS` relationship, the pipeline calls `update_node_state()` on the target node — advancing its `state` to `SUPERSEDED` or `AMENDED` respectively. This is the only mutation the pipeline applies to an existing node. A `CONFLICTS_WITH` relationship does **not** trigger a state transition — both nodes remain `NodeState.CURRENT`. `CONFLICTS_WITH` is a graph-level annotation only; reviewers discover active conflicts via the graph query UI (Screen 4 highlights them) and via `resolution_candidates` surfaced at review time (Screen 3). This is intentional: a conflict between two `CURRENT` nodes is a signal for human judgment, not an automatic state change.
@@ -706,7 +702,7 @@ ExtractionResult (new nodes + relationships from Pass 2)
       │
       ▼
  RAG Service — per new node:
- 1. Embed node (title + description + source_quote)
+ 1. Embed node (title + description)
  2. Vector search → top-K candidate KB nodes (same type)
  3. Graph traversal on top-K nodes (KB Store)
       │
@@ -715,8 +711,8 @@ ExtractionResult (new nodes + relationships from Pass 2)
  ┌─────────────────────────┐
  ▼                         ▼
 Same-type resolution    Cross-type resolution
-(SUPERSEDES/AMENDS/     (MITIGATES/SUPPORTS/
- CONFLICTS per type)     DEPENDS_ON)
+(SUPERSEDES/AMENDS/     (MITIGATES/BLOCKS/
+ CONFLICTS per type)     DEPENDS_ON/RESOLVES)
  └─────────────────────────┘
               │
               ▼
@@ -736,7 +732,7 @@ A hard token cap (`max_hint_tokens`) is enforced after assembly: if the serialis
 
 ### Retrieval Flow
 
-- **Embedding target:** each new `KBNode` is embedded from `title + description + source_quote` — node-to-node comparison is homogeneous and avoids the semantic distance problem of comparing raw transcript chunks against distilled KB summaries. **Known limitation:** `text-embedding-3-small` is a general-purpose semantic model — it conflates semantic similarity with logical coupling. Two ADRs on the same topic but independent may score highly similar; a Risk and an ADR with a `MITIGATES` relationship may score dissimilar. This is the primary reason the retrieval baseline must be measured before real use. If recall@5 < 0.7, switching the embedding model (e.g. a domain-specific or fine-tuned encoder) is the first tuning lever, before increasing `top_k`.
+- **Embedding target:** each new `KBNode` is embedded from `title + description` — node-to-node comparison is homogeneous and avoids the semantic distance problem of comparing raw transcript chunks against distilled KB summaries. **Known limitation:** `text-embedding-3-small` is a general-purpose semantic model — it conflates semantic similarity with logical coupling. Two Decisions on the same topic but independent may score highly similar; a Risk and a Decision with a `MITIGATES` relationship may score dissimilar. This is the primary reason the retrieval baseline must be measured before real use. If recall@5 < 0.7, switching the embedding model (e.g. a domain-specific or fine-tuned encoder) is the first tuning lever, before increasing `top_k`.
 - **Vector search:** semantic similarity via embedding model (pgvector for MVP), per new node against same-type KB nodes. Returns top-K candidates — no reranker in MVP (see Decisions Deferred).
 - **Graph traversal:** structural retrieval from KB Store — direct neighbours of top-K candidates (both inbound and outbound edges, depth=1). For MVP (Postgres): SQL join on `ops.kb_relationships`. For Neo4j: Cypher query. Same interface.
 
@@ -753,19 +749,20 @@ Resolution is two parallel LLM calls to the orchestrator — both receive the sa
   - **Tiebreaker (AMENDS vs SUPERSEDES):** when the relationship is ambiguous between the two, prefer `AMENDS` — it is the less destructive classification. The eval corpus must include a labelled borderline example to validate the agent applies this tiebreaker correctly.
 
   The eval corpus must include at least 2 labelled examples per relationship type (SUPERSEDES, AMENDS, CONFLICTS, no-relationship) to validate that the agent applies these criteria correctly.
-- **Call 2 — cross-type resolution:** across all new nodes, resolves `MITIGATES`, `SUPPORTS`, and `DEPENDS_ON`. The relationship schema constrains which pairings are evaluated — no N×N comparison across all types:
+- **Call 2 — cross-type resolution:** across all new nodes, resolves `MITIGATES`, `BLOCKS`, `DEPENDS_ON`, and `RESOLVES`. The relationship schema constrains which pairings are evaluated — no N×N comparison across all types:
 
 | Relationship | Source → Target |
 |---|---|
-| `MITIGATES` | Risk → ADR |
-| `SUPPORTS` | Agreement → ADR |
-| `DEPENDS_ON` | ADR → ADR |
+| `MITIGATES` | Risk → Decision |
+| `BLOCKS` | Risk → Decision \| Risk → OpenQuestion |
+| `DEPENDS_ON` | Decision → Decision |
+| `RESOLVES` | Decision → OpenQuestion |
 
 Once both calls return, a **heuristic validation step** merges the outputs and rejects malformed relationships before the result is finalised:
 
 - A node cannot both `SUPERSEDES` and `CONFLICTS_WITH` with the same target
 - `SUPERSEDES` and `AMENDS` are mutually exclusive on the same (source, target) pair
-- Relationship direction must match the schema (e.g. a Risk cannot `DEPENDS_ON` an ADR)
+- Relationship direction must match the schema (e.g. a Risk cannot `DEPENDS_ON` a Decision)
 - A new node cannot relate to a target node of a different `ConceptType` unless the schema permits it
 
 Validation failures are logged and the offending relationship is dropped — they do not fail the job.
@@ -825,6 +822,7 @@ class NodeFilter(BaseModel):
     domain: str | None = None
     ingestion_source: IngestionSource | None = None
     min_confidence: float | None = None   # applied as confidence >= min_confidence
+    status: NodeStatus | None = None
     state: NodeState | None = None
     meeting_date_from: date | None = None   # inclusive lower bound on NodeMetadata.meeting_date
     meeting_date_to: date | None = None     # inclusive upper bound on NodeMetadata.meeting_date
@@ -869,7 +867,7 @@ class S3BlobStore:
 
 KB nodes and relationships are stored in the `ops` schema alongside the operational tables. Two tables, managed by Alembic (same migration path as `ops.jobs`, `ops.api_keys`, and `ops.init_runs`):
 
-**`ops.kb_nodes`** — one row per `KBNode`. Columns: `node_id` (PK), `schema_version`, `job_id`, `type` (ConceptType), `title`, `description`, `confidence`, `source_quote`, `status` (NodeStatus), `state` (NodeState, default `current`), `metadata` (JSONB), `created_at` (TIMESTAMPTZ).
+**`ops.kb_nodes`** — one row per `KBNode`. Columns: `node_id` (PK), `schema_version`, `job_id`, `type` (ConceptType), `title`, `description`, `confidence`, `quote_anchors` (JSONB), `status` (NodeStatus), `state` (NodeState, default `current`), `chunk_index` (INT, nullable), `metadata` (JSONB), `created_at` (TIMESTAMPTZ).
 
 **`ops.kb_relationships`** — one row per `KBRelationship`. Columns: `source_id` (FK → kb_nodes), `target_id` (FK → kb_nodes), `rel_type` (RelationshipType), `job_id` (UUID4, which job created this relationship), `created_at` (TIMESTAMPTZ). Composite PK on `(source_id, target_id, rel_type)`. Index on `target_id` for inbound traversal.
 
@@ -986,7 +984,7 @@ class JobSubmissionRequest(BaseModel):
     retrieval_filters: NodeFilter | None = None    # runtime RAG retrieval scope; not config (see Section 3)
 ```
 
-The API constructs a `TranscriptDocument` from this request (generating `id`; `raw_text` populated by the transcription stage for audio, or by the text validator for `source_type="text"`) and enqueues the job.
+The API constructs a `TranscriptDocument` from this request (generating `id`; `blob_key` is set after the transcript is written to blob storage by the transcription stage for audio, or by the text validator for `source_type="text"`) and enqueues the job.
 
 **Rate limiting:** `POST /jobs` enforces two checks before creating a job:
 
@@ -1071,7 +1069,7 @@ class ErrorPayload(BaseModel):
 If a cap is exceeded, the job transitions to `FAILED` with `recoverable=True`. The `POST /jobs/{id}/retry` endpoint takes no body — to raise a cap, update the config and retry. The UI surfaces a retry button when `recoverable=True`.
 
 **Automatic retry policy:** transient errors (API timeout, HTTP 429 rate limit) are retried automatically before the stage transitions to `FAILED`. Per-stage policy:
-- **Max attempts:** 3 (configurable as `TranscriptionConfig.max_retries` and `ExtractionConfig.max_retries`)
+- **Max attempts:** 3 (configurable as `TranscriptionConfig.max_retries` and `LLMConfig.max_retries`)
 - **Backoff:** exponential with jitter — base 2s, multiplier 2×, max 60s. When a `Retry-After` header is present, it sets the minimum delay floor; jitter is applied on top: `delay = max(computed_backoff, retry_after_seconds) * uniform(0.8, 1.2)`
 - **Scope:** per-call retry within the stage. A stage that exhausts retries on any single call transitions to `FAILED` with `recoverable=True`
 
@@ -1166,10 +1164,9 @@ The Streamlit app is the primary interface for human operators. Four screens, de
 This is the primary correctness gate for the knowledge base. For each `PENDING_REVIEW` node the UI must surface:
 
 - Node title, type (`ConceptType`), and description
-- `source_quote` inline (the exact transcript excerpt grounding this node)
-- `ConfidenceBreakdown`: final score + per-component breakdown (logprobs / verification / heuristics)
+- source quote inline (the transcript excerpt grounding this node, resolved from `quote_anchors`)
+- `ConfidenceBreakdown`: final score + per-component breakdown (verification / heuristics)
 - relationships from `ExtractionResult.relationships` where `source_id == node.id` (read-only), with a hyperlink to each target node in Screen 4
-- `resolution_candidates` from `ExtractionResult`: existing KB nodes flagged as SUPERSEDES / AMENDS / CONFLICTS candidates — shown prominently so the reviewer can assess downstream impact before approving. Each candidate entry shows `candidate_title`, `rel_type`, and `target_node_confidence`, so reviewers can distinguish a high-confidence `CONFLICTS_WITH` target from a speculative one
 - Per-node action: approve / reject / edit (opens an inline form pre-filled with current `title` + `description`)
 - Bulk approve rule: threshold slider + optional exclude list → maps to `BulkApproveRule` in `ApproveRequest`
 - Submit decisions button → `POST /jobs/{id}/approve`
@@ -1194,7 +1191,7 @@ Answers "what would break if this node changed?" — inbound BFS from `node_id`,
 
 Role requirement: `submitter` (read-only, same as `GET /graph/{node_id}`).
 
-`get_neighbours()` is called with `direction="inbound"` at each BFS level. `traversal_depth` on each returned node is the hop count from the seed node. Example: if ADR-A `DEPENDS_ON` ADR-B, traversing inbound from ADR-B returns ADR-A at depth=1 — the node that would break if ADR-B changes.
+`get_neighbours()` is called with `direction="inbound"` at each BFS level. `traversal_depth` on each returned node is the hop count from the seed node. Example: if Decision-A `DEPENDS_ON` Decision-B, traversing inbound from Decision-B returns Decision-A at depth=1 — the node that would break if Decision-B changes.
 
 ### Reviewer Data Contract
 
@@ -1204,9 +1201,7 @@ Role requirement: `submitter` (read-only, same as `GET /graph/{node_id}`).
 |---|---|---|
 | `nodes` | `ExtractionResult.nodes` | All node fields in Screen 3 |
 | `confidence_breakdowns[node_id]` | `ConfidenceBreakdown` per node | Confidence breakdown display |
-| `resolution_candidates[node_id]` | Resolution step output | SUPERSEDES/AMENDS/CONFLICTS_WITH impact preview |
-| relationships for `node.id` | `KBRelationship` rows from `ExtractionResult` | Relationship list + hyperlinks |
-| `nodes[].source_quote` | `KBNode.source_quote` | Inline source quote |
+| `nodes[].quote_anchors` | `KBNode.quote_anchors` | Inline source quote (resolved from anchors) |
 
 ---
 
@@ -1319,9 +1314,9 @@ A small set of **hand-crafted synthetic transcripts** with manually annotated ex
 
 - **Size:** enough transcripts to reach **at least 15 annotated instances per `ConceptType`** across the corpus (normal + adversarial combined). At ~3 instances per type per transcript, this means roughly 5 transcripts per type — achievable with 10–15 total transcripts if they are written to cover all types. Do not start threshold calibration until this minimum is met; below 15 instances per type, a single mis-annotated example shifts precision or recall by 7% or more, making the targets meaningless. Adversarial transcripts count toward the instance total if they contain annotated ground-truth instances of the relevant type.
 - **Location:** `tests/eval/corpus/` — versioned with the codebase
-- **Format:** one YAML file per transcript: `raw_text` + `expected_nodes: list[KBNode]` + `expected_relationships: list[KBRelationship]`
+- **Format:** one YAML file per transcript: `content` (the transcript text) + `expected_nodes: list[KBNode]` + `expected_relationships: list[KBRelationship]`
 - **Adversarial transcripts** (add before first real-data run): at minimum one transcript with confident-sounding but unsupported claims, one with ambiguous pronouncements that could be misclassified across `ConceptType`s, and one with injected instruction-like text in the transcript body. These must be hand-crafted and annotated. OOD testing (non-technical jargon, highly ambiguous transcripts) deferred to v2 when real data is available.
-- **Merge test cases** (required before release gate): at least 3 pairs of nodes that **should** merge (same concept, paraphrased titles — e.g. `"PostgreSQL as DB"` and `"We chose Postgres"`) and 3 pairs that **should not** merge (same topic, distinct scope — e.g. `"PostgreSQL for operational DB"` and `"PostgreSQL for analytics pipeline"`). These must be embedded in transcripts where both nodes are extracted by the pipeline, then verified to merge or not-merge correctly under `merge_similarity_threshold=0.85`. The release gate is not passed until all 6 pairs produce the correct merge decision.
+- **Merge test cases** (required before release gate): at least 3 pairs of nodes that **should** merge (same concept, paraphrased titles — e.g. `"PostgreSQL as DB"` and `"We chose Postgres"`) and 3 pairs that **should not** merge (same topic, distinct scope — e.g. `"PostgreSQL for operational DB"` and `"PostgreSQL for analytics pipeline"`). These must be embedded in transcripts where both nodes are extracted by the pipeline, then verified to merge or not-merge correctly under the 0.85 cosine similarity threshold. The release gate is not passed until all 6 pairs produce the correct merge decision.
 
 ### Precision / Recall Targets
 
@@ -1331,19 +1326,20 @@ Targets are per `ConceptType` — extraction difficulty varies:
 
 | ConceptType | Precision target | Recall target | Notes |
 |-------------|-----------------|---------------|-------|
-| `ADR` | ≥ 0.80 | ≥ 0.75 | High-stakes; false positives costly |
+| `DECISION` | ≥ 0.80 | ≥ 0.75 | High-stakes; false positives costly |
 | `RISK` | ≥ 0.75 | ≥ 0.80 | Recall-biased — missed risks worse than false positives |
-| `AGREEMENT` | ≥ 0.75 | ≥ 0.75 | Moderate difficulty |
+| `OPEN_QUESTION` | ≥ 0.75 | ≥ 0.75 | Moderate difficulty |
 | `ACTION_ITEM` | ≥ 0.85 | ≥ 0.85 | Simpler extraction; higher bar |
 
 Relationship extraction is evaluated separately — high node precision/recall does not imply correct relationships:
 
 | RelationshipType | Precision target | Recall target | Notes |
 |-----------------|-----------------|---------------|-------|
-| `ASSIGNED_TO` | ≥ 0.90 | ≥ 0.85 | Wrong assignee is worse than a missed action item |
 | `CONFLICTS_WITH` | ≥ 0.75 | ≥ 0.75 | Missed conflicts accumulate silently in the KB |
 | `SUPERSEDES` | ≥ 0.80 | ≥ 0.75 | Wrong supersession corrupts decision history |
 | `MITIGATES` | ≥ 0.75 | ≥ 0.70 | Cross-type; harder to extract |
+| `RESOLVES` | ≥ 0.75 | ≥ 0.70 | Cross-type; Decision → OpenQuestion |
+| `BLOCKS` | ≥ 0.75 | ≥ 0.70 | Cross-type; Risk → Decision or OpenQuestion |
 
 The eval corpus format is extended to include `expected_relationships: list[KBRelationship]` alongside `expected_nodes` — both are required fields in the YAML corpus files.
 
@@ -1352,7 +1348,7 @@ The eval corpus format is extended to include `expected_relationships: list[KBRe
 > **Pre-condition — chunking sanity check:** before running the threshold sweep, print the TextTiling chunk boundaries for each eval transcript and manually verify that boundaries land at genuine topic shifts. Record the result (pass/fail per transcript). If two or more transcripts show systematic mis-segmentation, switch to fixed-size overlapping chunks (see §4, Chunking) and re-verify before proceeding. Extraction metrics are meaningless if the chunks are incoherent — do not skip this step.
 
 1. Run the extraction pipeline over the labelled corpus across a sweep of `confidence_threshold` values (0.5 → 0.9 in 0.05 steps).
-2. Plot the precision-recall curve **per `ConceptType`** — a single global curve conflates types with opposing biases (RISK is recall-biased, ADR is precision-biased) and will sacrifice one for the other.
+2. Plot the precision-recall curve **per `ConceptType`** — a single global curve conflates types with opposing biases (RISK is recall-biased, DECISION is precision-biased) and will sacrifice one for the other.
 3. Select per-type optimal thresholds from the curves. If a single global value can satisfy all per-type targets simultaneously, use it — otherwise document the per-type trade-off and choose a value with an explicit justification.
 4. The default `confidence_threshold=0.7` is the starting point; calibration may revise it. If per-type thresholds are warranted, add them via `ExtractionConfig.per_type_thresholds` — `None` means use the global default for all types.
 
@@ -1377,10 +1373,10 @@ On completion, `seshat eval` writes `data/eval_gate.json` with the following str
   "timestamp": "<iso8601>",
   "retrieval_recall_at_5": 0.82,
   "precision_recall_by_type": {
-    "adr":         {"precision": 0.83, "recall": 0.78},
-    "risk":        {"precision": 0.76, "recall": 0.81},
-    "agreement":   {"precision": 0.77, "recall": 0.76},
-    "action_item": {"precision": 0.88, "recall": 0.86}
+    "decision":      {"precision": 0.83, "recall": 0.78},
+    "risk":          {"precision": 0.76, "recall": 0.81},
+    "open_question": {"precision": 0.77, "recall": 0.76},
+    "action_item":   {"precision": 0.88, "recall": 0.86}
   }
 }
 ```
@@ -1431,4 +1427,4 @@ Any change to an agent system prompt, model, or confidence scoring logic must be
 | `AWAITING_REVIEW` timeout SLA (auto-reject stale pending nodes) | Requires a durable scheduled task (ARQ/Redis). The MVP asyncio queue is in-memory and does not survive worker restarts, so a 72h-ahead timer cannot be reliably fired. Ships together with the ARQ/Redis queue swap. |
 | Job state push notifications (webhook callbacks + SSE stream) | MVP has no inbound-HTTP consumer — Streamlit polls `GET /jobs/{id}`. Add `callback_url` + `POST` fan-out when an external consumer (CI, Teams bot, etc.) materialises, and `GET /jobs/{id}/stream` (SSE) when the UI matures enough to want low-latency progress. |
 | Post-approval node correction API (`PATCH /graph/{node_id}`) | Reviewers edit at approval time via `ApproveRequest.decisions[].edited_content`; already-approved nodes require a direct Postgres update + vector re-embed on MVP. The endpoint earns its keep once the KB moves to Notion/Neo4j. Ships with `NodeMetadata.last_edited_by` / `last_edited_at` at that point. |
-| Reranking (cross-encoder pass after vector search) | Skipped in MVP — vector search returns top-K directly and feeds graph traversal. Adopt a reranker (e.g. Cohere `rerank-v3.5`) only if the retrieval baseline (`seshat eval`) shows top-K-only recall@5 is insufficient. At that point, add `rerank_model: str | None` to `RAGConfig` and a second-stage `top_n` cut. |
+| Reranking (cross-encoder pass after vector search) | Skipped in MVP — vector search returns top-K directly and feeds graph traversal. Adopt a reranker only if the retrieval baseline (`seshat eval`) shows top-K-only recall@5 is insufficient. At that point, add `rerank_model: str | None` to `RAGConfig` and a second-stage `top_n` cut. |

@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from seshat.models.enums import ConceptType, IngestionSource, NodeState
+from seshat.models.enums import ConceptType, IngestionSource, NodeState, NodeStatus
 
 
 class NodeFilter(BaseModel):
@@ -15,6 +15,7 @@ class NodeFilter(BaseModel):
     ingestion_source: IngestionSource | None = Field(default=None, description="Filter by ingestion source.")
     min_confidence: float | None = Field(default=None, ge=0, le=1, description="Minimum confidence score (inclusive).")
     state: NodeState | None = Field(default=None, description="Filter by lifecycle state.")
+    status: NodeStatus | None = Field(default=None, description="Filter by approval status.")
     meeting_date_from: date | None = Field(
         default=None, description="Include nodes from meetings on or after this date."
     )

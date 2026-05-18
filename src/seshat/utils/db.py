@@ -1,7 +1,8 @@
-import logging
 import re
 
-logger = logging.getLogger(__name__)
+from seshat.utils.log import get_logger
+
+logger = get_logger(__name__)
 
 
 def ensure_psycopg_scheme(url: str, warn_msg: str | None = None) -> str:

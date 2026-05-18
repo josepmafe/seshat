@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import Field
@@ -12,6 +13,7 @@ from seshat.models.enums import (
     NodeStatus,
     RelationshipType,
 )
+from seshat.models.quote_anchor import QuoteAnchor
 
 
 class KBRelationship(SeshatModel):
@@ -23,9 +25,6 @@ class KBRelationship(SeshatModel):
 
 
 class ConfidenceBreakdown(SeshatModel):
-    logprobs: float | None = Field(
-        default=None, ge=0, le=1, description="Log-probability signal from the LLM (optional, provider-dependent)."
-    )
     verification: float | None = Field(
         default=None, ge=0, le=1, description="Score from the verification LLM call; None means disabled verification."
     )
@@ -54,6 +53,9 @@ class NodeMetadata(SeshatModel):
     confidence_breakdown: ConfidenceBreakdown | None = Field(
         default=None, description="Per-signal confidence breakdown; persisted for UI display."
     )
+    concept_fields: dict[str, Any] | None = Field(
+        default=None, description="Type-specific fields from extraction (e.g. assignee, due, rationale)."
+    )
 
 
 class KBNode(SeshatModel):
@@ -63,7 +65,10 @@ class KBNode(SeshatModel):
     title: str = Field(min_length=1)
     description: str = Field(min_length=1)
     confidence: float = Field(ge=0, le=1)
-    source_quote: str = Field(min_length=1)
+    quote_anchors: list[QuoteAnchor] = Field(
+        default_factory=list,
+        description="Anchored positions of source quotes within the transcript blob.",
+    )
     status: NodeStatus
     state: NodeState = NodeState.CURRENT
     chunk_index: int | None = Field(
@@ -74,18 +79,16 @@ class KBNode(SeshatModel):
     metadata: NodeMetadata
 
 
-class ResolutionCandidate(SeshatModel):
-    node_id: UUID
-    rel_type: RelationshipType
-    candidate_title: str = Field(description="Title of the candidate node, shown in the review UI.")
-    target_node_confidence: float = Field(
-        ge=0, le=1, description="Confidence score of the candidate node; candidates are ordered DESC by this field."
-    )
-
-
 class ExtractionResult(SeshatModel):
     job_id: str
     nodes: list[KBNode]
-    relationships: list[KBRelationship]
     confidence_breakdowns: dict[UUID, ConfidenceBreakdown]
-    resolution_candidates: dict[UUID, list[ResolutionCandidate]]
+    failed_concept_types: list[ConceptType] = Field(
+        default_factory=list,
+        description="Concept types whose extraction task failed entirely; empty means all types completed.",
+    )
+
+
+class ResolutionResult(SeshatModel):
+    job_id: str
+    relationships: list[KBRelationship]

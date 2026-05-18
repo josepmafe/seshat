@@ -1,4 +1,3 @@
-import logging
 import math
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -14,8 +13,9 @@ from seshat.models.enums import (
     TranscriptionProvider,
     VectorStoreProvider,
 )
+from seshat.utils.log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BaseConfig(BaseModel):
@@ -26,26 +26,42 @@ class LLMConfig(BaseConfig):
     provider: LLMProvider = LLMProvider.ANTHROPIC
     model: str = "claude-sonnet-4-6"
     temperature: float = Field(default=0.0, ge=0)
+    max_retries: int = Field(default=3, ge=0)
+    timeout_seconds: float = Field(default=300.0, gt=0, description="Per-request HTTP timeout in seconds.")
+    max_concurrent_calls: int = Field(default=50, gt=0, description="Maximum number of simultaneous LLM calls.")
+    api_key_secret_key: str | None = Field(
+        default=None,
+        description="Secrets key for the LLM API key. Defaults to '<provider>_api_key' if not set.",
+    )
+
+    @model_validator(mode="after")
+    def _default_api_key_secret_key(self) -> "LLMConfig":
+        if self.api_key_secret_key is None:
+            object.__setattr__(self, "api_key_secret_key", f"{self.provider}_api_key")
+        return self
 
 
-class VerificationConfig(BaseConfig):
-    provider: LLMProvider
-    model: str
+class VerificationConfig(LLMConfig):
+    provider: LLMProvider = LLMProvider.OPENAI
+    model: str = "gpt-5.4-nano"
+    use_full_transcript: bool = Field(
+        default=True,
+        description="When False, verification uses only the extracted quote instead of the full transcript.",
+    )
 
 
 class ConfidenceWeights(BaseConfig):
-    logprobs: float = Field(default=0.5, ge=0, lt=1)
-    verification: float = Field(default=0.35, ge=0, lt=1)
-    heuristics: float = Field(default=0.15, gt=0, le=1)
+    verification: float = Field(default=0.70, ge=0, lt=1)
+    heuristics: float = Field(default=0.30, gt=0, le=1)
 
     @model_validator(mode="after")
     def _weights_sum_to_one(self) -> "ConfidenceWeights":
-        total = self.logprobs + self.verification + self.heuristics
+        total = self.verification + self.heuristics
         if not math.isclose(total, 1.0, abs_tol=1e-6):
             raise ValueError(f"ConfidenceWeights must sum to 1.0, got {total:.6f}")
         return self
 
-    _DISABLEABLE_SIGNALS: frozenset[str] = frozenset({"logprobs", "verification"})
+    _DISABLEABLE_SIGNALS: frozenset[str] = frozenset({"verification"})
 
     def redistribute(self, disabled_signals: set[str]) -> "ConfidenceWeights":
         """Return new weights with disabled signals zeroed and remaining weights scaled to sum to 1.0."""
@@ -91,27 +107,12 @@ class ExtractionConfig(BaseConfig):
     max_transcript_chunk_tokens: int = Field(
         default=8000, gt=0, description="Maximum token length for a single transcript chunk sent to the extraction LLM."
     )
-    chunk_overlap_tokens: int | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "Token overlap between consecutive chunks in the fixed-size fallback chunker; "
-            "None defaults to ~20% of max_transcript_chunk_tokens."
-        ),
-    )
     max_hint_nodes: int = Field(
         default=20, gt=0, description="Maximum number of KB hint nodes injected into the extraction prompt."
     )
     max_hint_tokens: int = Field(
         default=1000, gt=0, description="Maximum tokens consumed by hint nodes injected into the extraction prompt."
     )
-    merge_similarity_threshold: float = Field(
-        default=0.85,
-        ge=0,
-        le=1,
-        description="Minimum embedding similarity required to merge two candidate nodes during deduplication.",
-    )
-    max_retries: int = Field(default=3, ge=0)
     verification: VerificationConfig | None = Field(
         default=None, description="Optional second LLM used to verify extraction results; None disables verification."
     )
@@ -120,6 +121,10 @@ class ExtractionConfig(BaseConfig):
     )
     result_cache_enabled: bool = Field(
         default=False, description="When True, extraction results are cached to avoid redundant LLM calls."
+    )
+    grouped_extraction_types: set[ConceptType] = Field(
+        default_factory=lambda: {ConceptType.DECISION},
+        description="Concept types for which extracted items are passed through the grouping step.",
     )
 
     @model_validator(mode="after")
@@ -141,9 +146,19 @@ class VectorIndexConfig(BaseConfig):
     )
     embedding_provider: EmbeddingProvider = EmbeddingProvider.OPENAI
     embedding_model: str = "text-embedding-3-small"
+    api_key_secret_key: str | None = Field(
+        default=None,
+        description="Secrets key for the embedding API key. Defaults to '<provider>_api_key' if not set.",
+    )
     max_indexing_tokens: int = Field(
         default=500_000, gt=0, description="Maximum total tokens that may be embedded in a single RAG indexing run."
     )
+
+    @model_validator(mode="after")
+    def _default_api_key_secret_key(self) -> "VectorIndexConfig":
+        if self.api_key_secret_key is None:
+            object.__setattr__(self, "api_key_secret_key", f"{self.embedding_provider}_api_key")
+        return self
 
 
 class RAGConfig(BaseConfig):
@@ -157,6 +172,9 @@ class RAGConfig(BaseConfig):
     )
     traversal_rel_types: list[RelationshipType] | None = Field(
         default=None, description="Relationship types to follow during traversal; None means all."
+    )
+    max_concurrent_retrievals: int = Field(
+        default=20, gt=0, description="Maximum number of simultaneous RAG retrieval calls."
     )
 
 
@@ -219,7 +237,7 @@ class DocumentLoaderConfig(BaseConfig):
 
 
 class SeshatConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_nested_delimiter="__")
+    model_config = SettingsConfigDict(env_file=".env", env_nested_delimiter="__", extra="ignore")
 
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     vector_store: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
