@@ -101,10 +101,14 @@ ignore = [
     "UP047",
 ]
 
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+
 [tool.ruff.lint.per-file-ignores]
 # Agent files contain long LLM prompt strings that cannot be broken without
 # backslash continuations, which are not semantically cleaner than long lines.
 "src/seshat/agents/**" = ["E501"]
+"tests/integration/agents/**" = ["E501"]
 
 [tool.mypy]
 files = ["src"]
