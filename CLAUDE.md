@@ -80,6 +80,23 @@ src/          # Application source code
 tests/        # pytest test suite
 pyproject.toml
 ```
+## Running Tests
+
+The default `uv run pytest` run excludes the `llm` marker (see `addopts` in `pyproject.toml`). Use these commands depending on what you want to cover:
+
+| Command | What runs |
+|---------|-----------|
+| `uv run pytest` | Default behavior, as defined in `addopts` |
+| `uv run pytest -m ""` | All tests (unit and integration) |
+| `uv run pytest -m "not integration"` | Pure unit tests only |
+| `uv run pytest -m integration` | Integration tests only including, `llm` ones |
+| `uv run pytest -m "integration and not llm"` | Non-LLM integration tests only (Postgres, LocalStack, MLflow) |
+| `uv run pytest -m llm` | All tests needing a live LLM API key |
+| `uv run pytest -m agents` | Agent tests (subset of `llm`) |
+| `uv run pytest -m embedding` | Embedding tests (subset of `llm`) |
+
+Markers are defined in `pyproject.toml` under `[tool.pytest.ini_options]`. The `llm` and `agents` markers also require the relevant API keys to be present in the environment.
+
 ## Test Style Guide
 
 - **Classes**: use a test class per target class, with one test method per method under test.

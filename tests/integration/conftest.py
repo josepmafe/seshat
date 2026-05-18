@@ -96,10 +96,25 @@ SKIP_IF_NO_LOCALSTACK = pytest.mark.skipif(
     reason="LocalStack not reachable — run: docker compose up -d localstack",
 )
 
-SKIP_IF_NO_OPENAI = pytest.mark.skipif(
+SKIP_IF_NO_EMBEDDINGS_API = pytest.mark.skipif(
     not _openai_reachable(),
     reason="OpenAI API not reachable — OPENAI_API_KEY not set or network issue",
 )
+
+
+@pytest.fixture
+async def vector_store(pg_test_url):
+    from seshat.config.settings import SecretsConfig, SeshatConfig, VectorStoreConfig
+    from seshat.models.enums import SecretsProvider
+    from seshat.vector_store.factory import _build_embeddings
+    from seshat.vector_store.pgvector_store import PGVectorStore
+
+    seshat_config = SeshatConfig(secrets=SecretsConfig(provider=SecretsProvider.ENV))
+    index = seshat_config.vector_index.model_copy(update={"collection": "test_collection"})
+    embeddings = _build_embeddings(index, seshat_config)
+    store = PGVectorStore(VectorStoreConfig(), index, embeddings, pg_test_url)
+    yield store
+    await store._store.adelete_collection()
 
 
 @pytest.fixture(scope="session")

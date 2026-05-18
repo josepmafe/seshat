@@ -48,7 +48,9 @@ class NodeRetriever:
             filter_kwargs.update(node_filter.model_dump(exclude_unset=True))
 
         source_quote = _quote_text(node.quote_anchors, transcript)
-        query = f"{node.title} {node.description} {source_quote or ''}".strip()
+        # Truncate source_quote to avoid it dominating the embedding centroid: title+description
+        # carry the semantic signal; the quote adds speaker context but must not outweigh them.
+        query = f"{node.title} {node.description} {source_quote[:80]}".strip()
         logger.debug("Retrieving targets for node id=%s type=%s", node.id, node.type.value)
 
         results = await self._vector_search(
@@ -57,19 +59,25 @@ class NodeRetriever:
         logger.debug("Vector search returned %d results for node id=%s", len(results), node.id)
 
         cap = self._config.top_k * 2
+        token_budget = self._config.max_context_tokens
         node_id = str(node.id)
         seen: dict[str, KBNode] = {}
+        tokens_used = 0
 
         # fetch actual nodes from vector search results.
-        # we fetch sequentially to allow early exit once cap is reached;
+        # we fetch sequentially to allow early exit once cap or token budget is reached;
         # parallel gather would fetch all unconditionally and waste KB calls
         for result in results:
+            if len(seen) >= cap or tokens_used >= token_budget:
+                break
+
             if result.node_id == node_id:
                 continue
 
             kb_node = await self._get_node(result.node_id)
             if kb_node is not None:
                 seen[result.node_id] = kb_node
+                tokens_used += (len(kb_node.title) + len(kb_node.description)) // 4
 
         # if we have fewer than top_k results, traverse neighbours of retrieved nodes to fill up targets (up to cap)
         for result in results:
