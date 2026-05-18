@@ -23,6 +23,7 @@ class AbstractVectorStore(ABC):
         query: str,
         top_k: int,
         node_filter: NodeFilter | None = None,
+        exclude_job_id: str | None = None,
     ) -> list[SearchResult]:
         # RAG contract (spec §5): callers SHOULD set node_filter.node_type before calling
         # search to restrict results to one concept type and avoid over-broad context.

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from seshat.models.enums import EmbeddingProvider, VectorStoreProvider
 from seshat.secrets.factory import get_secrets_resolver
+from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from langchain_core.embeddings import Embeddings
@@ -12,15 +12,25 @@ if TYPE_CHECKING:
     from seshat.config.settings import SeshatConfig, VectorIndexConfig
     from seshat.vector_store.base_store import AbstractVectorStore
 
-logger = logging.getLogger(__name__)
+
+logger = get_logger(__name__)
 
 
-def _build_embeddings(index: VectorIndexConfig) -> Embeddings:
+def _build_embeddings(index: VectorIndexConfig, config: SeshatConfig) -> Embeddings:
+    from pydantic import SecretStr
+
+    secrets = get_secrets_resolver(config)
+    api_key = SecretStr(secrets.get_secret(index.api_key_secret_key))  # type: ignore[arg-type]
+
     match index.embedding_provider:
         case EmbeddingProvider.OPENAI:
             from langchain_openai import OpenAIEmbeddings
 
-            return OpenAIEmbeddings(model=index.embedding_model)
+            return OpenAIEmbeddings(model=index.embedding_model, api_key=api_key)
+        case EmbeddingProvider.AZURE_OPENAI:
+            from langchain_openai import AzureOpenAIEmbeddings
+
+            return AzureOpenAIEmbeddings(azure_deployment=index.embedding_model, api_key=api_key)
         case _:
             raise ValueError(f"Unsupported embedding provider: {index.embedding_provider!r}")
 
@@ -30,7 +40,7 @@ def get_vector_store(config: SeshatConfig) -> AbstractVectorStore:
     connection_string = secrets.get_secret(config.vector_store.connection_secret_key)
 
     logger.debug("Initialising embedding model integration: %s", config.vector_index.embedding_provider)
-    embeddings = _build_embeddings(config.vector_index)
+    embeddings = _build_embeddings(config.vector_index, config)
 
     logger.debug("Initialising vector store: %s", config.vector_store.provider)
     match config.vector_store.provider:

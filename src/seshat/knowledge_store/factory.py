@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from seshat.knowledge_store.pg_store import PostgresKBStore
 from seshat.secrets.factory import get_secrets_resolver
+from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from seshat.config.settings import SeshatConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def get_kb_store(config: SeshatConfig) -> PostgresKBStore:

@@ -5,7 +5,7 @@ from seshat.secrets.base_resolver import AbstractSecretsResolver
 
 class EnvSecretsResolver(AbstractSecretsResolver):
     def _fetch_secret(self, key: str) -> str:
-        value = os.environ.get(key)
+        value = os.environ.get(key.upper())
         if value is None:
             raise KeyError(key)
         if not value:

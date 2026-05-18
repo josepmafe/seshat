@@ -16,25 +16,17 @@ from seshat.models.enums import LLMProvider, SecretsProvider
 
 
 class TestConfidenceWeightsRedistribute:
-    def test_logprobs_disabled_remaining_sum_to_one(self):
-        weights = ConfidenceWeights()
-        result = weights.redistribute({"logprobs"})
-        total = result.logprobs + result.verification + result.heuristics
-        assert abs(total - 1.0) < 1e-9
-        assert result.logprobs == 0.0
-
     def test_verification_disabled_remaining_sum_to_one(self):
         weights = ConfidenceWeights()
         result = weights.redistribute({"verification"})
-        total = result.logprobs + result.verification + result.heuristics
+        total = result.verification + result.heuristics
         assert abs(total - 1.0) < 1e-9
         assert result.verification == 0.0
 
-    def test_both_optional_signals_disabled_heuristics_gets_full_weight(self):
+    def test_verification_disabled_heuristics_gets_full_weight(self):
         weights = ConfidenceWeights()
-        result = weights.redistribute({"logprobs", "verification"})
+        result = weights.redistribute({"verification"})
         assert result.heuristics == pytest.approx(1.0)
-        assert result.logprobs == 0.0
         assert result.verification == 0.0
 
     def test_heuristics_disabled_raises(self):

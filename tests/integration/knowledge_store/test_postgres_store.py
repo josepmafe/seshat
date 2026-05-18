@@ -195,7 +195,7 @@ class TestQuery:
     async def test_query_by_type(self, store: PostgresKBStore):
         node = _make_node("n5")
         await store.write_node(node)
-        results = await store.query(NodeFilter(node_type=ConceptType.ADR))
+        results = await store.query(NodeFilter(node_type=ConceptType.DECISION))
         assert any(n.id == node.id for n in results)
 
     async def test_query_min_confidence(self, store: PostgresKBStore):
@@ -255,9 +255,9 @@ class TestQuery:
     async def test_query_combined_filters(self, store: PostgresKBStore):
         node = _make_node("n-combined-q")
         await store.write_node(node)
-        results = await store.query(NodeFilter(node_type=ConceptType.ADR, state=NodeState.CURRENT))
+        results = await store.query(NodeFilter(node_type=ConceptType.DECISION, state=NodeState.CURRENT))
         assert any(n.id == node.id for n in results)
-        results_miss = await store.query(NodeFilter(node_type=ConceptType.ADR, state=NodeState.SUPERSEDED))
+        results_miss = await store.query(NodeFilter(node_type=ConceptType.DECISION, state=NodeState.SUPERSEDED))
         assert not any(n.id == node.id for n in results_miss)
 
     async def test_query_no_match_returns_empty(self, store: PostgresKBStore):

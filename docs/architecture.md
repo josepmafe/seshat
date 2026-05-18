@@ -54,7 +54,7 @@ Key design decisions and their rationale. Full detail lives in [docs/superpowers
 
 ## Confidence Scoring
 
-Three signals, weighted and normalised:
+Two signals, weighted and normalised:
 
 ```
 final = Σ(w_i × s_i) / Σ(w_i)   [unavailable signals excluded from both]
@@ -62,11 +62,10 @@ final = Σ(w_i × s_i) / Σ(w_i)   [unavailable signals excluded from both]
 
 | Signal | Availability | Default weight |
 |--------|-------------|----------------|
-| Logprobs | OpenAI only | 0.50 |
-| Verification agent | When configured | 0.35 |
-| Heuristics (spaCy) | Always | 0.15 |
+| Verification agent | When configured | 0.70 |
+| Heuristics (spaCy) | Always | 0.30 |
 
-**Verification agent must use a different `LLMProvider` than the extraction agent** (enforced by `model_validator`). Same-provider verification produces correlated errors. Weakest valid configuration: Anthropic extraction + no verification agent → heuristics-only; startup warning issued.
+**Verification agent must use a different `LLMProvider` than the extraction agent** (enforced by `model_validator`). Same-provider verification produces correlated errors. Weakest valid configuration: no verification agent → heuristics-only; startup warning issued.
 
 ---
 
@@ -78,7 +77,7 @@ final = Σ(w_i × s_i) / Σ(w_i)   [unavailable signals excluded from both]
 
 **Resolution:** two parallel LLM calls:
 - Same-type: classifies each new node as `SUPERSEDES`, `AMENDS`, `CONFLICTS_WITH`, or no relationship against its KB candidates.
-- Cross-type: resolves `MITIGATES` (Risk→ADR), `SUPPORTS` (Agreement→ADR), `DEPENDS_ON` (ADR→ADR).
+- Cross-type: resolves `MITIGATES` (Risk→Decision), `BLOCKS` (Risk→Decision|OpenQuestion), `DEPENDS_ON` (Decision→Decision), `RESOLVES` (Decision→OpenQuestion).
 
 Followed by **heuristic validation** that drops malformed relationships (contradictory types, wrong direction, type schema violations) and logs them without failing the job.
 
@@ -128,7 +127,7 @@ Both KB and vector stores share the same Postgres instance (different schemas: `
 - **Rate limiting:** per-user hourly cap + global concurrency cap — both checked before job creation.
 - **Idempotency:** `POST /jobs` deduplication via `UNIQUE` constraint on `idempotency_key`. A failed job with the same key starts a fresh run; an in-progress or completed job returns the existing ID.
 - **Review flow:** `AWAITING_REVIEW` pauses the pipeline for human review. `POST /jobs/{id}/approve` accepts bulk-threshold rules (processed first) and per-node decisions (processed second). All-reject is valid — the job transitions to `DONE` with an empty result.
-- **Auto-mode:** `operator` role only; all nodes set to `AUTO_APPROVED`; audit trail logged in MLflow.
+- **Auto-mode:** `operator` role only; all nodes set to `APPROVED`; audit trail logged in MLflow.
 - **`WRITING` recovery on worker boot:** stranded `WRITING` jobs are detected at startup, marked `FAILED(recoverable=True)`, before the event loop accepts new work.
 
 ---

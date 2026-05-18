@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import re
 import textwrap
 from contextlib import asynccontextmanager
@@ -14,6 +13,7 @@ import asyncpg
 
 from seshat.models.enums import GraphDirection, NodeState, RelationshipType
 from seshat.models.nodes import KBNode, KBRelationship
+from seshat.utils.log import get_logger
 
 type _Conn = asyncpg.Connection | asyncpg.pool.PoolConnectionProxy
 
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from seshat.config.settings import KBStoreConfig
     from seshat.models.api import NodeFilter
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PostgresKBStore:
@@ -108,7 +108,7 @@ class PostgresKBStore:
             f"""
             INSERT INTO {self._schema}.kb_nodes
                 (node_id, schema_version, type, title, description,
-                 confidence, source_quote, status, state, chunk_index, metadata, created_at)
+                 confidence, quote_anchors, status, state, chunk_index, metadata, created_at)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             """,
             *self._node_to_row_args(node, created_at=datetime.now(UTC)),
@@ -252,7 +252,7 @@ class PostgresKBStore:
             node.title,
             node.description,
             node.confidence,
-            node.source_quote,
+            json.dumps([anchor.model_dump() for anchor in node.quote_anchors]),
             node.status.value,
             node.state.value,
             node.chunk_index,
@@ -265,5 +265,6 @@ class PostgresKBStore:
         d = dict(row)
         d["id"] = d.pop("node_id")
         d["metadata"] = json.loads(d.pop("metadata"))
+        d["quote_anchors"] = json.loads(d.pop("quote_anchors"))
         d.pop("created_at")
         return KBNode.model_validate(d)

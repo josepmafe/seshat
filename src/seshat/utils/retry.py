@@ -1,11 +1,12 @@
 import asyncio
 import functools
-import logging
 import random
 from collections.abc import Callable
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from seshat.utils.log import get_logger
+
+logger = get_logger(__name__)
 
 
 def async_retry(

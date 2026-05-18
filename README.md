@@ -13,3 +13,11 @@ Built as a master's thesis project.
 - `docs/superpowers/specs/2026-04-24-quality-gate-design.md` → Quality gate design spec (pre-commit + GHA).
 - `docs/superpowers/plans/2026-04-24-quality-gate.md` → Quality gate implementation plan.
 - `docs/superpowers/specs/2026-04-27-prompt-interaction-design.md` → Prompt and interaction design spec.
+
+## Running tests
+
+Unit tests (no external services):
+
+```bash
+uv run pytest tests/unit
+```
