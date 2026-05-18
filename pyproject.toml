@@ -22,7 +22,6 @@ dependencies = [
     "langchain-anthropic>=1.4.3",
     "langchain-aws>=1.4.2",
     "langchain-openai>=1.2",
-    "nltk>=3.9",
     # Observability / eval
     "mlflow[langchain]>=3.12.0",
     # Web & CLI
@@ -93,6 +92,20 @@ select = [
     "PT",    # flake8-pytest-style — pytest idioms
     "RUF",   # Ruff-native — catch-all extras
 ]
+ignore = [
+    # PEP 695 type-parameter syntax (class Foo[T] / def f[T]) is incompatible
+    # with `from __future__ import annotations`, which is required for forward
+    # references in files that use Generic[T]. Suppressed until the codebase
+    # can be migrated uniformly.
+    "UP046",
+    "UP047",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Agent files contain long LLM prompt strings that cannot be broken without
+# backslash continuations, which are not semantically cleaner than long lines.
+"src/seshat/agents/**" = ["E501"]
+
 [tool.mypy]
 files = ["src"]
 disallow_untyped_defs = true
