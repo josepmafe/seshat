@@ -92,20 +92,14 @@ class ExtractionConfig(BaseConfig):
     auto_mode: bool = Field(
         default=False, description="When True, auto-approve extraction results without manual review."
     )
-    max_chunk_count: int = Field(
-        default=50, gt=0, description="Maximum number of transcript chunks processed in a single extraction pass."
-    )
     max_output_tokens: int = Field(
         default=2048, gt=0, description="Maximum number of tokens the LLM may generate per extraction request."
     )
     max_total_input_tokens: int = Field(
-        default=2_000_000, gt=0, description="Hard cap on total input tokens consumed across all chunks in one run."
+        default=2_000_000, gt=0, description="Hard cap on total input tokens consumed in one extraction run."
     )
     max_total_output_tokens: int = Field(
-        default=500_000, gt=0, description="Hard cap on total output tokens generated across all chunks in one run."
-    )
-    max_transcript_chunk_tokens: int = Field(
-        default=8000, gt=0, description="Maximum token length for a single transcript chunk sent to the extraction LLM."
+        default=500_000, gt=0, description="Hard cap on total output tokens generated in one extraction run."
     )
     max_hint_nodes: int = Field(
         default=20, gt=0, description="Maximum number of KB hint nodes injected into the extraction prompt."

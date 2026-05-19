@@ -66,19 +66,19 @@ class TestGetRequestSettings:
         """Overriding one extraction field must not revert sibling fields to their
         defaults when the base config carries non-default values for those fields."""
         monkeypatch.setenv("postgres_url", "postgresql://seshat:seshat@localhost:5432/seshat")
-        # Base has a non-default max_chunk_count (10 vs default 50).
+        # Base has a non-default max_output_tokens (1024 vs default 2048).
         base = SeshatConfig(
             _env_file=None,  # type: ignore[call-arg]
             secrets=SecretsConfig(provider=SecretsProvider.ENV),
             transcription=TranscriptionConfig(max_retries=1),
-            extraction=ExtractionConfig(max_chunk_count=10),
+            extraction=ExtractionConfig(max_output_tokens=1024),
             max_jobs_per_user_per_hour=5,
         )
         monkeypatch.setattr("seshat.config.settings._config", base)
 
         # Override only confidence_threshold, the other fields should survive unchanged:
-        # - transcription.provider (another config class)
-        # - extraction.max_chunk_count (same config class)
+        # - transcription.max_retries (another config class)
+        # - extraction.max_output_tokens (same config class)
         # - max_jobs_per_user_per_hour (top level field)
         result = get_request_settings(SeshatConfigOverride(extraction=ExtractionConfig(confidence_threshold=0.5)))
 
@@ -86,5 +86,5 @@ class TestGetRequestSettings:
         assert result.extraction.confidence_threshold == 0.5
         # must not revert to default
         assert result.transcription.max_retries == 1
-        assert result.extraction.max_chunk_count == 10
+        assert result.extraction.max_output_tokens == 1024
         assert result.max_jobs_per_user_per_hour == 5

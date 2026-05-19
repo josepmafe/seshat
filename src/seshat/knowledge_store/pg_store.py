@@ -99,7 +99,7 @@ class PostgresKBStore:
         or POST /jobs/{id}/retry) both re-run extraction and produce new UUIDs.
         Postgres transaction atomicity ensures no partial state is committed on failure,
         so there is nothing to overwrite. If a future checkpoint-resume feature re-uses
-        node IDs from a saved ExtractionResult, revisit this.
+        node IDs from a saved IdentificationResult, revisit this.
         """
         logger.debug("Inserting node with node_id=%s", node.id)
 
@@ -108,8 +108,8 @@ class PostgresKBStore:
             f"""
             INSERT INTO {self._schema}.kb_nodes
                 (node_id, schema_version, type, title, description,
-                 confidence, quote_anchors, status, state, chunk_index, metadata, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                 confidence, quote_anchors, status, state, metadata, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
             """,
             *self._node_to_row_args(node, created_at=datetime.now(UTC)),
         )
@@ -255,7 +255,6 @@ class PostgresKBStore:
             json.dumps([anchor.model_dump() for anchor in node.quote_anchors]),
             node.status.value,
             node.state.value,
-            node.chunk_index,
             json.dumps(node.metadata.model_dump(mode="json")),
             created_at,
         )

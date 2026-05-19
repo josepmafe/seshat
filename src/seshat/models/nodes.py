@@ -71,11 +71,6 @@ class KBNode(SeshatModel):
     )
     status: NodeStatus
     state: NodeState = NodeState.CURRENT
-    chunk_index: int | None = Field(
-        default=None,
-        ge=0,
-        description="Source chunk position within the transcript; tiebreaker in within-meeting deduplication.",
-    )
     metadata: NodeMetadata
 
 
