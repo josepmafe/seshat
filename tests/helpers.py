@@ -7,6 +7,7 @@ from seshat.agents.identification.decision import Decision
 from seshat.models.enums import ConceptType, IngestionSource, NodeStatus
 from seshat.models.nodes import KBNode, NodeMetadata
 from seshat.models.quote_anchor import QuoteAnchor
+from seshat.models.transcript import TranscriptDocument, TranscriptMetadata
 
 
 def make_structured_llm(return_value=None, side_effect=None) -> MagicMock:
@@ -41,6 +42,17 @@ def make_anchored_concept(
         start = transcript.find(quote)
         anchor = QuoteAnchor(transcript_file="test.txt", char_start=start, char_end=start + len(quote))
     return AnchoredConcept(item=item, quote_anchor=anchor)
+
+
+def make_doc(
+    blob_key: str = "transcripts/meeting.txt",
+    meeting_date: date | None = None,
+) -> TranscriptDocument:
+    return TranscriptDocument(
+        source_type="text",
+        blob_key=blob_key,
+        metadata=TranscriptMetadata(meeting_date=meeting_date or date(2026, 4, 21)),
+    )
 
 
 def make_node(
