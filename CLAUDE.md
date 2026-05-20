@@ -97,6 +97,12 @@ The default `uv run pytest` run excludes the `llm` marker (see `addopts` in `pyp
 
 Markers are defined in `pyproject.toml` under `[tool.pytest.ini_options]`. The `llm` and `agents` markers also require the relevant API keys to be present in the environment.
 
+**LLM tests cost money.** When running any test with the `llm`, `agents`, or `embedding` markers, always redirect output to a temporary file so the results can be reviewed without re-running:
+
+```bash
+uv run pytest -m llm 2>&1 | tee /tmp/llm_test_out.txt
+```
+
 ## Test Style Guide
 
 - **Classes**: use a test class per target class, with one test method per method under test.
