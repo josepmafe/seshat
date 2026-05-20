@@ -31,6 +31,7 @@ Technical council members make architecture decisions, surface risks, and assign
 - Integration with Notion, Confluence, or Neo4j (v2 upgrade paths)
 - Any UI beyond Streamlit
 - Post-approval node editing (`PATCH /graph/{node_id}` — deferred to v2)
+- Standalone post-approval node creation (`POST /graph/nodes` — deferred to v2; review-time creation via `ApproveRequest.created_nodes` is in scope)
 
 ### Success Criteria
 
@@ -571,10 +572,12 @@ class ApprovalMethod(StrEnum):
     BULK = auto()         # matched an ApproveRequest.approve_above_threshold rule
     AUTO = auto()         # auto_mode=True; no human review
     THRESHOLD = auto()    # confidence >= threshold at extraction time; no human review, no auto_mode flag
+    MANUAL = auto()       # node created directly by an operator at review time
 
 class IngestionSource(StrEnum):
     JOB = auto()    # extracted from a meeting recording via the normal pipeline
     INIT = auto()   # seeded from a document corpus via seshat init
+    MANUAL = auto() # created directly by an operator (review time or future standalone endpoint)
 
 class NodeMetadata(BaseModel):
     job_id: str                               # UUID4; same namespace for both JOB and INIT ingestion (refs ops.jobs.job_id or ops.init_runs.job_id)
@@ -1146,8 +1149,16 @@ The Streamlit UI retry button always uses `POST /jobs` with the original `idempo
 
 ```python
 class KBNodeEdit(BaseModel):
-    title: str
-    description: str
+    title: str | None = None
+    description: str | None = None
+    # metadata fields the pipeline does not extract; operators may fill these in
+    participants: list[str] | None = None
+    team: str | None = None
+    project: str | None = None
+    domain: str | None = None
+
+    # model_validator: at least one field must be non-None
+    # (an all-None edit is a no-op and rejected with a validation error)
 
 class NodeDecision(BaseModel):
     node_id: str
@@ -1159,16 +1170,47 @@ class BulkApproveRule(BaseModel):
     threshold: float                           # approve all PENDING_REVIEW nodes with confidence >= threshold
     exclude: list[str] | None = None           # skip these node_ids even if confidence >= threshold
 
+class ManualNodeCreate(BaseModel):
+    type: ConceptType
+    title: str
+    description: str
+    source_quote: str | None = None        # verbatim excerpt from the transcript
+    blob_key: str | None = None            # blob storage key of the transcript; required if source_quote is provided
+    participants: list[str] | None = None
+    team: str | None = None
+    project: str | None = None
+    domain: str | None = None
+    concept_fields: dict[str, Any] | None = None   # type-specific fields (assignee, due, etc.)
+
+    # model_validator: source_quote and blob_key are co-required —
+    # providing one without the other is a validation error
+
 class ApproveRequest(BaseModel):
     approve_above_threshold: BulkApproveRule | None = None
     decisions: list[NodeDecision] | None = None
+    created_nodes: list[ManualNodeCreate] | None = None   # operator only; reviewer → HTTP 403
 ```
 
-**Processing order:**
-1. `approve_above_threshold` runs first — approves all `PENDING_REVIEW` nodes with `confidence >= threshold`, skipping any `exclude`d IDs. Sets `approval_method=ApprovalMethod.BULK` on affected nodes.
-2. `decisions` runs second — per-node overrides. Can approve, reject, or edit any node regardless of whether the bulk rule already touched it. Sets `approval_method=ApprovalMethod.INDIVIDUAL` on affected nodes.
+Manually created nodes get: `confidence=1.0`, `quote_anchors` computed from `source_quote` + `blob_key` if both provided (falls back to `[]` with a `logging.warning` if the quote cannot be located), `status=APPROVED`, `approval_method=MANUAL`, `ingestion_source=MANUAL`, `approved_by=<user_id>`, `approved_at=<UTC now>`.
 
-In both cases `approved_by` is set to the requesting user's `user_id` and `approved_at` to the current UTC timestamp.
+**Processing order:**
+1. **Role check:** if `created_nodes` is non-empty → requesting user must be `operator`, else HTTP 403 with message `"created_nodes requires operator role"`. Runs before any processing.
+2. `approve_above_threshold` runs next — approves all `PENDING_REVIEW` nodes with `confidence >= threshold`, skipping any `exclude`d IDs. Sets `approval_method=ApprovalMethod.BULK` on affected nodes.
+3. `decisions` runs next — per-node overrides. Can approve, reject, or edit any node regardless of whether the bulk rule already touched it. Sets `approval_method=ApprovalMethod.INDIVIDUAL` on affected nodes. `KBNodeEdit` patches only the fields that are set — unset fields leave the existing node value intact.
+4. **Build `KBNode` objects from `created_nodes`** — constructed directly from the payload; no LLM calls.
+5. **Merge:** approved LLM nodes + manually created nodes → full node set for resolution.
+6. **Resolution pass** — orchestrator receives the full merged set as `new_nodes`; manual nodes are treated identically to LLM-extracted nodes (RAG retrieval + relationship resolution).
+7. **WRITING** — KB + vector store writes (unchanged).
+
+In steps 2–3, `approved_by` is set to the requesting user's `user_id` and `approved_at` to the current UTC timestamp.
+
+**Role enforcement summary:**
+
+| Field | Minimum role |
+|---|---|
+| `approve_above_threshold` | `reviewer` |
+| `decisions` | `reviewer` |
+| `created_nodes` | `operator` |
 
 Once all `pending_review` nodes have a decision, the pipeline resumes to `WRITING`. If all nodes were rejected (zero approved nodes), the pipeline still transitions to `WRITING` — the writing stage writes zero nodes and the job reaches `DONE` with an empty result. This is valid: a reviewer may legitimately reject all extracted nodes if the meeting produced no recordable decisions. The `DONE` response body will contain an empty `nodes` list; no special terminal state is introduced.
 
@@ -1198,8 +1240,9 @@ This is the primary correctness gate for the knowledge base. For each `PENDING_R
 - source quote inline (the transcript excerpt grounding this node, resolved from `quote_anchors`)
 - `ConfidenceBreakdown`: final score + per-component breakdown (verification / heuristics)
 - relationships from `ExtractionResult.relationships` where `source_id == node.id` (read-only), with a hyperlink to each target node in Screen 4
-- Per-node action: approve / reject / edit (opens an inline form pre-filled with current `title` + `description`)
+- Per-node action: approve / reject / edit (opens an inline form pre-filled with current `title` + `description`; also exposes optional metadata fields `participants`, `team`, `project`, `domain`)
 - Bulk approve rule: threshold slider + optional exclude list → maps to `BulkApproveRule` in `ApproveRequest`
+- **Manual node creation panel** (operator role only — hidden for `reviewer`): form with `type` dropdown (required), `title` (required), `description` (required), optional `source_quote` + `blob_key` (co-required — UI disables "Add node" if exactly one is filled), optional `participants`, `team`, `project`, `domain`. "Add node" appends to an in-memory list shown below the form; each entry has a remove button. Submitted as `created_nodes` in the `ApproveRequest` payload — no separate API call.
 - Submit decisions button → `POST /jobs/{id}/approve`
 
 **Screen 4 — Knowledge base query**
