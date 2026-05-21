@@ -4,30 +4,23 @@ from pydantic import ValidationError
 from seshat.config.settings import (
     ConfidenceWeights,
     ExtractionConfig,
-    LLMConfig,
+    IdentificationLLMConfig,
     SecretsConfig,
     SeshatConfig,
     SeshatConfigOverride,
     TranscriptionConfig,
-    VerificationConfig,
+    VerificationLLMConfig,
     get_request_settings,
 )
 from seshat.models.enums import LLMProvider, SecretsProvider
 
 
 class TestConfidenceWeightsRedistribute:
-    def test_verification_disabled_remaining_sum_to_one(self):
+    def test_verification_disabled_redistributes_to_heuristics(self):
         weights = ConfidenceWeights()
         result = weights.redistribute({"verification"})
-        total = result.verification + result.heuristics
-        assert abs(total - 1.0) < 1e-9
         assert result.verification == 0.0
-
-    def test_verification_disabled_heuristics_gets_full_weight(self):
-        weights = ConfidenceWeights()
-        result = weights.redistribute({"verification"})
         assert result.heuristics == pytest.approx(1.0)
-        assert result.verification == 0.0
 
     def test_heuristics_disabled_raises(self):
         with pytest.raises(ValueError, match="non-disableable"):
@@ -42,8 +35,8 @@ class TestVerificationModelValidator:
     def test_same_provider_raises(self):
         with pytest.raises(ValidationError, match=r"verification.provider"):
             ExtractionConfig(
-                llm=LLMConfig(provider=LLMProvider.ANTHROPIC),
-                verification=VerificationConfig(
+                identification=IdentificationLLMConfig(provider=LLMProvider.ANTHROPIC),
+                verification=VerificationLLMConfig(
                     provider=LLMProvider.ANTHROPIC,
                     model="claude-haiku-4-5-20251001",
                 ),
@@ -59,26 +52,26 @@ class TestGetRequestSettings:
         monkeypatch.setattr("seshat.config.settings._config", minimal_config)
         result = get_request_settings(SeshatConfigOverride(extraction=ExtractionConfig(confidence_threshold=0.5)))
         assert result.extraction.confidence_threshold == 0.5
-        assert result.extraction.llm.provider == minimal_config.extraction.llm.provider
-        assert result.extraction.llm.model == minimal_config.extraction.llm.model
+        assert result.extraction.identification.provider == minimal_config.extraction.identification.provider
+        assert result.extraction.identification.model == minimal_config.extraction.identification.model
 
     def test_partial_override_preserves_non_default_base_values(self, monkeypatch):
         """Overriding one extraction field must not revert sibling fields to their
         defaults when the base config carries non-default values for those fields."""
         monkeypatch.setenv("postgres_url", "postgresql://seshat:seshat@localhost:5432/seshat")
-        # Base has a non-default max_output_tokens (1024 vs default 2048).
+        # Base has a non-default max_output_tokens on the identification LLM config.
         base = SeshatConfig(
             _env_file=None,  # type: ignore[call-arg]
             secrets=SecretsConfig(provider=SecretsProvider.ENV),
             transcription=TranscriptionConfig(max_retries=1),
-            extraction=ExtractionConfig(max_output_tokens=1024),
+            extraction=ExtractionConfig(identification=IdentificationLLMConfig(max_output_tokens=1024)),
             max_jobs_per_user_per_hour=5,
         )
         monkeypatch.setattr("seshat.config.settings._config", base)
 
         # Override only confidence_threshold, the other fields should survive unchanged:
         # - transcription.max_retries (another config class)
-        # - extraction.max_output_tokens (same config class)
+        # - extraction.identification.max_output_tokens (same config class)
         # - max_jobs_per_user_per_hour (top level field)
         result = get_request_settings(SeshatConfigOverride(extraction=ExtractionConfig(confidence_threshold=0.5)))
 
@@ -86,5 +79,5 @@ class TestGetRequestSettings:
         assert result.extraction.confidence_threshold == 0.5
         # must not revert to default
         assert result.transcription.max_retries == 1
-        assert result.extraction.max_output_tokens == 1024
+        assert result.extraction.identification.max_output_tokens == 1024
         assert result.max_jobs_per_user_per_hour == 5

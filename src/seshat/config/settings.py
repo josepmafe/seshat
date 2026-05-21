@@ -22,35 +22,57 @@ class BaseConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
-class LLMConfig(BaseConfig):
-    provider: LLMProvider = LLMProvider.ANTHROPIC
-    model: str = "claude-sonnet-4-6"
+class _LLMConfig(BaseConfig):
+    provider: LLMProvider
+    model: str
     temperature: float = Field(default=0.0, ge=0)
     max_retries: int = Field(default=3, ge=0)
     timeout_seconds: float = Field(default=300.0, gt=0, description="Per-request HTTP timeout in seconds.")
-    max_concurrent_calls: int = Field(default=50, gt=0, description="Maximum number of simultaneous LLM calls.")
+    max_concurrent_calls: int = Field(default=5, gt=0, description="Maximum number of simultaneous LLM calls.")
+    max_output_tokens: int | None = Field(
+        default=None, gt=0, description="Maximum tokens the LLM may generate per call; None means no limit."
+    )
     api_key_secret_key: str | None = Field(
         default=None,
         description="Secrets key for the LLM API key. Defaults to '<provider>_api_key' if not set.",
     )
 
     @model_validator(mode="after")
-    def _default_api_key_secret_key(self) -> "LLMConfig":
+    def _default_api_key_secret_key(self) -> "_LLMConfig":
         if self.api_key_secret_key is None:
             object.__setattr__(self, "api_key_secret_key", f"{self.provider}_api_key")
         return self
 
 
-class VerificationConfig(LLMConfig):
+class IdentificationLLMConfig(_LLMConfig):
+    provider: LLMProvider = LLMProvider.ANTHROPIC
+    model: str = "claude-sonnet-4-6"
+
+
+class VerificationLLMConfig(_LLMConfig):
     provider: LLMProvider = LLMProvider.OPENAI
     model: str = "gpt-5.4-nano"
     use_full_transcript: bool = Field(
         default=True,
-        description="When False, verification uses only the extracted quote instead of the full transcript.",
+        description="When False, verification uses only the identified quote instead of the full transcript.",
+    )
+
+
+class ResolutionLLMConfig(_LLMConfig):
+    provider: LLMProvider = LLMProvider.ANTHROPIC
+    model: str = "claude-sonnet-4-6"
+    max_concurrent_calls: int = Field(
+        default=10, gt=0, description="Maximum simultaneous LLM calls per resolution agent."
+    )
+    max_global_calls: int = Field(
+        default=30, gt=0, description="Global cap on simultaneous LLM calls across all resolution agents."
     )
 
 
 class ConfidenceWeights(BaseConfig):
+    # Default weights are hand-tuned placeholders; calibrate against a labeled corpus before
+    # enabling verification in production. With verification=None the verification weight is
+    # redistributed to heuristics automatically, but the heuristics weight itself is also uncalibrated.
     verification: float = Field(default=0.70, ge=0, lt=1)
     heuristics: float = Field(default=0.30, gt=0, le=1)
 
@@ -78,22 +100,25 @@ class ConfidenceWeights(BaseConfig):
 
 
 class ExtractionConfig(BaseConfig):
-    llm: LLMConfig = Field(default_factory=LLMConfig, description="LLM settings used for the extraction step.")
+    identification: IdentificationLLMConfig = Field(
+        default_factory=IdentificationLLMConfig, description="LLM settings used for the identification step."
+    )
+    resolution: ResolutionLLMConfig = Field(
+        default_factory=ResolutionLLMConfig, description="LLM and concurrency settings for the resolution step."
+    )
     concept_types: list[ConceptType] = Field(
         default_factory=lambda: list(ConceptType),
         description="Concept types that the extraction pipeline will attempt to extract.",
     )
+    # TODO: calibrate against a labeled corpus before use
     confidence_threshold: float = Field(
-        default=0.7, ge=0, le=1, description="Minimum composite confidence score required to retain an extracted node."
+        default=0.7, ge=0, le=1, description="Minimum composite confidence score required to retain an identified node."
     )
     per_type_thresholds: dict[ConceptType, float] | None = Field(
         default=None, description="Optional per-concept-type confidence thresholds that override the global threshold."
     )
     auto_mode: bool = Field(
         default=False, description="When True, auto-approve extraction results without manual review."
-    )
-    max_output_tokens: int = Field(
-        default=2048, gt=0, description="Maximum number of tokens the LLM may generate per extraction request."
     )
     max_total_input_tokens: int = Field(
         default=2_000_000, gt=0, description="Hard cap on total input tokens consumed in one extraction run."
@@ -107,25 +132,32 @@ class ExtractionConfig(BaseConfig):
     max_hint_tokens: int = Field(
         default=1000, gt=0, description="Maximum tokens consumed by hint nodes injected into the extraction prompt."
     )
-    verification: VerificationConfig | None = Field(
+    verification: VerificationLLMConfig | None = Field(
         default=None, description="Optional second LLM used to verify extraction results; None disables verification."
     )
     confidence_weights: ConfidenceWeights = Field(
         default_factory=ConfidenceWeights, description="Weights used to compute the composite confidence score."
     )
+    identification_timeout_seconds: float | None = Field(
+        default=None, gt=0, description="Optional wall-clock timeout for a full extraction run; None means no limit."
+    )
+    resolution_timeout_seconds: float | None = Field(
+        default=None, gt=0, description="Optional wall-clock timeout for a full resolution run; None means no limit."
+    )
     result_cache_enabled: bool = Field(
         default=False, description="When True, extraction results are cached to avoid redundant LLM calls."
     )
-    grouped_extraction_types: set[ConceptType] = Field(
+    grouped_identification_types: set[ConceptType] = Field(
         default_factory=lambda: {ConceptType.DECISION},
-        description="Concept types for which extracted items are passed through the grouping step.",
+        description="Concept types for which identified items are passed through the grouping step.",
     )
 
     @model_validator(mode="after")
     def check_verification_provider(self) -> "ExtractionConfig":
-        if self.verification is not None and self.verification.provider == self.llm.provider:
+        if self.verification is not None and self.verification.provider == self.identification.provider:
             raise ValueError(
-                f"`verification.provider` must differ from `llm.provider` (both are '{self.llm.provider}')"
+                "`verification.provider` must differ from `identification.provider`"
+                f" (both are '{self.identification.provider}')"
             )
 
         if self.verification is None:
