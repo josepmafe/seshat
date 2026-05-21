@@ -90,6 +90,9 @@ class PostgresKBStore:
     async def write_node(self, node: KBNode, *, conn: _Conn | None = None) -> str:
         """Write a node to the KB.
 
+        Pass conn (from transaction()) when the write must be atomic with a vector upsert.
+        Omit it only for standalone writes (tests, seed scripts) where no vector store is involved.
+
         Relationships must be written separately via write_relationship() once all
         referenced node IDs exist, because kb_relationships has FK constraints on
         both source_id and target_id.
@@ -117,6 +120,9 @@ class PostgresKBStore:
 
     async def write_relationship(self, rel: KBRelationship, *, conn: _Conn | None = None) -> None:
         """Write a relationship to the KB.
+
+        Pass conn (from transaction()) when the write must be atomic with other KB writes.
+        Omit it only for standalone writes where atomicity is not required.
 
         No ON CONFLICT clause: composite PK (source_id, target_id, rel_type) inherits
         the same no-collision guarantee as write_node — source_id and target_id are fresh
@@ -215,6 +221,8 @@ class PostgresKBStore:
             add("type", node_filter.node_type.value)
         if node_filter.state:
             add("state", node_filter.state.value)
+        if node_filter.status:
+            add("status", node_filter.status.value)
         if node_filter.min_confidence is not None:
             add("confidence", node_filter.min_confidence, ">=")
         if node_filter.job_id:

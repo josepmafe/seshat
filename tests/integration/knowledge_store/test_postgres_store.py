@@ -12,6 +12,7 @@ from seshat.models.enums import (
     GraphDirection,
     IngestionSource,
     NodeState,
+    NodeStatus,
     RelationshipType,
 )
 from seshat.models.nodes import KBRelationship
@@ -263,6 +264,20 @@ class TestQuery:
     async def test_query_no_match_returns_empty(self, store: PostgresKBStore):
         results = await store.query(NodeFilter(job_id=f"nonexistent-job-{uuid4()}"))
         assert results == []
+
+    async def test_query_by_status(self, store: PostgresKBStore):
+        approved = _make_node("n-status-approved", status=NodeStatus.APPROVED)
+        pending = _make_node("n-status-pending", "Pending Node", status=NodeStatus.PENDING_REVIEW)
+        await store.write_node(approved)
+        await store.write_node(pending)
+
+        approved_results = await store.query(NodeFilter(status=NodeStatus.APPROVED))
+        pending_results = await store.query(NodeFilter(status=NodeStatus.PENDING_REVIEW))
+
+        assert any(n.id == approved.id for n in approved_results)
+        assert not any(n.id == pending.id for n in approved_results)
+        assert any(n.id == pending.id for n in pending_results)
+        assert not any(n.id == approved.id for n in pending_results)
 
 
 class TestTransaction:
