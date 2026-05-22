@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-_BEDROCK_PROFILE = os.environ.get("AWS_PROFILE", "ClaudeCode")
+_BEDROCK_PROFILE = os.environ.get("AWS_PROFILE") or "ClaudeCode"
 
 _LOCALSTACK_PORT = int(os.environ.get("LOCALSTACK_PORT", 4566))
 LOCALSTACK_REGION = os.environ.get("AWS_DEFAULT_REGION", "eu-west-1")
