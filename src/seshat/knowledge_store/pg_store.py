@@ -90,6 +90,9 @@ class PostgresKBStore:
     async def write_node(self, node: KBNode, *, conn: _Conn | None = None) -> str:
         """Write a node to the KB.
 
+        Pass conn (from transaction()) when the write must be atomic with a vector upsert.
+        Omit it only for standalone writes (tests, seed scripts) where no vector store is involved.
+
         Relationships must be written separately via write_relationship() once all
         referenced node IDs exist, because kb_relationships has FK constraints on
         both source_id and target_id.
@@ -99,7 +102,7 @@ class PostgresKBStore:
         or POST /jobs/{id}/retry) both re-run extraction and produce new UUIDs.
         Postgres transaction atomicity ensures no partial state is committed on failure,
         so there is nothing to overwrite. If a future checkpoint-resume feature re-uses
-        node IDs from a saved ExtractionResult, revisit this.
+        node IDs from a saved IdentificationResult, revisit this.
         """
         logger.debug("Inserting node with node_id=%s", node.id)
 
@@ -108,8 +111,8 @@ class PostgresKBStore:
             f"""
             INSERT INTO {self._schema}.kb_nodes
                 (node_id, schema_version, type, title, description,
-                 confidence, quote_anchors, status, state, chunk_index, metadata, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                 confidence, quote_anchors, status, state, metadata, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
             """,
             *self._node_to_row_args(node, created_at=datetime.now(UTC)),
         )
@@ -117,6 +120,9 @@ class PostgresKBStore:
 
     async def write_relationship(self, rel: KBRelationship, *, conn: _Conn | None = None) -> None:
         """Write a relationship to the KB.
+
+        Pass conn (from transaction()) when the write must be atomic with other KB writes.
+        Omit it only for standalone writes where atomicity is not required.
 
         No ON CONFLICT clause: composite PK (source_id, target_id, rel_type) inherits
         the same no-collision guarantee as write_node — source_id and target_id are fresh
@@ -215,6 +221,8 @@ class PostgresKBStore:
             add("type", node_filter.node_type.value)
         if node_filter.state:
             add("state", node_filter.state.value)
+        if node_filter.status:
+            add("status", node_filter.status.value)
         if node_filter.min_confidence is not None:
             add("confidence", node_filter.min_confidence, ">=")
         if node_filter.job_id:
@@ -255,7 +263,6 @@ class PostgresKBStore:
             json.dumps([anchor.model_dump() for anchor in node.quote_anchors]),
             node.status.value,
             node.state.value,
-            node.chunk_index,
             json.dumps(node.metadata.model_dump(mode="json")),
             created_at,
         )

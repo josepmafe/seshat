@@ -34,13 +34,12 @@ class TestNodeToRowArgs:
         assert row[2] == "decision"
         assert row[7] == "approved"
         assert row[8] == "current"
-        assert row[9] is None  # chunk_index
-        assert row[11] == created_at
+        assert row[10] == created_at
 
     def test_metadata_is_json(self):
         node = _make_node()
         row = PostgresKBStore._node_to_row_args(node, datetime.now(UTC))
-        meta = json.loads(row[10])
+        meta = json.loads(row[9])
         assert meta["job_id"] == "job-1"
 
 
@@ -57,7 +56,6 @@ class TestRowToNode:
             "quote_anchors": json.dumps([anchor.model_dump() for anchor in node.quote_anchors]),
             "status": node.status.value,
             "state": node.state.value,
-            "chunk_index": None,
             "metadata": json.dumps(node.metadata.model_dump(mode="json")),
             "created_at": datetime(2026, 4, 21, 12, 0, tzinfo=UTC),
         }

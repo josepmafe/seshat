@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+_BEDROCK_PROFILE = os.environ.get("AWS_PROFILE") or "ClaudeCode"
+
 _LOCALSTACK_PORT = int(os.environ.get("LOCALSTACK_PORT", 4566))
 LOCALSTACK_REGION = os.environ.get("AWS_DEFAULT_REGION", "eu-west-1")
 LOCALSTACK_TEST_BUCKET = "seshat-test"
@@ -33,17 +35,21 @@ def _port_open(host: str, port: int) -> bool:
         return False
 
 
-def _bedrock_available() -> bool:
+def _bedrock_available(profile_name: str | None = None) -> bool:
     try:
         import boto3
 
-        return boto3.Session().get_credentials() is not None
+        return boto3.Session(profile_name=profile_name).get_credentials() is not None
     except Exception:
         return False
 
 
 def _azure_available() -> bool:
-    return bool(os.environ.get("AZURE_OPENAI_ENDPOINT") and os.environ.get("AZURE_OPENAI_API_KEY"))
+    return bool(
+        os.environ.get("AZURE_OPENAI_ENDPOINT")
+        and os.environ.get("AZURE_OPENAI_DEPLOYMENT")
+        and os.environ.get("AZURE_OPENAI_API_KEY")
+    )
 
 
 def _openai_reachable(openai_api_key_env_var: str | None = None) -> bool:
@@ -69,7 +75,7 @@ def _openai_reachable(openai_api_key_env_var: str | None = None) -> bool:
 
 # Anthropic key presence is sufficient — no network probe needed (unlike OpenAI which validates the endpoint).
 def _anthropic_reachable() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY")) or _bedrock_available()
+    return bool(os.environ.get("ANTHROPIC_API_KEY")) or _bedrock_available(profile_name=_BEDROCK_PROFILE)
 
 
 SKIP_IF_NO_LLM_API = pytest.mark.skipif(
@@ -90,10 +96,25 @@ SKIP_IF_NO_LOCALSTACK = pytest.mark.skipif(
     reason="LocalStack not reachable — run: docker compose up -d localstack",
 )
 
-SKIP_IF_NO_OPENAI = pytest.mark.skipif(
+SKIP_IF_NO_EMBEDDINGS_API = pytest.mark.skipif(
     not _openai_reachable(),
     reason="OpenAI API not reachable — OPENAI_API_KEY not set or network issue",
 )
+
+
+@pytest.fixture
+async def vector_store(pg_test_url):
+    from seshat.config.settings import SecretsConfig, SeshatConfig, VectorStoreConfig
+    from seshat.models.enums import SecretsProvider
+    from seshat.vector_store.factory import _build_embeddings
+    from seshat.vector_store.pgvector_store import PGVectorStore
+
+    seshat_config = SeshatConfig(secrets=SecretsConfig(provider=SecretsProvider.ENV))
+    index = seshat_config.vector_index.model_copy(update={"collection": "test_collection"})
+    embeddings = _build_embeddings(index, seshat_config)
+    store = PGVectorStore(VectorStoreConfig(), index, embeddings, pg_test_url)
+    yield store
+    await store._store.adelete_collection()
 
 
 @pytest.fixture(scope="session")
@@ -155,10 +176,10 @@ async def localstack_s3_url():
     """
     endpoint = _get_localstack_url()
 
-    import aioboto3
+    from aiobotocore.session import get_session
 
-    session = aioboto3.Session()
-    async with session.client("s3", region_name=LOCALSTACK_REGION, endpoint_url=endpoint) as s3:
+    session = get_session()
+    async with session.create_client("s3", region_name=LOCALSTACK_REGION, endpoint_url=endpoint) as s3:
         await s3.create_bucket(
             Bucket=LOCALSTACK_TEST_BUCKET,
             CreateBucketConfiguration={"LocationConstraint": LOCALSTACK_REGION},
@@ -166,7 +187,7 @@ async def localstack_s3_url():
 
     yield endpoint
 
-    async with session.client("s3", region_name=LOCALSTACK_REGION, endpoint_url=endpoint) as s3:
+    async with session.create_client("s3", region_name=LOCALSTACK_REGION, endpoint_url=endpoint) as s3:
         paginator = s3.get_paginator("list_objects_v2")
         async for page in paginator.paginate(Bucket=LOCALSTACK_TEST_BUCKET):
             for obj in page.get("Contents", []):

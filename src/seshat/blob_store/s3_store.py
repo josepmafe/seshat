@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-import aioboto3
+from aiobotocore.session import get_session
 from botocore.exceptions import ClientError
 
 from seshat.utils.log import get_logger
@@ -44,9 +44,9 @@ class S3BlobStore:
         self._bucket = config.bucket
         self._region = config.region
         self._endpoint_url = config.endpoint_url
-        self._session = aioboto3.Session()
+        self._session = get_session()
 
-        self._client_ctx: ClientCreatorContext[S3Client] | None = None
+        self._client_ctx: ClientCreatorContext | None = None
         self._client: S3Client | None = None
 
         logger.debug(
@@ -57,10 +57,10 @@ class S3BlobStore:
         )
 
     async def connect(self) -> None:
-        # aioboto3.Session.client() returns an async context manager at runtime, not a live client
-        self._client_ctx = self._session.client("s3", region_name=self._region, endpoint_url=self._endpoint_url)
+        # create_client() returns an async context manager, not a live client
+        self._client_ctx = self._session.create_client("s3", region_name=self._region, endpoint_url=self._endpoint_url)
         # Enter it manually here so the client lifetime spans the store's connect/close lifecycle.
-        self._client = await self._client_ctx.__aenter__()
+        self._client = cast("S3Client", await self._client_ctx.__aenter__())
         logger.info("S3BlobStore client connected (bucket=%s)", self._bucket)
 
     async def close(self) -> None:
