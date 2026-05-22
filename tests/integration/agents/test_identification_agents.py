@@ -15,6 +15,34 @@ _TRANSCRIPT_FILE = "test_meeting.txt"
 
 
 class TestDecisionIdentificationAgent:
+    async def test_identify_returns_empty_for_non_extractable_transcript(self, cheap_llm, extraction_config):
+        transcript = "The weather today is sunny. Everyone agrees it feels like spring."
+        agent = DecisionIdentificationAgent(
+            llm=cheap_llm,
+            config=extraction_config.identification,
+            grouped_identification_types=extraction_config.grouped_identification_types,
+        )
+
+        result = await agent.identify(transcript, kb_hint="", transcript_file=_TRANSCRIPT_FILE)
+
+        assert result == []
+
+    async def test_identify_finds_two_separate_decisions(self, cheap_llm, extraction_config):
+        transcript = (
+            "First, the team agreed to use PostgreSQL for the user database because of its JSONB support. "
+            "Later, the team decided to deploy on AWS because the company already has a billing relationship there."
+        )
+        agent = DecisionIdentificationAgent(
+            llm=cheap_llm,
+            config=extraction_config.identification,
+            grouped_identification_types=extraction_config.grouped_identification_types,
+        )
+
+        result = await agent.identify(transcript, kb_hint="", transcript_file=_TRANSCRIPT_FILE)
+
+        total_members = sum(len(g.members) for g in result)
+        assert total_members >= 2
+
     async def test_identify_finds_obvious_decision(self, cheap_llm, extraction_config):
         # Decision extraction goes through GroupingAgent (full pipeline) because
         # ConceptType.DECISION is in grouped_identification_types by default.
@@ -66,6 +94,26 @@ class TestRiskIdentificationAgent:
         assert first.item.type in ("future", "blocker")
         assert first.item.title
         assert first.item.quote
+
+    async def test_identify_with_kb_hint_still_finds_risk(self, cheap_llm, extraction_config):
+        transcript = (
+            "The migration window was discussed. Running the database migration during peak hours was raised "
+            "as a concern — if a write fails mid-migration, partial data could be committed."
+        )
+        # Format matches _assemble_kb_hint: "<title> (date <iso>): <description[:80]>"
+        kb_hint = (
+            "Data loss during migration (date 2026-03-10): Risk of partial data commit if migration fails mid-run."
+        )
+        agent = RiskIdentificationAgent(
+            llm=cheap_llm,
+            config=extraction_config.identification,
+            grouped_identification_types=extraction_config.grouped_identification_types,
+        )
+
+        result = await agent.identify(transcript, kb_hint=kb_hint, transcript_file=_TRANSCRIPT_FILE)
+
+        assert len(result) >= 1
+        assert all(isinstance(r, AnchoredConcept) for r in result)
 
 
 class TestActionItemIdentificationAgent:

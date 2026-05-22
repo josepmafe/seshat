@@ -18,6 +18,19 @@ class TestVerificationAgent:
 
         assert result.supported is True
 
+    async def test_verify_returns_supported_true_for_implicit_consensus(self, cheap_llm, verification_config):
+        # Per agent rules, paraphrasing or inferring from context is supported=True even without an explicit "decided".
+        # This exercises a different judgment boundary from the explicit-agreement test above.
+        agent = VerificationAgent(llm=cheap_llm, config=verification_config)
+
+        result = await agent.verify(
+            title="Use PostgreSQL for the user database",
+            description="The team decided to use PostgreSQL for the user database.",
+            quote="Everyone agrees PostgreSQL is the right call given our JSONB requirements.",
+        )
+
+        assert result.supported is True
+
     async def test_verify_returns_supported_false_for_contradicting_quote(self, cheap_llm, verification_config):
         agent = VerificationAgent(llm=cheap_llm, config=verification_config)
 

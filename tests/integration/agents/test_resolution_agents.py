@@ -49,6 +49,29 @@ class TestDecisionResolutionAgent:
 
         _assert_valid_relationships(result, [new_decision, old_decision], RelationshipType.SUPERSEDES)
 
+    async def test_resolve_returns_empty_for_unrelated_decisions(self, cheap_llm, resolution_config):
+        decision_a = make_node(
+            node_id="decision-unrelated-a",
+            type=ConceptType.DECISION,
+            title="Use Terraform for infrastructure provisioning",
+            description="The team decided to adopt Terraform to manage all cloud infrastructure as code.",
+        )
+        decision_b = make_node(
+            node_id="decision-unrelated-b",
+            type=ConceptType.DECISION,
+            title="Use Figma for UI design collaboration",
+            description="The design team will use Figma as the single tool for mockups and design handoff.",
+        )
+        agent = DecisionResolutionAgent(llm=cheap_llm, config=resolution_config)
+
+        result, failed = await agent.resolve(
+            source_nodes=[decision_a],
+            per_source_targets={decision_a.id: [decision_b]},
+        )
+
+        assert result == []
+        assert failed == []
+
 
 class TestRiskResolutionAgent:
     async def test_resolve_amended_risk(self, cheap_llm, resolution_config):
