@@ -17,13 +17,13 @@ def store(minimal_config: SeshatConfig) -> S3BlobStore:
 
 
 def _make_mock_session():
-    """Return a mock aioboto3 session whose .client() is an async context manager."""
+    """Return a mock aiobotocore session whose .create_client() is an async context manager."""
     fake_client = MagicMock()
     ctx = AsyncMock()
     ctx.__aenter__.return_value = fake_client
     ctx.__aexit__.return_value = None
     session = MagicMock()
-    session.client.return_value = ctx
+    session.create_client.return_value = ctx
     return session, ctx, fake_client
 
 

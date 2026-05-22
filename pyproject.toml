@@ -5,10 +5,10 @@ description = "GenAI pipeline for structured meeting knowledge bases"
 requires-python = ">=3.13"
 dependencies = [
     # Data & persistence (Postgres, migrations, S3)
-    "aioboto3>=15.5",
+    "aiobotocore>=3.7",
     "alembic>=1.18",
     "asyncpg>=0.31",
-    "boto3>=1.40",
+    "boto3>=1.43",
     "langchain-postgres>=0.0.17",
     "psycopg[binary]>=3.3.4",
     # Config & validation
@@ -20,7 +20,7 @@ dependencies = [
     "spacy>=3.8",
     "langchain>=1.2",
     "langchain-anthropic>=1.4.3",
-    "langchain-aws>=1.1.0",
+    "langchain-aws>=1.4.2",
     "langchain-openai>=1.2",
     "nltk>=3.9",
     # Observability / eval
@@ -40,8 +40,8 @@ dev = [
     { include-group = "complexity" },
 ]
 lint = [
-    "boto3-stubs[secretsmanager]>=1.40",  # keep in sync with boto3
-    "types-aioboto3[s3]>=15.5",             # keep in sync with aioboto3
+    "boto3-stubs[secretsmanager]>=1.43",  # keep in sync with boto3
+    "types-aiobotocore-s3>=3.7",          # keep in sync with aiobotocore
     "mypy>=1.20",
     "pre-commit>=4.6",
     "ruff>=0.15",

@@ -155,10 +155,10 @@ async def localstack_s3_url():
     """
     endpoint = _get_localstack_url()
 
-    import aioboto3
+    from aiobotocore.session import get_session
 
-    session = aioboto3.Session()
-    async with session.client("s3", region_name=LOCALSTACK_REGION, endpoint_url=endpoint) as s3:
+    session = get_session()
+    async with session.create_client("s3", region_name=LOCALSTACK_REGION, endpoint_url=endpoint) as s3:
         await s3.create_bucket(
             Bucket=LOCALSTACK_TEST_BUCKET,
             CreateBucketConfiguration={"LocationConstraint": LOCALSTACK_REGION},
@@ -166,7 +166,7 @@ async def localstack_s3_url():
 
     yield endpoint
 
-    async with session.client("s3", region_name=LOCALSTACK_REGION, endpoint_url=endpoint) as s3:
+    async with session.create_client("s3", region_name=LOCALSTACK_REGION, endpoint_url=endpoint) as s3:
         paginator = s3.get_paginator("list_objects_v2")
         async for page in paginator.paginate(Bucket=LOCALSTACK_TEST_BUCKET):
             for obj in page.get("Contents", []):
