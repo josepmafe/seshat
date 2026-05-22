@@ -13,7 +13,7 @@ dependencies = [
     "psycopg[binary]>=3.3.4",
     # Config & validation
     "pydantic>=2.13.4",
-    "pydantic-settings>=2.14",
+    "pydantic-settings>=2.14.1",
     # AI / NLP
     # en_core_web_sm pinned as a direct URL so no manual download step is needed
     "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
@@ -21,15 +21,15 @@ dependencies = [
     "langchain>=1.2",
     "langchain-anthropic>=1.4.3",
     "langchain-aws>=1.4.2",
-    "langchain-openai>=1.2",
+    "langchain-openai>=1.2.2",
     # Observability / eval
     "mlflow[langchain]>=3.12.0",
     # Web & CLI
     "bcrypt>=5.0",
     "fastapi>=0.136",
     "streamlit>=1.57",
-    "typer>=0.25",
-    "uvicorn[standard]>=0.46",
+    "typer>=0.25.1",
+    "uvicorn[standard]>=0.47.0",
 ]
 
 [dependency-groups]
@@ -39,11 +39,11 @@ dev = [
     { include-group = "complexity" },
 ]
 lint = [
-    "boto3-stubs[secretsmanager]>=1.43",  # keep in sync with boto3
+    "boto3-stubs[secretsmanager]>=1.43.13",  # keep in sync with boto3
     "types-aiobotocore-s3>=3.7",          # keep in sync with aiobotocore
-    "mypy>=1.20",
+    "mypy>=2.1.0",
     "pre-commit>=4.6",
-    "ruff>=0.15",
+    "ruff>=0.15.14",
 ]
 test = [
     "httpx>=0.28",
