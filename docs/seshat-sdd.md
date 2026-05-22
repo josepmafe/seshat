@@ -117,7 +117,7 @@ Dequeues jobs from `AsyncioTaskQueue` and orchestrates the pipeline stages. Main
 
 3. **Pass 1 — Multi-Agent Extraction** — for each chunk and each `ConceptType`, runs the corresponding extraction agent concurrently. Collects `KBNode` candidates with `relationships: []`. Action item agents additionally record an optional `assignee: str | None`.
 
-4. **Within-Meeting Deduplication** — merges nodes of the same type within a single meeting: exact title match (primary), then embedding similarity ≥ 0.85 (fallback). Retains the node with the highest `chunk_index`. No `SUPERSEDES` relationship is created within a single job.
+4. **Within-Meeting Deduplication** — merges nodes of the same type within a single meeting: exact title match (primary), then embedding similarity ≥ 0.85 (fallback). No `SUPERSEDES` relationship is created within a single job.
 
 5. **Pass 2 — RAG + Resolution** — uses the deduplicated node set as the working candidate list. Queries the existing KB and vector store to attach `KBRelationship` objects (`SUPERSEDES`, `AMENDS`, `CONFLICTS_WITH`, `DEPENDS_ON`) and resolve action item assignees against `TranscriptMetadata.participants`. RAG runs after extraction; extraction agents receive only a lightweight hint context.
 
@@ -173,7 +173,7 @@ This section captures only the "spine" models used to connect components. Full f
 
 **`TranscriptDocument`** — `job_id: UUID`, `raw_text: str`, token count metadata, segments/chunks (when attached), `metadata: TranscriptMetadata` (participants, meeting title, date, optional tags).
 
-**`KBNode`** — `id: UUID`, `job_id: UUID`, `concept_type: ConceptType` (`DECISION`, `RISK`, `ACTION_ITEM`, `OPEN_QUESTION`), `title: str`, `content: str`, `source_quote: str`, `chunk_index: int`, `confidence: float`, `assignee: str | None` (action items only), `due: str | None` (action items only).
+**`KBNode`** — `id: UUID`, `job_id: UUID`, `concept_type: ConceptType` (`DECISION`, `RISK`, `ACTION_ITEM`, `OPEN_QUESTION`), `title: str`, `content: str`, `source_quote: str`, `confidence: float`, `assignee: str | None` (action items only), `due: str | None` (action items only).
 
 **`KBRelationship`** — `id: UUID`, `from_node_id: UUID`, `to_node_id: UUID`, `relationship_type` (`SUPERSEDES`, `AMENDS`, `CONFLICTS_WITH`, `DEPENDS_ON`, `ASSIGNED_TO`).
 
@@ -260,7 +260,7 @@ Default: TextTiling (NLTK), tuned for long-form transcripts. If the chunking san
 
 1. Group nodes by `concept_type`.
 2. Within each group: merge nodes with identical titles (case-insensitive); for non-exact matches, merge if embedding similarity ≥ `merge_similarity_threshold` (0.85).
-3. When merging: retain the node with the highest `chunk_index` (later segment = settled outcome); aggregate source quotes if configured; drop earlier nodes. No `SUPERSEDES` relationship is created within a single job.
+3. When merging: aggregate source quotes if configured; drop earlier nodes. No `SUPERSEDES` relationship is created within a single job.
 
 ### Confidence Scoring
 

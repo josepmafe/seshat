@@ -25,8 +25,12 @@ class KBRelationship(SeshatModel):
 
 
 class ConfidenceBreakdown(SeshatModel):
+    verification_enabled: bool = Field(
+        default=False,
+        description="Whether the verification step was configured for this run; False means heuristics-only scoring.",
+    )
     verification: float | None = Field(
-        default=None, ge=0, le=1, description="Score from the verification LLM call; None means disabled verification."
+        default=None, ge=0, le=1, description="Score from the verification LLM call; None means disabled or exhausted."
     )
     # heuristics is always active — never None; guards against divide-by-zero in the scorer.
     heuristics: float = Field(
@@ -48,13 +52,16 @@ class NodeMetadata(SeshatModel):
     approved_by: str | None = None
     approved_at: datetime | None = Field(default=None, description="UTC timestamp of approval.")
     approval_method: ApprovalMethod | None = None
+    pending_reason: str | None = Field(
+        default=None, description="Human-readable reason a node is in PENDING_REVIEW; None for approved nodes."
+    )
     corrected_by: str | None = None
     corrected_at: datetime | None = Field(default=None, description="UTC timestamp of the last correction.")
     confidence_breakdown: ConfidenceBreakdown | None = Field(
         default=None, description="Per-signal confidence breakdown; persisted for UI display."
     )
     concept_fields: dict[str, Any] | None = Field(
-        default=None, description="Type-specific fields from extraction (e.g. assignee, due, rationale)."
+        default=None, description="Type-specific fields from identification (e.g. assignee, due, rationale)."
     )
 
 
@@ -71,24 +78,32 @@ class KBNode(SeshatModel):
     )
     status: NodeStatus
     state: NodeState = NodeState.CURRENT
-    chunk_index: int | None = Field(
-        default=None,
-        ge=0,
-        description="Source chunk position within the transcript; tiebreaker in within-meeting deduplication.",
-    )
     metadata: NodeMetadata
 
 
-class ExtractionResult(SeshatModel):
+class IdentificationResult(SeshatModel):
     job_id: str
     nodes: list[KBNode]
     confidence_breakdowns: dict[UUID, ConfidenceBreakdown]
     failed_concept_types: list[ConceptType] = Field(
         default_factory=list,
-        description="Concept types whose extraction task failed entirely; empty means all types completed.",
+        description="Concept types whose identification task failed entirely; empty means all types completed.",
     )
+    nodes_by_type: dict[ConceptType, int] = Field(
+        default_factory=dict,
+        description="Count of identified nodes per concept type.",
+    )
+
+
+class FailedResolutionSource(SeshatModel):
+    node_id: UUID
+    concept_type: ConceptType
 
 
 class ResolutionResult(SeshatModel):
     job_id: str
     relationships: list[KBRelationship]
+    failed_sources: list[FailedResolutionSource] = Field(
+        default_factory=list,
+        description="Sources whose resolution task failed entirely after all retries.",
+    )

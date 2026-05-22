@@ -31,6 +31,7 @@ Technical council members make architecture decisions, surface risks, and assign
 - Integration with Notion, Confluence, or Neo4j (v2 upgrade paths)
 - Any UI beyond Streamlit
 - Post-approval node editing (`PATCH /graph/{node_id}` — deferred to v2)
+- Standalone post-approval node creation (`POST /graph/nodes` — deferred to v2; review-time creation via `ApproveRequest.created_nodes` is in scope)
 
 ### Success Criteria
 
@@ -321,22 +322,27 @@ class VerificationConfig(LLMConfig):
     model: str = "gpt-5.4-nano"
     use_full_transcript: bool = True      # When False, verification uses only the extracted quote
 
+class ResolutionConfig(LLMConfig):
+    max_concurrent_calls: int = 10        # per-agent concurrency cap (overrides LLMConfig default)
+    max_global_calls: int = 30            # global cap across all resolution agents combined
+
 class ExtractionConfig(BaseModel):
     llm: LLMConfig = LLMConfig()
+    resolution: ResolutionConfig = ResolutionConfig()
     concept_types: list[ConceptType] = list(ConceptType)
     confidence_threshold: float = 0.7
     per_type_thresholds: dict[ConceptType, float] | None = None  # overrides confidence_threshold per type; None = use global default for all types
     auto_mode: bool = False
-    max_chunk_count: int = 50                       # hard ceiling; prevents O(agents × chunks) cost blowup
     max_output_tokens: int = 2048                   # output (generation) tokens per agent call
     max_total_input_tokens: int = 2_000_000         # aggregate input token cap across all agent calls in the extraction stage
     max_total_output_tokens: int = 500_000          # aggregate output token cap across all agent calls in the extraction stage
-    max_transcript_chunk_tokens: int = 8000         # per-chunk input ceiling; see prompt budget note below
     max_hint_nodes: int = 20                        # most recent same-type KB nodes included in extraction-time hint
     max_hint_tokens: int = 1000                     # hard token cap on the hint; oldest nodes dropped first if exceeded
     verification: VerificationConfig | None = None  # None = heuristics-only scoring; see Confidence Scoring
     confidence_weights: ConfidenceWeights = ConfidenceWeights()
-    result_cache_enabled: bool = False              # in-memory extraction result cache keyed on hash(chunk_text + concept_type + model + prompt_hash); auto-set True by seshat eval regardless of config; False for production to avoid stale results across jobs
+    extraction_timeout_seconds: float | None = None # wall-clock cap on the full extraction pass; None = no cap
+    resolution_timeout_seconds: float | None = None # wall-clock cap on the full resolution pass; None = no cap
+    result_cache_enabled: bool = False              # in-memory extraction result cache keyed on hash(transcript + concept_type + model + prompt_hash); auto-set True by seshat eval regardless of config; False for production to avoid stale results across jobs
     grouped_extraction_types: set[ConceptType] = {ConceptType.DECISION}  # types passed through the grouping step; toggleable without code deploy
 
     # model_validator enforces: verification.provider != llm.provider (startup error if violated)
@@ -351,23 +357,25 @@ class ConfidenceWeights(BaseModel):
     #   verification + heuristics → (0.70*vf + 0.30*h) / 1.0
     #   heuristics only           → h / 1.0
 
+    # redistribute(disabled_signals) zeros the named signals and rescales the remainder to sum to 1.0.
+    # Only "verification" is disableable — heuristics is always active.
+
 # These are the baseline values. Adjust only after running seshat eval on the labelled corpus
 # and confirming the calibration — the formula and weights are fixed until eval data justifies a change.
 ```
 
-> **Prompt token budget:** each agent call assembles a prompt from four components. The combined total must not exceed the model's context window:
+> **Prompt token budget (MVP — no chunking):** the transcript is passed in full; each agent call assembles:
 >
 > ```
 > system_prompt         ~500t   (static per ConceptType; cached after first call)
 > kb_hint               ≤1000t  (ExtractionConfig.max_hint_tokens; recency-scoped, oldest dropped first)
-> retrieved_context     ≤4000t  (RAGConfig.max_context_tokens)
-> transcript_chunk      ≤8000t  (ExtractionConfig.max_transcript_chunk_tokens)
+> full_transcript       ≤model_context_limit (no per-chunk ceiling in MVP)
 > output_schema         ~200t   (structured output schema injected into prompt)
 > ─────────────────────────────
-> total input           ≤13700t  well within claude-sonnet-4-6's 200k context window
+> total input           bounded only by model context window (200k for claude-sonnet-4-6)
 > ```
 >
-> The practical ceiling is cost, not the model context limit. `max_transcript_chunk_tokens=8000` keeps per-call input tokens manageable; combined with `max_chunk_count=50` and `max_output_tokens=2048` this bounds per-call token usage. The aggregate caps `max_total_input_tokens` and `max_total_output_tokens` enforce a ceiling across all agent calls in the extraction stage — at the defaults (2M input / 500k output), worst case (50 chunks × 4 agents × 13,700 input + 2,048 output ≈ 2.74M input / 410k output) will trip the input cap on a max-length transcript; the output cap has headroom at 500k. This is intentional: the defaults are a conservative ceiling, not an expected operating point. Calibrate both caps after running `seshat eval` on representative transcripts.
+> Chunking (TextTiling / RecursiveCharacterTextSplitter) is deferred — the MVP passes the full transcript to each agent. `max_total_input_tokens` and `max_total_output_tokens` are aggregate caps across all agent calls for cost control. When chunking is introduced in a future iteration, `max_chunk_count` and `max_transcript_chunk_tokens` will be added to `ExtractionConfig`.
 
 ### RAGConfig
 
@@ -486,8 +494,11 @@ Agent      (+Risk      Agent        Agent         registry]
 
 **Ordering invariant:** all agent calls in the fan-out phase must complete and their outputs merged before the RAG + Resolution pass begins. All `KBRelationship` objects — without exception — are created in Pass 2.
 
-- **Pass 1 — Fan-out:** agents run concurrently, one per `ConceptType` per chunk. Agents return `KBNode` objects — no relationships. `KBNode` has no `relationships` field; the model itself enforces this. The Action Item agent is the sole exception in output schema: it includes an additional field `assignee: str | None = None` (the participant name it identifies as owner). This field is not a `KBRelationship` — it is a named extraction output that Pass 2 resolves.
+- **Pass 1 — Fan-out:** agents run concurrently, one per `ConceptType`. Each agent returns a list of `AnchoredConcept[M]` (individual items with `QuoteAnchor` grounding) or `ConceptGroup[M]` (for types with `grouped_extraction=True`, e.g. DECISION). These are transient models — not `KBNode`. A `PendingNodeBuilder` converts agent output into `_PendingNode` objects, which carry heuristic scores, verification scores, and status bookkeeping. The Action Item agent schema includes an additional field `assignee: str | None` — a named extraction output that Pass 2 resolves.
+- **Intermediate — Scoring and status assignment:** `_PendingNode` objects are scored (heuristics + optional verification → `ConfidenceBreakdown`), status-assigned (APPROVED / PENDING_REVIEW), then built into `KBNode` via `_PendingNode.build()`. Within-meeting deduplication runs on `_PendingNode` before build.
 - **Pass 2 — RAG + Resolution:** runs only after the complete merged Pass 1 node list is in memory. Constructs all relationships. The `assignee` field from the Action Item agent is resolved against `TranscriptMetadata.participants` (exact match first, then case-insensitive prefix) and stored in `KBNode.metadata.concept_fields`; it does not become a `KBRelationship`.
+
+**Grouping agent:** for concept types in `grouped_extraction_types` (default: `{DECISION}`), a second LLM call (`GroupingAgent`) clusters the flat list of `AnchoredConcept` items into thematic `ConceptGroup` objects before `PendingNodeBuilder` processes them. Each group becomes one `_PendingNode` (and eventually one `KBNode`). If the grouping LLM exhausts retries, each item falls back to a singleton group — no items are lost. `GroupingAgent` takes `(llm, config: LLMConfig)` — callers pass `extraction_config.llm`, not the full `ExtractionConfig`.
 
   **`participants=None` fallback:** when `TranscriptMetadata.participants` is `None`, assignee resolution is skipped for all action items — the `assignee` value is discarded. The action item node is written without an assignee; it is not rejected or downgraded. This is logged as a warning per affected node so the reviewer is aware the assignee could not be resolved.
 
@@ -533,12 +544,11 @@ class KBNode(BaseModel):
     quote_anchors: list[QuoteAnchor] = []  # anchored positions of source quotes within the transcript blob
     status: NodeStatus
     state: NodeState = NodeState.CURRENT
-    chunk_index: int | None = None         # source chunk position; tiebreaker in within-meeting deduplication
     metadata: NodeMetadata
 
 class KBRelationship(BaseModel):
-    source_id: str
-    target_id: str
+    source_id: UUID
+    target_id: UUID
     rel_type: RelationshipType
     job_id: str           # which job created this relationship; duplicates source_id → KBNode.metadata.job_id
     created_at: datetime  # genuinely non-derivable; not available via the source node
@@ -562,10 +572,12 @@ class ApprovalMethod(StrEnum):
     BULK = auto()         # matched an ApproveRequest.approve_above_threshold rule
     AUTO = auto()         # auto_mode=True; no human review
     THRESHOLD = auto()    # confidence >= threshold at extraction time; no human review, no auto_mode flag
+    MANUAL = auto()       # node created directly by an operator at review time
 
 class IngestionSource(StrEnum):
     JOB = auto()    # extracted from a meeting recording via the normal pipeline
     INIT = auto()   # seeded from a document corpus via seshat init
+    MANUAL = auto() # created directly by an operator (review time or future standalone endpoint)
 
 class NodeMetadata(BaseModel):
     job_id: str                               # UUID4; same namespace for both JOB and INIT ingestion (refs ops.jobs.job_id or ops.init_runs.job_id)
@@ -578,8 +590,11 @@ class NodeMetadata(BaseModel):
     approved_by: str | None = None
     approved_at: datetime | None = None
     approval_method: ApprovalMethod | None = None
+    pending_reason: str | None = None         # human-readable reason why the node is PENDING_REVIEW (e.g. "below confidence threshold")
     corrected_by: str | None = None    # set when a reviewer provides edited_content in NodeDecision
     corrected_at: datetime | None = None   # set to the same timestamp as approved_at (corrections only happen at approval time in v1)
+    confidence_breakdown: ConfidenceBreakdown | None = None  # populated during extraction; echoes ExtractionResult.confidence_breakdowns[node.id]
+    concept_fields: dict[str, Any] | None = None             # type-specific extracted fields not in ConceptModel base (e.g. assignee, due, type)
 ```
 
 ```python
@@ -588,6 +603,16 @@ class ExtractionResult(BaseModel):
     nodes: list[KBNode]
     confidence_breakdowns: dict[UUID, ConfidenceBreakdown]  # node.id → breakdown
     failed_concept_types: list[ConceptType] = []            # types whose extraction failed entirely
+    nodes_by_type: dict[ConceptType, int] = {}              # convenience count of nodes per type
+
+class ResolutionResult(BaseModel):
+    job_id: str
+    relationships: list[KBRelationship]
+    failed_sources: list[FailedResolutionSource]            # nodes whose resolution failed (retries exhausted)
+
+class FailedResolutionSource(BaseModel):
+    node_id: UUID
+    concept_type: ConceptType
 ```
 
 `ExtractionResult` is the output of the extraction pass and the payload returned by `GET /jobs/{id}/results` while a job is in `AWAITING_REVIEW`. Relationships are produced in a separate `ResolutionResult` after node approval (see §5).
@@ -614,23 +639,33 @@ Weights come from `ExtractionConfig.confidence_weights`. When verification is di
 
 ```
 heuristics_score = (
-    0.4 * quote_length_signal(quote_anchors)           # based on anchor coverage; saturates at 200 chars total
-  + 0.4 * title_specificity(title)                     # 1.0 if specific, 0.5 if generic, 0.0 if empty
-  + 0.2 * directness(description)                      # 1.0 if direct, 0.5 if passive/vague, 0.0 if absent
+    0.3 * quote_length_signal(quote_anchors)           # word-count based; saturates at 35 words
+  + 0.3 * title_specificity(title)                     # composite: NE presence + qualifier + word count
+  + 0.4 * directness(description)                      # multiplicative penalty for hedging/passive/future tense
 )
 ```
 
 `title_specificity` and `directness` are rule-based classifiers — no model calls. Both are implemented using spaCy's dependency parser and NER (no LLM required). The formula, sub-scores, and weights are fixed — implementation must match them exactly, as `seshat eval` calibrates against this contract.
 
-**`title_specificity` scoring:**
-- **1.0 (specific)** — title identifies a named component or technology (spaCy NER labels `ORG`/`PRODUCT`, or CamelCase/hyphenated token pattern) **and** contains a qualifier phrase (preposition or subordinating conjunction: "for", "when", "instead of", "via", "using").
-- **0.5 (generic)** — title has a named component without a qualifier, or a qualifier without a named component.
-- **0.0 (empty)** — title is absent, whitespace-only, or solely punctuation.
+**`quote_length_signal` scoring:**
+- Continuous signal in [0, 1]; based on word count of the source quote, saturating at 35 words.
 
-**`directness` scoring:**
-- **1.0 (direct)** — description has an active-voice main verb with a direct object (spaCy `dobj`/`obj` dependency arc on an active subject) and no hedging tokens ("should", "might", "could", "may", "possibly", "consider").
-- **0.5 (passive/vague)** — description is present but uses passive voice (spaCy `auxpass`/`nsubjpass`), contains hedging tokens, or has a verb with no object.
-- **0.0 (absent)** — description is empty or whitespace-only.
+**`title_specificity` scoring (continuous composite):**
+```
+title_specificity = 0.45 * has_named_entity + 0.35 * has_qualifier + 0.20 * word_count_signal
+```
+- `has_named_entity` (0 or 1) — spaCy NER labels `ORG`/`PRODUCT`, CamelCase tokens, or domain tech-term lexicon match.
+- `has_qualifier` (0 or 1) — prepositional phrase or adverbial clause on the root verb.
+- `word_count_signal` — continuous in [0, 1], saturates at 8 words.
+
+**`directness` scoring (multiplicative penalty):**
+- Starts at 1.0; each penalty multiplied in:
+  - × 0.5 if hedging tokens present ("should", "might", "could", "may", "would", etc.)
+  - × 0.75 if passive voice detected (spaCy `auxpass`/`nsubjpass`)
+  - × 0.75 if future tense detected ("will", "shall")
+  - × 0.75 if no direct object or complement on the root verb
+
+> **Note:** the original spec defined bucketed (0.0 / 0.5 / 1.0) title_specificity and directness scoring. The implementation uses continuous composite / multiplicative formulas which are more nuanced and better suited to calibration. The `seshat eval` gate calibrates against the implemented formula, not the original buckets.
 
 **Active signals per configuration:**
 
@@ -643,6 +678,7 @@ The `verification=None` combination is the weakest: no verification agent. Valid
 
 ```python
 class ConfidenceBreakdown(BaseModel):
+    verification_enabled: bool           # True when a VerificationConfig is present
     verification: float | None = None    # None when verification agent not configured
     heuristics: float                    # always present
     final: float                         # normalised weighted sum per formula above; echoes KBNode.confidence
@@ -654,24 +690,13 @@ Transcript text and retrieved KB context are untrusted inputs injected into agen
 
 ### Chunking
 
-**MVP:** TextTiling (NLTK implementation). Detects topic-shift boundaries in the transcript and produces variable-length, topically coherent chunks. Requires no model calls. `max_chunk_count` in `ExtractionConfig` is a hard ceiling to prevent O(agents × chunks) cost blowup. TextTiling tuning parameters (`w`, `k`) are implementation details.
+**MVP — no chunking:** the full transcript is passed to each agent in a single call. The model's context window (200k tokens for `claude-sonnet-4-6`) is large enough for typical meeting transcripts. `max_total_input_tokens` and `max_total_output_tokens` enforce aggregate cost caps across all agent calls.
 
-> **Hypothesis, not guarantee:** TextTiling was designed for expository prose. Its suitability for meeting transcripts — which contain interruptions, backtracking, and mid-sentence topic drift — is unvalidated. The chunking sanity check in §12 must be completed before extraction metrics are interpreted. If the sanity check reveals systematic boundary errors, replace TextTiling with **`RecursiveCharacterTextSplitter`** (LangChain, `langchain-text-splitters`) as an immediate fallback — 500-token windows, 100-token overlap, markdown-aware separator hierarchy (`\n\n`, `\n`, ` `, `""`). No model calls, predictable boundaries, no dependency on transcript structure. Diarization and semantic chunking remain v2 options once production audio is available.
+**Deduplication (within-meeting):** after all agents complete, `_PendingNode` objects are deduplicated before being built into `KBNode`. The merge criterion is title exact-match + type equality: two `_PendingNode` objects of the same `ConceptType` with identical normalised titles (lowercased, whitespace-collapsed) are the same concept — the later one (higher position in agent output order) is kept, the earlier discarded. No `SUPERSEDES` relationship is created within a single job — `SUPERSEDES` is reserved for cross-meeting evolution only.
 
-Agents run per chunk. Results are deduplicated and merged before returning. The merge criterion is:
+> **Note from original spec:** a cosine-similarity fallback (threshold 0.85) was planned as a secondary merge criterion. This is **not implemented in MVP** — title exact-match is the only deduplication signal. The cosine-similarity fallback and associated merge test cases in the eval corpus are deferred until chunking is introduced, at which point cross-chunk deduplication becomes the primary use case.
 
-1. **Primary — title exact-match + type equality:** two nodes of the same `ConceptType` with identical normalised titles (lowercased, whitespace-collapsed) are unconditionally the same concept. No embedding call needed.
-2. **Fallback — cosine similarity:** two nodes of the same `ConceptType` whose titles are not exact-match but whose embeddings (title + description) exceed a cosine similarity threshold (default 0.85) are considered the same concept. Uses the same embedding model as `RAGConfig.embedding_provider` — no additional model needed.
-
-Two nodes that satisfy either criterion are merged: the final settled position is kept — "settled" means the node with the highest chunk index (later in the transcript is assumed to reflect the settled discussion outcome; chunk start-token position as tiebreaker if ambiguous). The earlier node is discarded. No `SUPERSEDES` relationship is created within a single job — `SUPERSEDES` is reserved for cross-meeting evolution only.
-
-> **Asymmetric failure modes:** a threshold too high leaves duplicate nodes for the same decision, which the resolution pass may then flag as spurious CONFLICTS. A threshold too low silently collapses distinct decisions about different components into one node. The eval corpus must include both near-duplicate pairs (should merge) and near-distinct pairs (should not merge) to validate the threshold — see §12, Labelled Corpus.
-
-> **Trade-off:** within-meeting deduplication prioritises a clean final KB over preserving debate history. The reversal is intentionally discarded — only the final settled position survives. The `quote_anchors` on the surviving node must reflect the final position, not the earlier reversed one. The count of within-meeting merges per job is logged to MLflow as a quality signal: a job with many merges may indicate a contentious or poorly-transcribed meeting worth manual review.
-
-**v2 upgrade path (if `RecursiveCharacterTextSplitter` fallback is also insufficient):**
-- **Diarization-based splitting:** AssemblyAI speaker diarization splits on speaker turn boundaries. Highest coherence for multi-speaker meetings; requires production audio samples to validate quality.
-- **Semantic chunking:** embedding-based boundary detection (e.g. LangChain `SemanticChunker`). Best quality but adds a pre-extraction embedding pass — justify against the eval corpus before adopting.
+**v2 — chunking (when needed):** if transcripts regularly exceed model context limits or per-call cost becomes a concern, introduce TextTiling (NLTK) as the first chunking strategy. Per-chunk agent calls produce multiple `_PendingNode` objects for the same concept; cross-chunk deduplication must be extended with the cosine-similarity fallback at that point. If TextTiling boundaries are poor (meeting-transcript prose is not well-served by topic-shift detection), fall back to `RecursiveCharacterTextSplitter` (LangChain, 500-token windows, 100-token overlap). Semantic chunking and diarization-based splitting remain v2+ options requiring production audio to validate.
 
 ### Status Assignment
 
@@ -738,7 +763,16 @@ A hard token cap (`max_hint_tokens`) is enforced after assembly: if the serialis
 
 ### Resolution
 
-Resolution is two parallel LLM calls to the orchestrator — both receive the same context (all new nodes + their KB candidates) and run concurrently:
+Resolution is two parallel LLM calls routed through a `ResolutionRegistry` — both pass run concurrently. The registry fans out to typed agents:
+
+- `SameTypeResolutionRegistry` — one `BaseSameTypeResolutionAgent` per `ConceptType`; validates anti-symmetry (`supersedes`, `blocks`, `depends_on` cannot have A→B and B→A simultaneously) and mutual exclusion (`supersedes` + `conflicts_with` or `supersedes` + `amends` on the same pair are invalid).
+- `CrossTypeResolutionRegistry` — one `BaseCrossTypeResolutionAgent` per allowed `(source_type, target_type)` pair (9 pairs total: all permitted combinations from the relationship schema table below).
+
+Each agent receives per-source candidate lists (`per_source_targets: dict[UUID, list[KBNode]]`) from the RAG retrieval step, runs one LLM call per source node, and collects `ResolvedRelationship` objects. Global concurrency is bounded by `ResolutionConfig.max_global_calls`; per-agent concurrency by `ResolutionConfig.max_concurrent_calls`. Sources that exhaust retries are collected as `FailedResolutionSource` records and included in `ResolutionResult.failed_sources`.
+
+**LLM interface:** agents use positional indices (0 = source node, 1+ = target nodes) in prompts to avoid UUID parsing complexity in LLM output. The agent maps indices back to UUIDs after the call.
+
+Resolution is two parallel LLM calls routed through the registry — both run concurrently:
 
 - **Call 1 — same-type resolution:** for each concept type, classifies each new node against its KB candidates as `SUPERSEDES`, `AMENDS`, `CONFLICTS_WITH`, or no relationship. The resolution agent prompt must include the following operational criteria — without them the agent will guess and produce inconsistent history:
 
@@ -867,7 +901,7 @@ class S3BlobStore:
 
 KB nodes and relationships are stored in the `ops` schema alongside the operational tables. Two tables, managed by Alembic (same migration path as `ops.jobs`, `ops.api_keys`, and `ops.init_runs`):
 
-**`ops.kb_nodes`** — one row per `KBNode`. Columns: `node_id` (PK), `schema_version`, `job_id`, `type` (ConceptType), `title`, `description`, `confidence`, `quote_anchors` (JSONB), `status` (NodeStatus), `state` (NodeState, default `current`), `chunk_index` (INT, nullable), `metadata` (JSONB), `created_at` (TIMESTAMPTZ).
+**`ops.kb_nodes`** — one row per `KBNode`. Columns: `node_id` (PK), `schema_version`, `job_id`, `type` (ConceptType), `title`, `description`, `confidence`, `quote_anchors` (JSONB), `status` (NodeStatus), `state` (NodeState, default `current`), `metadata` (JSONB), `created_at` (TIMESTAMPTZ).
 
 **`ops.kb_relationships`** — one row per `KBRelationship`. Columns: `source_id` (FK → kb_nodes), `target_id` (FK → kb_nodes), `rel_type` (RelationshipType), `job_id` (UUID4, which job created this relationship), `created_at` (TIMESTAMPTZ). Composite PK on `(source_id, target_id, rel_type)`. Index on `target_id` for inbound traversal.
 
@@ -1026,7 +1060,7 @@ class JobResponse(BaseModel):
 
 **`stage_progress` examples per stage:**
 - `TRANSCRIBING` — `"Transcribing audio"` (AssemblyAI does not expose per-call progress in the polling API)
-- `EXTRACTING` — `"Extracting: {n}/{total} agents complete"`. `n` counts completed individual agent calls (each chunk × concept_type pair is one call). `total` is `len(concept_types) × chunk_count`, computed once before dispatching the fan-out — e.g. 4 concept types × 12 chunks = 48 total; progress increments per completed call.
+- `EXTRACTING` — `"Extracting: {n}/{total} agents complete"`. `n` counts completed individual agent calls (one per concept_type). `total` is `len(concept_types)` — e.g. 4 concept types = 4 total; progress increments per completed call. When chunking is introduced, `total` becomes `len(concept_types) × chunk_count`.
 - `AWAITING_REVIEW` — `"{n} nodes pending review"`
 - `WRITING` — `"Writing nodes to KB"`
 
@@ -1115,8 +1149,16 @@ The Streamlit UI retry button always uses `POST /jobs` with the original `idempo
 
 ```python
 class KBNodeEdit(BaseModel):
-    title: str
-    description: str
+    title: str | None = None
+    description: str | None = None
+    # metadata fields the pipeline does not extract; operators may fill these in
+    participants: list[str] | None = None
+    team: str | None = None
+    project: str | None = None
+    domain: str | None = None
+
+    # model_validator: at least one field must be non-None
+    # (an all-None edit is a no-op and rejected with a validation error)
 
 class NodeDecision(BaseModel):
     node_id: str
@@ -1128,16 +1170,47 @@ class BulkApproveRule(BaseModel):
     threshold: float                           # approve all PENDING_REVIEW nodes with confidence >= threshold
     exclude: list[str] | None = None           # skip these node_ids even if confidence >= threshold
 
+class ManualNodeCreate(BaseModel):
+    type: ConceptType
+    title: str
+    description: str
+    source_quote: str | None = None        # verbatim excerpt from the transcript
+    blob_key: str | None = None            # blob storage key of the transcript; required if source_quote is provided
+    participants: list[str] | None = None
+    team: str | None = None
+    project: str | None = None
+    domain: str | None = None
+    concept_fields: dict[str, Any] | None = None   # type-specific fields (assignee, due, etc.)
+
+    # model_validator: source_quote and blob_key are co-required —
+    # providing one without the other is a validation error
+
 class ApproveRequest(BaseModel):
     approve_above_threshold: BulkApproveRule | None = None
     decisions: list[NodeDecision] | None = None
+    created_nodes: list[ManualNodeCreate] | None = None   # operator only; reviewer → HTTP 403
 ```
 
-**Processing order:**
-1. `approve_above_threshold` runs first — approves all `PENDING_REVIEW` nodes with `confidence >= threshold`, skipping any `exclude`d IDs. Sets `approval_method=ApprovalMethod.BULK` on affected nodes.
-2. `decisions` runs second — per-node overrides. Can approve, reject, or edit any node regardless of whether the bulk rule already touched it. Sets `approval_method=ApprovalMethod.INDIVIDUAL` on affected nodes.
+Manually created nodes get: `confidence=1.0`, `quote_anchors` computed from `source_quote` + `blob_key` if both provided (falls back to `[]` with a `logging.warning` if the quote cannot be located), `status=APPROVED`, `approval_method=MANUAL`, `ingestion_source=MANUAL`, `approved_by=<user_id>`, `approved_at=<UTC now>`.
 
-In both cases `approved_by` is set to the requesting user's `user_id` and `approved_at` to the current UTC timestamp.
+**Processing order:**
+1. **Role check:** if `created_nodes` is non-empty → requesting user must be `operator`, else HTTP 403 with message `"created_nodes requires operator role"`. Runs before any processing.
+2. `approve_above_threshold` runs next — approves all `PENDING_REVIEW` nodes with `confidence >= threshold`, skipping any `exclude`d IDs. Sets `approval_method=ApprovalMethod.BULK` on affected nodes.
+3. `decisions` runs next — per-node overrides. Can approve, reject, or edit any node regardless of whether the bulk rule already touched it. Sets `approval_method=ApprovalMethod.INDIVIDUAL` on affected nodes. `KBNodeEdit` patches only the fields that are set — unset fields leave the existing node value intact.
+4. **Build `KBNode` objects from `created_nodes`** — constructed directly from the payload; no LLM calls.
+5. **Merge:** approved LLM nodes + manually created nodes → full node set for resolution.
+6. **Resolution pass** — orchestrator receives the full merged set as `new_nodes`; manual nodes are treated identically to LLM-extracted nodes (RAG retrieval + relationship resolution).
+7. **WRITING** — KB + vector store writes (unchanged).
+
+In steps 2–3, `approved_by` is set to the requesting user's `user_id` and `approved_at` to the current UTC timestamp.
+
+**Role enforcement summary:**
+
+| Field | Minimum role |
+|---|---|
+| `approve_above_threshold` | `reviewer` |
+| `decisions` | `reviewer` |
+| `created_nodes` | `operator` |
 
 Once all `pending_review` nodes have a decision, the pipeline resumes to `WRITING`. If all nodes were rejected (zero approved nodes), the pipeline still transitions to `WRITING` — the writing stage writes zero nodes and the job reaches `DONE` with an empty result. This is valid: a reviewer may legitimately reject all extracted nodes if the meeting produced no recordable decisions. The `DONE` response body will contain an empty `nodes` list; no special terminal state is introduced.
 
@@ -1167,8 +1240,9 @@ This is the primary correctness gate for the knowledge base. For each `PENDING_R
 - source quote inline (the transcript excerpt grounding this node, resolved from `quote_anchors`)
 - `ConfidenceBreakdown`: final score + per-component breakdown (verification / heuristics)
 - relationships from `ExtractionResult.relationships` where `source_id == node.id` (read-only), with a hyperlink to each target node in Screen 4
-- Per-node action: approve / reject / edit (opens an inline form pre-filled with current `title` + `description`)
+- Per-node action: approve / reject / edit (opens an inline form pre-filled with current `title` + `description`; also exposes optional metadata fields `participants`, `team`, `project`, `domain`)
 - Bulk approve rule: threshold slider + optional exclude list → maps to `BulkApproveRule` in `ApproveRequest`
+- **Manual node creation panel** (operator role only — hidden for `reviewer`): form with `type` dropdown (required), `title` (required), `description` (required), optional `source_quote` + `blob_key` (co-required — UI disables "Add node" if exactly one is filled), optional `participants`, `team`, `project`, `domain`. "Add node" appends to an in-memory list shown below the form; each entry has a remove button. Submitted as `created_nodes` in the `ApproveRequest` payload — no separate API call.
 - Submit decisions button → `POST /jobs/{id}/approve`
 
 **Screen 4 — Knowledge base query**
@@ -1316,7 +1390,7 @@ A small set of **hand-crafted synthetic transcripts** with manually annotated ex
 - **Location:** `tests/eval/corpus/` — versioned with the codebase
 - **Format:** one YAML file per transcript: `content` (the transcript text) + `expected_nodes: list[KBNode]` + `expected_relationships: list[KBRelationship]`
 - **Adversarial transcripts** (add before first real-data run): at minimum one transcript with confident-sounding but unsupported claims, one with ambiguous pronouncements that could be misclassified across `ConceptType`s, and one with injected instruction-like text in the transcript body. These must be hand-crafted and annotated. OOD testing (non-technical jargon, highly ambiguous transcripts) deferred to v2 when real data is available.
-- **Merge test cases** (required before release gate): at least 3 pairs of nodes that **should** merge (same concept, paraphrased titles — e.g. `"PostgreSQL as DB"` and `"We chose Postgres"`) and 3 pairs that **should not** merge (same topic, distinct scope — e.g. `"PostgreSQL for operational DB"` and `"PostgreSQL for analytics pipeline"`). These must be embedded in transcripts where both nodes are extracted by the pipeline, then verified to merge or not-merge correctly under the 0.85 cosine similarity threshold. The release gate is not passed until all 6 pairs produce the correct merge decision.
+- **Merge test cases** (required before chunking is introduced): at least 3 pairs of nodes that **should** merge (same concept, identical normalised title — deduplication is title exact-match only in MVP) and 3 pairs that **should not** merge (same topic, distinct titles). The release gate does not require cosine-similarity merge tests in the no-chunking MVP — these become relevant once multi-chunk extraction is introduced.
 
 ### Precision / Recall Targets
 
@@ -1344,8 +1418,6 @@ Relationship extraction is evaluated separately — high node precision/recall d
 The eval corpus format is extended to include `expected_relationships: list[KBRelationship]` alongside `expected_nodes` — both are required fields in the YAML corpus files.
 
 ### Threshold Calibration
-
-> **Pre-condition — chunking sanity check:** before running the threshold sweep, print the TextTiling chunk boundaries for each eval transcript and manually verify that boundaries land at genuine topic shifts. Record the result (pass/fail per transcript). If two or more transcripts show systematic mis-segmentation, switch to fixed-size overlapping chunks (see §4, Chunking) and re-verify before proceeding. Extraction metrics are meaningless if the chunks are incoherent — do not skip this step.
 
 1. Run the extraction pipeline over the labelled corpus across a sweep of `confidence_threshold` values (0.5 → 0.9 in 0.05 steps).
 2. Plot the precision-recall curve **per `ConceptType`** — a single global curve conflates types with opposing biases (RISK is recall-biased, DECISION is precision-biased) and will sacrifice one for the other.
@@ -1428,3 +1500,4 @@ Any change to an agent system prompt, model, or confidence scoring logic must be
 | Job state push notifications (webhook callbacks + SSE stream) | MVP has no inbound-HTTP consumer — Streamlit polls `GET /jobs/{id}`. Add `callback_url` + `POST` fan-out when an external consumer (CI, Teams bot, etc.) materialises, and `GET /jobs/{id}/stream` (SSE) when the UI matures enough to want low-latency progress. |
 | Post-approval node correction API (`PATCH /graph/{node_id}`) | Reviewers edit at approval time via `ApproveRequest.decisions[].edited_content`; already-approved nodes require a direct Postgres update + vector re-embed on MVP. The endpoint earns its keep once the KB moves to Notion/Neo4j. Ships with `NodeMetadata.last_edited_by` / `last_edited_at` at that point. |
 | Reranking (cross-encoder pass after vector search) | Skipped in MVP — vector search returns top-K directly and feeds graph traversal. Adopt a reranker only if the retrieval baseline (`seshat eval`) shows top-K-only recall@5 is insufficient. At that point, add `rerank_model: str | None` to `RAGConfig` and a second-stage `top_n` cut. |
+| Transcript chunking (TextTiling / RecursiveCharacterTextSplitter) | Full transcript passed to agents in MVP — context window (200k tokens) is sufficient. Introduce chunking if per-call cost becomes a concern or transcripts regularly exceed context limits. When introduced, add `max_chunk_count` and `max_transcript_chunk_tokens` to `ExtractionConfig` and extend deduplication with the cosine-similarity fallback. |

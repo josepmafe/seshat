@@ -5,10 +5,10 @@ description = "GenAI pipeline for structured meeting knowledge bases"
 requires-python = ">=3.13"
 dependencies = [
     # Data & persistence (Postgres, migrations, S3)
-    "aioboto3>=15.5",
+    "aiobotocore>=3.7",
     "alembic>=1.18",
     "asyncpg>=0.31",
-    "boto3>=1.40",
+    "boto3>=1.43",
     "langchain-postgres>=0.0.17",
     "psycopg[binary]>=3.3.4",
     # Config & validation
@@ -20,9 +20,8 @@ dependencies = [
     "spacy>=3.8",
     "langchain>=1.2",
     "langchain-anthropic>=1.4.3",
-    "langchain-aws>=1.1.0",
+    "langchain-aws>=1.4.2",
     "langchain-openai>=1.2",
-    "nltk>=3.9",
     # Observability / eval
     "mlflow[langchain]>=3.12.0",
     # Web & CLI
@@ -40,8 +39,8 @@ dev = [
     { include-group = "complexity" },
 ]
 lint = [
-    "boto3-stubs[secretsmanager]>=1.40",  # keep in sync with boto3
-    "types-aioboto3[s3]>=15.5",             # keep in sync with aioboto3
+    "boto3-stubs[secretsmanager]>=1.43",  # keep in sync with boto3
+    "types-aiobotocore-s3>=3.7",          # keep in sync with aiobotocore
     "mypy>=1.20",
     "pre-commit>=4.6",
     "ruff>=0.15",
@@ -93,13 +92,36 @@ select = [
     "PT",    # flake8-pytest-style — pytest idioms
     "RUF",   # Ruff-native — catch-all extras
 ]
+ignore = [
+    # PEP 695 type-parameter syntax (class Foo[T] / def f[T]) is incompatible
+    # with `from __future__ import annotations`, which is required for forward
+    # references in files that use Generic[T]. Suppressed until the codebase
+    # can be migrated uniformly.
+    "UP046",
+    "UP047",
+]
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+
+[tool.ruff.lint.per-file-ignores]
+# Agent files contain long LLM prompt strings that cannot be broken without
+# backslash continuations, which are not semantically cleaner than long lines.
+"src/seshat/agents/**" = ["E501"]
+"tests/integration/agents/**" = ["E501"]
+
 [tool.mypy]
 files = ["src"]
 disallow_untyped_defs = true
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = "--cov=src/seshat --cov-report=term-missing"
+addopts = '--cov=src/seshat --cov-report=term-missing -m "not llm"'
 asyncio_mode = "auto"
-markers = ["integration: requires external services (Postgres, LocalStack, MLflow)"]
+markers = [
+    "integration: requires external services (Postgres, LocalStack, MLflow, LLM APIs, etc.)",
+    "llm: requires a live LLM API key (any provider); subset of integration",
+    "agents: requires a live LLM API key; subset of llm",
+    "embedding: requires an embeddings API key; subset of llm",
+]
 testpaths = ["tests"]
