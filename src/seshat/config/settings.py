@@ -144,9 +144,6 @@ class ExtractionConfig(BaseConfig):
     resolution_timeout_seconds: float | None = Field(
         default=None, gt=0, description="Optional wall-clock timeout for a full resolution run; None means no limit."
     )
-    result_cache_enabled: bool = Field(
-        default=False, description="When True, extraction results are cached to avoid redundant LLM calls."
-    )
     grouped_identification_types: set[ConceptType] = Field(
         default_factory=lambda: {ConceptType.DECISION},
         description="Concept types for which identified items are passed through the grouping step.",
