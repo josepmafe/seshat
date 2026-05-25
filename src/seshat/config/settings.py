@@ -1,6 +1,7 @@
 import math
+from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from seshat.models.enums import (
@@ -241,6 +242,66 @@ class TranscriptionConfig(BaseConfig):
 class ObservabilityConfig(BaseConfig):
     mlflow_tracking_uri: str = "http://mlflow:5000"
     mlflow_experiment_name: str = "seshat"
+
+
+class EvalConfig(BaseConfig):
+    corpus_base_dir: Path = Field(
+        description=("Root directory for eval corpora. Expected subdirs: identification/, resolution/, retrieval/.")
+    )
+    gate_path: Path = Field(description="Full path (including filename) for the GateResult JSON output.")
+    observability: ObservabilityConfig = Field(
+        default_factory=lambda: ObservabilityConfig(mlflow_experiment_name="seshat-eval")
+    )
+    run_identification: bool = Field(
+        default=True,
+        description=(
+            "Run the identification eval pass, i.e., "
+            "check if the pipeline extracted the right nodes from the transcript."
+        ),
+    )
+    run_resolution: bool = Field(
+        default=True,
+        description=(
+            "Run the resolution eval pass, i.e., "
+            "check if the pipeline inferred the correct relationships between nodes."
+        ),
+    )
+    run_retrieval: bool = Field(
+        default=True,
+        description=(
+            "Run the retrieval eval pass, i.e., "
+            "check if vector search surfaces the right nodes (similar and related neighbors)."
+        ),
+    )
+    nli_scorer_enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable NLI-based faithfulness scoring, i.e., check if the extracted information is faithful to the source."
+        ),
+    )
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def identification_corpus_dir(self) -> Path:
+        return self.corpus_base_dir / "identification"
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def resolution_corpus_dir(self) -> Path:
+        return self.corpus_base_dir / "resolution"
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def retrieval_corpus_dir(self) -> Path:
+        return self.corpus_base_dir / "retrieval"
+
+    @model_validator(mode="after")
+    def _validate_paths(self) -> "EvalConfig":
+        if not self.corpus_base_dir.is_dir():
+            raise ValueError(f"corpus_base_dir does not exist or is not a directory: {self.corpus_base_dir}")
+        if self.gate_path.suffix != ".json":
+            raise ValueError(f"gate_path must be a .json file, got: {self.gate_path}")
+        return self
 
 
 class SecretsConfig(BaseConfig):
