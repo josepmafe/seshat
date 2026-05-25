@@ -4,3 +4,11 @@ except ImportError as exc:
     raise ImportError(
         "The seshat.eval package requires optional dependencies that are not installed. Run: uv sync --group eval"
     ) from exc
+
+from seshat.eval.identification_runner import IdentificationEvalRunner
+from seshat.eval.models import GateResult
+
+__all__ = [
+    "GateResult",
+    "IdentificationEvalRunner",
+]
