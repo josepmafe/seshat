@@ -7,8 +7,12 @@ except ImportError as exc:
 
 from seshat.eval.identification_runner import IdentificationEvalRunner
 from seshat.eval.models import GateResult
+from seshat.eval.resolution_runner import ResolutionEvalRunner
+from seshat.eval.retrieval_runner import RetrievalEvalRunner
 
 __all__ = [
     "GateResult",
     "IdentificationEvalRunner",
+    "ResolutionEvalRunner",
+    "RetrievalEvalRunner",
 ]
