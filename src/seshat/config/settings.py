@@ -188,6 +188,10 @@ class VectorIndexConfig(BaseConfig):
 class RAGConfig(BaseConfig):
     enabled: bool = True
     top_k: int = Field(default=5, gt=0)
+    # TODO: calibrate against labeled retrieval corpus; 0.5 is a placeholder for text-embedding-3-small cosine scores
+    min_score: float = Field(
+        default=0.5, ge=0, le=1, description="Minimum similarity score [0, 1] to retain a retrieved result."
+    )
     max_context_tokens: int = Field(
         default=4000, gt=0, description="Maximum tokens the retrieved context may occupy in the prompt."
     )
@@ -278,6 +282,13 @@ class EvalConfig(BaseConfig):
         description=(
             "Enable NLI-based faithfulness scoring, i.e., check if the extracted information is faithful to the source."
         ),
+    )
+    # TODO: calibrate against labeled retrieval corpus; 0.5 is a placeholder for text-embedding-3-small cosine scores
+    retrieval_score_threshold: float = Field(
+        default=0.5,
+        ge=0,
+        le=1,
+        description="Minimum similarity score [0, 1] forwarded to the vector store during retrieval eval.",
     )
 
     @computed_field  # type: ignore[misc]
