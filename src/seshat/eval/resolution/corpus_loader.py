@@ -14,16 +14,25 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def load_resolution_corpus(corpus_dir: Path) -> list[ResolutionCorpusExample]:
+def load_corpus(corpus_dir: Path) -> list[ResolutionCorpusExample]:
     examples = []
     for path in sorted(corpus_dir.glob("*.yaml")):
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        examples.append(ResolutionCorpusExample(**data))
+        ex = ResolutionCorpusExample(**data)
+        _validate_example(ex)
+        examples.append(ex)
     return examples
 
 
-def build_kb_nodes_with_slug_map(
+def _validate_example(ex: ResolutionCorpusExample) -> None:
+    known = {n.id for n in ex.source_nodes + ex.kb_nodes}
+    missing = [(r.source, r.target) for r in ex.expected_relations if r.source not in known or r.target not in known]
+    if missing:
+        raise ValueError(f"corpus_id {ex.corpus_id!r}: expected_relations reference unknown slugs: {missing}")
+
+
+def build_kb_nodes(
     example: ResolutionCorpusExample,
 ) -> tuple[dict[str, KBNode], dict[str, UUID]]:
     """Build KBNode objects for all nodes in the example; return nodes dict and slug→UUID map."""

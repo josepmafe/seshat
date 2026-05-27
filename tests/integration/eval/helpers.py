@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from seshat.agents.identification.registry import IdentificationAgentRegistry
 from seshat.agents.resolution.registry import ResolutionRegistry
 from seshat.config.settings import ExtractionConfig
-from seshat.eval.identification_runner import IdentificationEvalRunner
-from seshat.eval.resolution_runner import ResolutionEvalRunner
+from seshat.eval.identification.runner import IdentificationEvalRunner
+from seshat.eval.resolution.runner import ResolutionEvalRunner
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 from tests.integration.helpers import cheap_identification_config, cheap_resolution_config, make_cheap_llm
 
 if TYPE_CHECKING:
     from seshat.config.settings import EvalConfig
+
+
+CORPUS_BASE_DIR = Path(__file__).parent.parent.parent.parent / "data" / "eval" / "test_corpus"
 
 
 class _NoopBlobStore:

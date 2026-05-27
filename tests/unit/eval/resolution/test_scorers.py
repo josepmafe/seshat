@@ -1,6 +1,6 @@
 import pytest
 
-from seshat.eval.scorers import resolution_scorer
+from seshat.eval.resolution.scorers import scorer
 
 SRC = "00000000-0000-0000-0000-000000000001"
 TGT = "00000000-0000-0000-0000-000000000002"
@@ -30,16 +30,19 @@ def _expectations(relations: list[dict], slug_to_uuid: dict | None = None) -> di
 
 
 class TestResolutionScorer:
-    def test_returns_feedback_list(self):
-        feedbacks = resolution_scorer(
+    def test_both_empty_precision_is_one(self):
+        # tp=fp=fn=0: the guard yields precision=1.0, recall=1.0 by convention
+        feedbacks = scorer(
             inputs={},
             outputs={"relationships": []},
             expectations=_expectations([]),
         )
-        assert isinstance(feedbacks, list)
+        by_name = {f.name: f.value for f in feedbacks}
+        assert by_name["precision"] == pytest.approx(1.0)
+        assert by_name["recall"] == pytest.approx(1.0)
 
     def test_perfect_precision_recall(self):
-        feedbacks = resolution_scorer(
+        feedbacks = scorer(
             inputs={},
             outputs={"relationships": [_rel(SRC, TGT, "amends")]},
             expectations=_expectations([{"source": "src", "target": "tgt", "rel_type": "amends"}]),
@@ -49,7 +52,7 @@ class TestResolutionScorer:
         assert by_name["recall"] == pytest.approx(1.0)
 
     def test_missed_relation_zero_recall(self):
-        feedbacks = resolution_scorer(
+        feedbacks = scorer(
             inputs={},
             outputs={"relationships": []},
             expectations=_expectations([{"source": "src", "target": "tgt", "rel_type": "amends"}]),
@@ -58,7 +61,7 @@ class TestResolutionScorer:
         assert by_name["recall"] == pytest.approx(0.0)
 
     def test_spurious_relation_zero_precision(self):
-        feedbacks = resolution_scorer(
+        feedbacks = scorer(
             inputs={},
             outputs={"relationships": [_rel(SRC, TGT, "supersedes")]},
             expectations=_expectations([]),
@@ -67,7 +70,7 @@ class TestResolutionScorer:
         assert by_name["precision"] == pytest.approx(0.0)
 
     def test_wrong_rel_type_is_fp_and_fn(self):
-        feedbacks = resolution_scorer(
+        feedbacks = scorer(
             inputs={},
             outputs={"relationships": [_rel(SRC, TGT, "supersedes")]},
             expectations=_expectations([{"source": "src", "target": "tgt", "rel_type": "amends"}]),

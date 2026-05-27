@@ -14,16 +14,25 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def load_retrieval_corpus(corpus_dir: Path) -> list[RetrievalCorpusExample]:
+def load_corpus(corpus_dir: Path) -> list[RetrievalCorpusExample]:
     examples = []
     for path in sorted(corpus_dir.glob("*.yaml")):
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        examples.append(RetrievalCorpusExample(**data))
+        ex = RetrievalCorpusExample(**data)
+        _validate_example(ex)
+        examples.append(ex)
     return examples
 
 
-def build_retrieval_kb_nodes(
+def _validate_example(ex: RetrievalCorpusExample) -> None:
+    known = {n.id for n in ex.candidate_nodes}
+    missing = [s for s in ex.expected_relevant_ids if s not in known]
+    if missing:
+        raise ValueError(f"corpus_id {ex.corpus_id!r}: expected_relevant_ids {missing} not found in candidate_nodes")
+
+
+def build_kb_nodes(
     example: RetrievalCorpusExample,
 ) -> tuple[KBNode, list[KBNode], dict[str, UUID]]:
     """Return (query_kb_node, candidate_kb_nodes, slug→UUID map)."""

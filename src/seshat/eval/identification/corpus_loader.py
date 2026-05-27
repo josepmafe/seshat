@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 _BASE_CORPUS_FIELDS: frozenset[str] = frozenset({"quote", "title", "description"})
 
 
-def load_identification_corpus(corpus_dir: Path) -> list[IdentificationCorpusExample]:
+def load_corpus(corpus_dir: Path) -> list[IdentificationCorpusExample]:
     examples = []
     for path in sorted(corpus_dir.glob("*.yaml")):
         with open(path, encoding="utf-8") as f:

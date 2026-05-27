@@ -1,7 +1,8 @@
-from seshat.eval.matcher import QUOTE_MATCH_THRESHOLD, MatchMethod, match_nodes
+from seshat.eval.identification.matcher import QUOTE_MATCH_THRESHOLD, MatchMethod, match_nodes
 from seshat.eval.models import IdentificationCorpusNode
 from seshat.models.enums import ConceptType, NodeStatus
 from tests.helpers import make_node
+from tests.unit.eval.identification.helpers import corpus_node
 
 TRANSCRIPT = (
     "We decided to use PostgreSQL for all operational data. "
@@ -10,15 +11,11 @@ TRANSCRIPT = (
 )
 
 
-def _corpus_node(quote: str, ctype: ConceptType, description: str = "A description.") -> IdentificationCorpusNode:
-    return IdentificationCorpusNode(quote=quote, type=ctype, title="T", description=description)
-
-
 class TestMatchNodes:
     def test_exact_match(self):
         quote = "We decided to use PostgreSQL for all operational data."
         predicted = [make_node(quote=quote, transcript=TRANSCRIPT, type=ConceptType.DECISION)]
-        expected = [_corpus_node(quote, ConceptType.DECISION)]
+        expected = [corpus_node(quote, ConceptType.DECISION)]
         result = match_nodes(TRANSCRIPT, expected, predicted)
         assert len(result.matched) == 1
         assert result.matched[0].match_score >= QUOTE_MATCH_THRESHOLD
@@ -28,7 +25,7 @@ class TestMatchNodes:
     def test_type_mismatch_is_not_a_match(self):
         quote = "We decided to use PostgreSQL for all operational data."
         predicted = [make_node(quote=quote, transcript=TRANSCRIPT, type=ConceptType.RISK)]
-        expected = [_corpus_node(quote, ConceptType.DECISION)]
+        expected = [corpus_node(quote, ConceptType.DECISION)]
         result = match_nodes(TRANSCRIPT, expected, predicted)
         assert len(result.matched) == 0
         assert len(result.missed) == 1
@@ -42,10 +39,35 @@ class TestMatchNodes:
         assert len(result.matched) == 0
 
     def test_missed_node(self):
-        expected = [_corpus_node("There is a risk that replication lag could affect reads.", ConceptType.RISK)]
+        expected = [corpus_node("There is a risk that replication lag could affect reads.", ConceptType.RISK)]
         result = match_nodes(TRANSCRIPT, expected, [])
         assert len(result.missed) == 1
         assert result.missed[0].quote == expected[0].quote
+
+    def test_both_empty_returns_empty_result(self):
+        result = match_nodes(TRANSCRIPT, [], [])
+        assert result.matched == []
+        assert result.missed == []
+        assert result.spurious == []
+
+    def test_greedy_claims_best_pair_first(self):
+        # Two expected nodes with distinct quotes; two predicted nodes where the
+        # first predicted matches the first expected with a higher score than the
+        # second predicted would. Greedy selection must assign each node once only.
+        quote_a = "We decided to use PostgreSQL for all operational data."
+        quote_b = "There is a risk that replication lag could affect reads."
+        expected = [
+            corpus_node(quote_a, ConceptType.DECISION),
+            corpus_node(quote_b, ConceptType.RISK),
+        ]
+        predicted = [
+            make_node(quote=quote_a, transcript=TRANSCRIPT, type=ConceptType.DECISION),
+            make_node(quote=quote_b, transcript=TRANSCRIPT, type=ConceptType.RISK),
+        ]
+        result = match_nodes(TRANSCRIPT, expected, predicted)
+        assert len(result.matched) == 2
+        assert len(result.missed) == 0
+        assert len(result.spurious) == 0
 
 
 class TestTitleFallback:

@@ -24,9 +24,12 @@ def upsert_gate(
     """Update only the supplied metric blocks; carry over the rest from the existing file."""
     if gate_path.exists():
         existing = read_gate(gate_path)
-        identification_metrics = identification_metrics or existing.identification_metrics
-        resolution_metrics = resolution_metrics or existing.resolution_metrics
-        retrieval_metrics = retrieval_metrics or existing.retrieval_metrics
+        if identification_metrics is None:
+            identification_metrics = existing.identification_metrics
+        if resolution_metrics is None:
+            resolution_metrics = existing.resolution_metrics
+        if retrieval_metrics is None:
+            retrieval_metrics = existing.retrieval_metrics
 
     result = GateResult(
         run_id=run_id,

@@ -54,8 +54,8 @@ class TestGateReadWrite:
 
 
 class TestGateResultPassed:
-    def test_all_none_passes(self):
-        assert GateResult(run_id="r").passed is True
+    def test_all_none_fails(self):
+        assert GateResult(run_id="r").passed is False
 
     def test_identification_all_targets_met(self):
         assert GateResult(run_id="r", identification_metrics=_passing_identification()).passed is True
@@ -75,6 +75,10 @@ class TestGateResultPassed:
 
     def test_retrieval_below_target_fails(self):
         assert GateResult(run_id="r", retrieval_metrics={"recall_at_5": 0.60, "precision_at_5": 0.80}).passed is False
+
+    def test_retrieval_low_precision_at_5_is_not_gated(self):
+        # precision_at_5 is tracked but deliberately not a gate condition
+        assert GateResult(run_id="r", retrieval_metrics={"recall_at_5": 0.75, "precision_at_5": 0.10}).passed is True
 
     def test_none_blocks_not_gated(self):
         assert (
