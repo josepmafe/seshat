@@ -11,7 +11,9 @@ import mlflow.genai
 import openai
 import pandas as pd
 
+from seshat.eval.cache import clear_cache_dir, read_or_run
 from seshat.eval.gate import upsert_gate
+from seshat.eval.models import RetrievalResult
 from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.retrieval.scorers import scorer
 from seshat.models.api import NodeFilter
@@ -81,6 +83,7 @@ class RetrievalEvalRunner:
             retrieval_metrics=retrieval_metrics,
         )
         mlflow.log_metrics({**retrieval_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
+        clear_cache_dir(self._config.retrieval_cache_dir)
         return gate
 
     async def _run_all_predictions(
@@ -88,7 +91,7 @@ class RetrievalEvalRunner:
         examples: list[RetrievalCorpusExample],
         example_nodes: dict[str, tuple[KBNode, list[KBNode], dict[str, UUID]]],
     ) -> dict[str, list[str]]:
-        cache: dict[str, list[str]] = {}
+        result_cache: dict[str, list[str]] = {}
         for ex in examples:
             query_node, candidate_kb_nodes, _ = example_nodes[ex.corpus_id]
             result = await read_or_run(

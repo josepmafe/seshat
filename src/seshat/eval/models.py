@@ -71,6 +71,13 @@ class RetrievalCorpusExample(BaseModel):
     expected_relevant_ids: list[str]  # slugs from candidate_nodes
 
 
+# ── Retrieval result ─────────────────────────────────────────────────────────
+
+
+class RetrievalResult(BaseModel):
+    retrieved_ids: list[str]
+
+
 # ── Gate result ──────────────────────────────────────────────────────────────
 
 
@@ -94,6 +101,9 @@ class GateResult(BaseModel):
             RESOLUTION_RECALL,
             RETRIEVAL_RECALL_AT_5,
         )
+
+        if self.identification_metrics is None and self.resolution_metrics is None and self.retrieval_metrics is None:
+            return False
 
         if self.identification_metrics is not None:
             for ctype in ConceptType:

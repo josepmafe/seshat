@@ -8,9 +8,11 @@ import mlflow
 import mlflow.genai
 import pandas as pd
 
+from seshat.eval.cache import clear_cache_dir, read_or_run
 from seshat.eval.gate import upsert_gate
 from seshat.eval.resolution.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.resolution.scorers import scorer
+from seshat.models.nodes import ResolutionResult
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -19,7 +21,7 @@ if TYPE_CHECKING:
 
     from seshat.config.settings import EvalConfig
     from seshat.eval.models import GateResult, ResolutionCorpusExample
-    from seshat.models.nodes import KBNode, ResolutionResult
+    from seshat.models.nodes import KBNode
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 
 
@@ -67,6 +69,7 @@ class ResolutionEvalRunner:
             resolution_metrics=resolution_metrics,
         )
         mlflow.log_metrics({**resolution_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
+        clear_cache_dir(self._config.resolution_cache_dir)
         return gate
 
     async def _run_all_predictions(self, examples: list[ResolutionCorpusExample]) -> dict[str, ResolutionResult]:
@@ -76,8 +79,10 @@ class ResolutionEvalRunner:
             source_nodes = [kb_nodes[n.id] for n in ex.source_nodes]
             kb_target_nodes = [kb_nodes[n.id] for n in ex.kb_nodes]
             per_source_targets: dict[UUID, list[KBNode]] = {src.id: kb_target_nodes for src in source_nodes}
-            result_cache[ex.corpus_id] = await self._orchestrator._run_resolution(
-                source_nodes, per_source_targets, job_id="eval"
+            result_cache[ex.corpus_id] = await read_or_run(
+                self._config.resolution_cache_dir / f"{ex.corpus_id}.json",
+                ResolutionResult,
+                self._orchestrator._run_resolution(source_nodes, per_source_targets, job_id=ex.corpus_id),
             )
         return result_cache
 

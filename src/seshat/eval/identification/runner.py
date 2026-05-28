@@ -8,17 +8,19 @@ import mlflow
 import mlflow.genai
 import pandas as pd
 
+from seshat.eval.cache import clear_cache_dir, read_or_run
 from seshat.eval.gate import upsert_gate
 from seshat.eval.identification.corpus_loader import IdentificationCorpusExample, load_corpus
 from seshat.eval.identification.scorers import scorer
 from seshat.models.enums import ConceptType
+from seshat.models.nodes import IdentificationResult
 
 if TYPE_CHECKING:
     from mlflow.genai.evaluation.entities import EvaluationResult
 
     from seshat.config.settings import EvalConfig
     from seshat.eval.models import GateResult
-    from seshat.models.nodes import IdentificationResult, KBNode
+    from seshat.models.nodes import KBNode
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 
 
@@ -56,6 +58,7 @@ class IdentificationEvalRunner:
             identification_metrics=identification_metrics,
         )
         mlflow.log_metrics({**identification_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
+        clear_cache_dir(self._config.identification_cache_dir)
         return gate
 
     async def _run_all_predictions(
@@ -64,12 +67,14 @@ class IdentificationEvalRunner:
         # Pre-populate before mlflow.genai.evaluate (sync). Calling the orchestrator
         # inside _predict would cross event-loop boundaries — LangChain clients are
         # bound to the loop that created them and fail silently from a new thread.
-        cache: dict[str, IdentificationResult] = {}
+        results: dict[str, IdentificationResult] = {}
         for ex in examples:
-            cache[ex.corpus_id] = await self._orchestrator._run_identification(
-                ex.transcript, ex.corpus_id, job_id=ex.corpus_id, hints={}
+            results[ex.corpus_id] = await read_or_run(
+                self._config.identification_cache_dir / f"{ex.corpus_id}.json",
+                IdentificationResult,
+                self._orchestrator._run_identification(ex.transcript, ex.corpus_id, job_id=ex.corpus_id, hints={}),
             )
-        return cache
+        return results
 
     def _log_breakdown(
         self,
