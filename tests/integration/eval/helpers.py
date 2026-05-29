@@ -9,7 +9,11 @@ from seshat.config.settings import ExtractionConfig
 from seshat.eval.identification.runner import IdentificationEvalRunner
 from seshat.eval.resolution.runner import ResolutionEvalRunner
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
-from tests.integration.helpers import cheap_identification_config, cheap_resolution_config, make_cheap_llm
+from tests.integration.helpers import (
+    cheap_identification_config,
+    cheap_resolution_config,
+    make_cheap_llm,
+)
 
 if TYPE_CHECKING:
     from seshat.config.settings import EvalConfig
@@ -55,7 +59,10 @@ def _make_eval_orchestrator(extraction_config: ExtractionConfig) -> ExtractionOr
 def make_identification_runner(config: EvalConfig) -> IdentificationEvalRunner:
     id_config = cheap_identification_config()
     res_config = cheap_resolution_config()
-    extraction_config = ExtractionConfig(identification=id_config, resolution=res_config)
+    # Grouping is disabled: identification eval measures extraction only, not the downstream grouping step.
+    extraction_config = ExtractionConfig(
+        identification=id_config, resolution=res_config, grouped_identification_types=set()
+    )
     return IdentificationEvalRunner(orchestrator=_make_eval_orchestrator(extraction_config), config=config)
 
 
