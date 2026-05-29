@@ -5,6 +5,12 @@ description: >
   a no-rate-limiting Risk node is the key assertion; a Decision and an Action Item should
   be extracted instead.
 
+tags:
+  tier: negative
+  difficulty: medium
+  focus: [risk]
+  detail: "failure mode absorbed by decision and action item"
+
 transcript: |
   We have no rate limiting on the public API right now. If a client hammers it, we'll
   exhaust the database connection pool and bring down the whole service.

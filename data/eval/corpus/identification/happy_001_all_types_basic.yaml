@@ -2,6 +2,11 @@ description: >
   Baseline: one obvious item per type, direct quotes, specific titles. All four agents
   should extract exactly one item each with high confidence.
 
+tags:
+  tier: happy-path
+  difficulty: easy
+  focus: [decision, risk, action_item, open_question]
+
 transcript: |
   We need to pick a database for the new service. Options are PostgreSQL or MySQL.
   PostgreSQL has native JSONB and better full-text search. We need both.

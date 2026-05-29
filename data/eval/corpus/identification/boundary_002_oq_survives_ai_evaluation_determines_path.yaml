@@ -3,6 +3,12 @@ description: >
   and also assigns someone to investigate. Both the Open Question and the Action Item
   should be extracted. The Action Item does not close the Open Question.
 
+tags:
+  tier: boundary
+  difficulty: hard
+  focus: [open_question, action_item]
+  detail: "OQ survives when evaluation determines path"
+
 transcript: |
   We need to decide on the data retention policy for user events. Options are 30, 90, or 365 days.
   Legal hasn't given us a requirement yet — they said they'd have guidance by end of month.

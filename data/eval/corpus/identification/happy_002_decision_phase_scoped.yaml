@@ -4,6 +4,11 @@ description: >
   preference ("I'd lean towards Kafka"), and the exploratory mention ("We could also
   consider RabbitMQ") are all mid-discussion noise — none should appear as a Decision.
 
+tags:
+  tier: happy-path
+  difficulty: easy
+  focus: [decision]
+
 transcript: |
   Should we use Kafka or RabbitMQ for the event bus?
   I'd lean towards Kafka — better throughput and native log compaction.

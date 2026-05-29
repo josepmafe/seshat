@@ -3,6 +3,12 @@ description: >
   action items. All agents must return empty lists. Tests that agents do not hallucinate
   items when there is nothing to extract.
 
+tags:
+  tier: negative
+  difficulty: easy
+  focus: [decision, risk, action_item, open_question]
+  detail: "nothing extractable"
+
 transcript: |
   Quick check-in — how is the sprint going?
   Pretty good. Finished the API endpoint work yesterday, now doing code review.

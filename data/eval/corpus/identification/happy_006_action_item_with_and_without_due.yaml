@@ -1,10 +1,14 @@
 description: >
   Action item extraction: one item has a named assignee and a due date; one has a
-  role-identified owner and an implied timing constraint; one has no identifiable owner
-  or deadline. The primary assertion is that all three action items are detected without
-  inventing decisions, risks, or open questions. The null assignee/due values document the
-  intended field behavior for scorer support, but the core corpus assertion is node
-  extraction.
+  role-identified owner and an implied timing constraint. A third suggestion ("review
+  alert thresholds at some point") has no identifiable owner — under current rules, no
+  identifiable owner means no action item is emitted. Only two action items should be
+  extracted.
+
+tags:
+  tier: happy-path
+  difficulty: easy
+  focus: [action_item]
 
 transcript: |
   We need to update the API documentation before the partner onboarding call.
@@ -32,13 +36,6 @@ expected:
       task: Run load tests before the Thursday deploy.
       assignee: the platform team
       due: before the Thursday deploy
-
-    - quote: "And we should probably review the alert thresholds at some point."
-      title: Review alert thresholds
-      description: The team noted a need to review alert thresholds but without a named owner or deadline.
-      task: Review the alert thresholds.
-      assignee: null
-      due: null
 
   decision: []
   risk: []

@@ -1,0 +1,34 @@
+description: >
+  Adversarial: unresolvable self-reference test. One speaker says "I'll take that" with no
+  prior name attribution in the transcript — no action item should be extracted for that.
+  A contrasting identifiable self-assignment (speaker addressed by name earlier, then accepts)
+  is also present and must be extracted.
+
+tags:
+  tier: adversarial
+  difficulty: hard
+  focus: [action_item]
+  detail: "unresolvable 'I'll take that' vs. identifiable name-then-accept pattern"
+
+transcript: |
+  We need to set up monitoring dashboards for the new payments service before the go-live.
+  Ravi, can you configure the Grafana dashboards by Thursday?
+  Sure, I'll handle it.
+  We should also document the alert runbook — it's still missing.
+  I'll take that.
+  Great, sounds like we have owners for both.
+
+expected:
+  action_item:
+    - quote: "We need to set up monitoring dashboards for the new payments service before the go-live.\n\
+        Ravi, can you configure the Grafana dashboards by Thursday?\n\
+        Sure, I'll handle it."
+      title: Configure Grafana dashboards for payments service
+      description: Ravi will configure the Grafana monitoring dashboards for the new payments service by Thursday ahead of go-live.
+      task: Configure the Grafana dashboards for the new payments service.
+      assignee: Ravi
+      due: by Thursday
+
+  decision: []
+  risk: []
+  open_question: []
