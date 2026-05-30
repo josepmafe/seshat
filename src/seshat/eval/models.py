@@ -86,7 +86,7 @@ class GateResult(BaseModel):
     timestamp: str = ""
     # dotted keys: "{ctype.value}.precision", "{ctype.value}.recall", "{ctype.value}.f1"
     identification_metrics: dict[str, float] | None = None
-    # keys: "precision", "recall", "f1"
+    # dotted keys: "{ctype.value}.precision", "{ctype.value}.recall"
     resolution_metrics: dict[str, float] | None = None
     # keys: "recall_at_5", "precision_at_5"
     retrieval_metrics: dict[str, float] | None = None
@@ -113,10 +113,11 @@ class GateResult(BaseModel):
                     return False
 
         if self.resolution_metrics is not None:
-            if self.resolution_metrics.get("precision", 0.0) < RESOLUTION_PRECISION:
-                return False
-            if self.resolution_metrics.get("recall", 0.0) < RESOLUTION_RECALL:
-                return False
+            for ctype in ConceptType:
+                if self.resolution_metrics.get(f"{ctype.value}.precision", 0.0) < RESOLUTION_PRECISION[ctype]:
+                    return False
+                if self.resolution_metrics.get(f"{ctype.value}.recall", 0.0) < RESOLUTION_RECALL[ctype]:
+                    return False
 
         if (  # noqa: SIM103
             self.retrieval_metrics is not None

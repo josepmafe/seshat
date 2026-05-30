@@ -12,6 +12,7 @@ from seshat.eval.cache import clear_cache_dir, read_or_run
 from seshat.eval.gate import upsert_gate
 from seshat.eval.resolution.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.resolution.scorers import scorer
+from seshat.models.enums import ConceptType
 from seshat.models.nodes import ResolutionResult
 
 if TYPE_CHECKING:
@@ -105,6 +106,7 @@ def _build_dataframe(examples: list[ResolutionCorpusExample], slug_maps: dict[st
     rows = []
     for ex in examples:
         uuid_str_map = {k: str(v) for k, v in slug_maps[ex.corpus_id].items()}
+        slug_to_type = {n.id: n.type.value for n in ex.source_nodes + ex.kb_nodes}
         rows.append(
             {
                 "inputs": {"corpus_id": ex.corpus_id},
@@ -114,6 +116,7 @@ def _build_dataframe(examples: list[ResolutionCorpusExample], slug_maps: dict[st
                         for r in ex.expected_relations
                     ],
                     "slug_to_uuid": uuid_str_map,
+                    "slug_to_type": slug_to_type,
                 },
             }
         )
@@ -121,11 +124,15 @@ def _build_dataframe(examples: list[ResolutionCorpusExample], slug_maps: dict[st
 
 
 def _aggregate_metrics(eval_result: EvaluationResult) -> dict[str, float]:
+    """Flatten per-type precision/recall into dotted keys: '{ctype}.precision', '{ctype}.recall'."""
     result: dict[str, float] = {}
-    for metric in ("precision", "recall", "f1"):
-        v = eval_result.metrics.get(f"{metric}/mean")
-        if v is not None:
-            result[metric] = float(v)
+    for ctype in ConceptType:
+        p = eval_result.metrics.get(f"{ctype}.precision/mean")
+        r = eval_result.metrics.get(f"{ctype}.recall/mean")
+        if p is not None:
+            result[f"{ctype}.precision"] = float(p)
+        if r is not None:
+            result[f"{ctype}.recall"] = float(r)
     return result
 
 
@@ -138,10 +145,16 @@ def _build_breakdown(
     assert eval_result.result_df is not None
     breakdown: dict[str, dict] = {}
     for ex, (_, row) in zip(examples, eval_result.result_df.iterrows(), strict=True):
-        scores: dict[str, float | None] = {}
-        for metric in ("precision", "recall", "f1"):
-            v = row.get(f"{metric}/value")
-            scores[metric] = float(v) if not pd.isna(v) else None
+        scores: dict[ConceptType, dict[str, float | None]] = {}
+        for ctype in ConceptType:
+            p = row.get(f"{ctype}.precision/value")
+            r = row.get(f"{ctype}.recall/value")
+            if pd.isna(p) and pd.isna(r):
+                continue
+            scores[ctype] = {
+                "precision": float(p) if not pd.isna(p) else None,
+                "recall": float(r) if not pd.isna(r) else None,
+            }
 
         uuid_to_slug = {v: k for k, v in slug_maps[ex.corpus_id].items()}
         breakdown[ex.corpus_id] = {

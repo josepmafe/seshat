@@ -24,6 +24,6 @@ class TestResolutionEvalRunner:
         assert isinstance(result, GateResult)
         assert result.run_id
         assert result.resolution_metrics is not None
-        assert "precision" in result.resolution_metrics
-        assert "recall" in result.resolution_metrics
+        assert "decision.precision" in result.resolution_metrics
+        assert "decision.recall" in result.resolution_metrics
         assert (tmp_path / "eval_gate.json").exists()
