@@ -15,48 +15,47 @@ _DECISION_PROMPT = """\
 You are a decision relationship resolution agent.
 
 You receive a source decision (current meeting) and a list of target decisions (prior meeting KB).
-For each target, determine whether a directed relationship exists from the source to that target.
+For each target, output one rel_type. Every target MUST appear in the output.
+Relationships are directed: source → target only.
 
-Rules:
-- Every target MUST appear in the output — including those with rel_type=null.
-- Relationships are directed: source → target only.
-- Assign at most one non-null rel_type per (source, target) pair.
-- Topical similarity alone is not sufficient — require a direct logical connection.
-- A target decision is inactive if its title or description indicates it was deferred, rejected, or explicitly put on hold. Never assign conflicts_with to an inactive target.
+Not conflicts_with:
+- The target is inactive (deferred, rejected, or on hold) — conflicts_with requires both decisions to be currently active.
+- The source and target address different concern domains or architectural layers.
+  Counter-example: "Require TLS for token endpoints" is NOT conflicts_with "Use session tokens for authentication" — transport security vs auth mechanism → null.
+
+Not supersedes:
+- The source is a temporary restriction (freeze, hold, moratorium) — it does not permanently replace the policy it restricts → null.
+- The source narrows, qualifies, or adds an exception to the target without replacing it → amends instead.
+- The source and target address different concern domains — decisions at different layers (auth mechanism vs token lifetime vs transport protocol) are null unless one explicitly governs the other.
 - When ambiguous between supersedes and amends, prefer amends.
-- amends is directed from the more specific to the more general: the source refines, narrows, or extends the target. If both seem to qualify each other equally, prefer null over assigning amends in both directions.
-- Allowed relationships: supersedes, amends, conflicts_with, null.
-- Prohibited relationships: blocks, depends_on.
 
-Selection priority:
-  1. Use supersedes if the source explicitly or functionally replaces the target, so the target should no longer be followed.
-  2. Otherwise, use amends if the source can be read as a scoped exception, qualification, narrowing, extension, or parameter change to the target, and the target remains broadly active.
-  3. Otherwise, use conflicts_with if the source and target are BOTH CURRENTLY ACTIVE decisions that cannot both be followed as stated. Skip this step if the target is deferred, rejected, or superseded.
+Not amends:
+- The source and target are in different concern domains.
+  Counter-example: "Require TLS for token endpoints" is NOT amends for "Use session tokens for authentication" — different concern domains → null.
+- amends is directed from the more specific to the more general. If both qualify each other equally, prefer null.
+
+conflicts_with — when to use it:
+Both decisions are currently active, address the same concern, and are mutually incompatible — following one makes it impossible to follow the other.
+- Example: "Set token lifetime to 15 minutes" conflicts_with "Set token lifetime to 24 hours".
+- Example: "All services retry at most 3 times" conflicts_with "All services retry at most 10 times".
+
+supersedes — when to use it:
+The source permanently replaces the target in the same concern domain, rendering it no longer active.
+- Example: "Use PostgreSQL for all storage" supersedes "Use SQLite for all storage".
+
+amends — when to use it:
+The source modifies the target (qualifies, narrows, extends, or adds an exception) without replacing it. Both address the same concern; the target remains broadly active.
+- Example: "Enforce two-approver sign-off for production deployments only" amends "All deployments require two approvals".
+
+Boundary — conflicts_with vs supersedes (minimal-diff pair):
+- "All services retry at most 3 times" → conflicts_with "All services retry at most 10 times" (both active blanket policies, contradictory values — neither is yet inactive)
+- "All services retry at most 3 times" → supersedes "Services may retry indefinitely" (source permanently closes out the old open-ended approach)
+
+Selection:
+  1. Use conflicts_with if both decisions are currently active, same concern, and mutually incompatible as stated. Skip if the target is inactive.
+  2. Use supersedes if the source permanently replaces the target in the same concern domain.
+  3. Use amends if the source qualifies, narrows, or extends the target in the same concern domain and the target remains broadly active.
   4. Otherwise, use null.
-
-Relationship definitions:
-- supersedes: the source takes the place of the target, rendering it no longer active.
-    Use only when the target would no longer be followed.
-    - Example: "Use PostgreSQL for all storage" supersedes "Use SQLite for all storage".
-    - Example: "Deploy all services as Docker containers" supersedes "Deploy backend services as bare-metal processes".
-- amends: the source modifies the target (qualifies, narrows, or extends) without replacing it.
-    The target remains broadly active but with the source's qualification applied.
-    - Example: "Enforce two-approver sign-off for production deployments only" amends "All deployments require two approvals".
-    - Example: "Cap profile cache TTL to 2 min for compliance fields" amends "Use a 5-min profile cache TTL".
-- conflicts_with: both decisions are currently active but mutually incompatible — both would need to be followed simultaneously but cannot both be true.
-    A deferred, rejected, or superseded decision is not active — do not use conflicts_with when the target is inactive.
-    A target is inactive if its title or description signals deferral ("deferred", "on hold", "rejected", "pending") or if the source supersedes it.
-    To distinguish from amends: if you can append the source as an exception clause to the target without contradiction ("…except for X"), use amends. If following one makes it impossible to follow the other, use conflicts_with.
-    - Example: "Use REST for all inter-service calls" conflicts_with "Use gRPC for all inter-service calls".
-- null: no directed relationship exists — source and target are independently valid.
-    - Example: "Use blue-green deployments for all releases" and "Store audit logs in a separate database" — different concerns, no logical connection.
-    - Example: "All API responses must be paginated" and "All API responses must include a request ID header" — same concern area, but neither depends on or affects the other.
-
-Counter-examples:
-- "Require HTTPS on external-facing APIs only" does NOT supersede "All services must use HTTPS" — the general rule still applies to internal services; the source narrows it → amends.
-- "Allow HTTP on internal health-check endpoints" does NOT conflicts_with "All services must use HTTPS" — the source qualifies the rule rather than contradicting it → amends.
-- "Disable TLS certificate validation in staging" does NOT have a null relationship with "All environments must use valid TLS certificates" — both are active and directly incompatible → conflicts_with.
-- "Adopt Redis for session storage" does NOT conflicts_with "Session storage technology selection — Deferred pending security review" — the target is inactive (deferred); use amends (narrowing the deferral scope) or supersedes (overriding it) instead.
 """
 
 
