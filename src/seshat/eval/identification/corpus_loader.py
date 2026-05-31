@@ -13,13 +13,32 @@ if TYPE_CHECKING:
 _BASE_CORPUS_FIELDS: frozenset[str] = frozenset({"quote", "title", "description"})
 
 
-def load_corpus(corpus_dir: Path) -> list[IdentificationCorpusExample]:
+def load_corpus(
+    corpus_dir: Path,
+    tag_filter: dict[str, str | list[str]] | None = None,
+) -> list[IdentificationCorpusExample]:
     examples = []
     for path in sorted(corpus_dir.glob("*.yaml")):
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         examples.append(_parse_example(path.stem, data))
+
+    if tag_filter:
+        examples = [ex for ex in examples if _matches_tags(ex.tags, tag_filter)]
+
     return examples
+
+
+def _matches_tags(tags: dict[str, Any], tag_filter: dict[str, str | list[str]]) -> bool:
+    for key, wanted in tag_filter.items():
+        value = tags.get(key)
+        if isinstance(wanted, list):
+            if not (isinstance(value, list) and set(wanted) <= set(value)):
+                return False
+        else:
+            if value != wanted:
+                return False
+    return True
 
 
 def _parse_example(corpus_id: str, data: dict[str, Any]) -> IdentificationCorpusExample:
@@ -40,4 +59,5 @@ def _parse_example(corpus_id: str, data: dict[str, Any]) -> IdentificationCorpus
         corpus_id=corpus_id,
         transcript=data["transcript"],
         expected_nodes=nodes,
+        tags=data.get("tags") or {},
     )

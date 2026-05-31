@@ -25,6 +25,7 @@ class IdentificationCorpusExample(BaseModel):
     corpus_id: str
     transcript: str
     expected_nodes: list[IdentificationCorpusNode]
+    tags: dict[str, Any] = Field(default_factory=dict)
 
 
 # ── Resolution corpus ────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ class ResolutionCorpusExample(BaseModel):
     source_nodes: list[ResolutionCorpusNode]
     kb_nodes: list[ResolutionCorpusNode]
     expected_relations: list[ResolutionCorpusRelation]
+    tags: dict[str, Any] = Field(default_factory=dict)
 
 
 # ── Retrieval corpus ─────────────────────────────────────────────────────────

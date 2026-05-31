@@ -37,11 +37,11 @@ class ResolutionEvalRunner:
         self._kb_nodes: dict[str, dict[str, KBNode]] = {}
         self._slug_maps: dict[str, dict[str, UUID]] = {}
 
-    async def run(self) -> GateResult:
+    async def run(self, tag_filter: dict[str, str | list[str]] | None = None) -> GateResult:
         mlflow.set_tracking_uri(self._config.observability.mlflow_tracking_uri)
         mlflow.set_experiment(self._config.observability.mlflow_experiment_name)
 
-        examples = load_corpus(self._config.resolution_corpus_dir)
+        examples = load_corpus(self._config.resolution_corpus_dir, tag_filter=tag_filter)
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="resolution-no-corpus")
 
@@ -70,6 +70,8 @@ class ResolutionEvalRunner:
             resolution_metrics=resolution_metrics,
         )
         mlflow.log_metrics({**resolution_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
+        if tag_filter:
+            mlflow.log_params({f"tag_filter.{k}": str(v) for k, v in tag_filter.items()}, run_id=run_id)
         clear_cache_dir(self._config.resolution_cache_dir)
         return gate
 
@@ -158,6 +160,7 @@ def _build_breakdown(
 
         uuid_to_slug = {v: k for k, v in slug_maps[ex.corpus_id].items()}
         breakdown[ex.corpus_id] = {
+            "tags": ex.tags,
             "group": "same_type" if _is_same_type(ex) else "cross_type",
             "scores": scores,
             "expected": [

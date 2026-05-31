@@ -33,11 +33,11 @@ class IdentificationEvalRunner:
         self._orchestrator = orchestrator
         self._config = config
 
-    async def run(self) -> GateResult:
+    async def run(self, tag_filter: dict[str, str | list[str]] | None = None) -> GateResult:
         mlflow.set_tracking_uri(self._config.observability.mlflow_tracking_uri)
         mlflow.set_experiment(self._config.observability.mlflow_experiment_name)
 
-        examples = load_corpus(self._config.identification_corpus_dir)
+        examples = load_corpus(self._config.identification_corpus_dir, tag_filter=tag_filter)
         result_cache = await self._run_all_predictions(examples)
 
         def _predict(transcript: str, corpus_id: str) -> dict:
@@ -58,6 +58,8 @@ class IdentificationEvalRunner:
             identification_metrics=identification_metrics,
         )
         mlflow.log_metrics({**identification_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
+        if tag_filter:
+            mlflow.log_params({f"tag_filter.{k}": str(v) for k, v in tag_filter.items()}, run_id=run_id)
         clear_cache_dir(self._config.identification_cache_dir)
         return gate
 
@@ -141,6 +143,7 @@ def _build_breakdown(
 
         predicted_nodes = result_cache[ex.corpus_id].nodes
         breakdown[ex.corpus_id] = {
+            "tags": ex.tags,
             "scores": scores,
             "expected": [{"type": n.type, "title": n.title, "quote": n.quote} for n in ex.expected_nodes],
             "predicted": [

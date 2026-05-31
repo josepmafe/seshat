@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import yaml
@@ -14,7 +14,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def load_corpus(corpus_dir: Path) -> list[ResolutionCorpusExample]:
+def load_corpus(
+    corpus_dir: Path,
+    tag_filter: dict[str, str | list[str]] | None = None,
+) -> list[ResolutionCorpusExample]:
     examples = []
     for path in sorted(corpus_dir.glob("*.yaml")):
         with open(path, encoding="utf-8") as f:
@@ -22,7 +25,23 @@ def load_corpus(corpus_dir: Path) -> list[ResolutionCorpusExample]:
         ex = ResolutionCorpusExample(**data)
         _validate_example(ex)
         examples.append(ex)
+
+    if tag_filter:
+        examples = [ex for ex in examples if _matches_tags(ex.tags, tag_filter)]
+
     return examples
+
+
+def _matches_tags(tags: dict[str, Any], tag_filter: dict[str, str | list[str]]) -> bool:
+    for key, wanted in tag_filter.items():
+        value = tags.get(key)
+        if isinstance(wanted, list):
+            if not (isinstance(value, list) and set(wanted) <= set(value)):
+                return False
+        else:
+            if value != wanted:
+                return False
+    return True
 
 
 def _validate_example(ex: ResolutionCorpusExample) -> None:
