@@ -106,7 +106,7 @@ def _build_dataframe(examples: list[IdentificationCorpusExample]) -> pd.DataFram
 
 
 def _aggregate_metrics(eval_result: EvaluationResult) -> dict[str, float]:
-    """Flatten per-type precision/recall into dotted keys: '{ctype}.precision', '{ctype}.recall'.
+    """Flatten per-type precision/recall/spurious_rate into dotted keys.
 
     Field-level scores (assignee, due, rationale, …) are logged to MLflow for diagnosis
     but intentionally excluded from the gate — they are observability signals, not pass/fail criteria.
@@ -115,10 +115,13 @@ def _aggregate_metrics(eval_result: EvaluationResult) -> dict[str, float]:
     for ctype in ConceptType:
         p = eval_result.metrics.get(f"{ctype}.precision/mean")
         r = eval_result.metrics.get(f"{ctype}.recall/mean")
+        hr = eval_result.metrics.get(f"{ctype}.spurious_rate/mean")
         if p is not None:
             result[f"{ctype}.precision"] = float(p)
         if r is not None:
             result[f"{ctype}.recall"] = float(r)
+        if hr is not None:
+            result[f"{ctype}.spurious_rate"] = float(hr)
     return result
 
 

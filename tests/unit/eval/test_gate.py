@@ -106,6 +106,16 @@ class TestGateResultPassed:
             is True
         )
 
+    def test_identification_spurious_rate_below_threshold_passes(self):
+        m = _passing_identification()
+        m["decision.spurious_rate"] = 0.05
+        assert GateResult(run_id="r", identification_metrics=m).passed is True
+
+    def test_identification_spurious_rate_above_threshold_fails(self):
+        m = _passing_identification()
+        m["decision.spurious_rate"] = 0.20
+        assert GateResult(run_id="r", identification_metrics=m).passed is False
+
 
 class TestUpsertGate:
     def test_upsert_preserves_existing_blocks(self):

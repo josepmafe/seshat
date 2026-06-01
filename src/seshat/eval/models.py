@@ -86,9 +86,9 @@ class RetrievalResult(BaseModel):
 class GateResult(BaseModel):
     run_id: str
     timestamp: str = ""
-    # dotted keys: "{ctype.value}.precision", "{ctype.value}.recall", "{ctype.value}.f1"
+    # dotted keys: "{ctype}.precision", "{ctype}.recall", "{ctype}.f1"
     identification_metrics: dict[str, float] | None = None
-    # dotted keys: "{ctype.value}.precision", "{ctype.value}.recall"
+    # dotted keys: "{ctype}.precision", "{ctype}.recall"
     resolution_metrics: dict[str, float] | None = None
     # keys: "recall_at_5", "precision_at_5"
     retrieval_metrics: dict[str, float] | None = None
@@ -99,6 +99,7 @@ class GateResult(BaseModel):
         from seshat.eval.thresholds import (
             IDENTIFICATION_PRECISION,
             IDENTIFICATION_RECALL,
+            IDENTIFICATION_SPURIOUS_RATE,
             RESOLUTION_PRECISION,
             RESOLUTION_RECALL,
             RETRIEVAL_RECALL_AT_5,
@@ -109,16 +110,18 @@ class GateResult(BaseModel):
 
         if self.identification_metrics is not None:
             for ctype in ConceptType:
-                if self.identification_metrics.get(f"{ctype.value}.precision", 0.0) < IDENTIFICATION_PRECISION[ctype]:
+                if self.identification_metrics.get(f"{ctype}.precision", 0.0) < IDENTIFICATION_PRECISION[ctype]:
                     return False
-                if self.identification_metrics.get(f"{ctype.value}.recall", 0.0) < IDENTIFICATION_RECALL[ctype]:
+                if self.identification_metrics.get(f"{ctype}.recall", 0.0) < IDENTIFICATION_RECALL[ctype]:
+                    return False
+                if self.identification_metrics.get(f"{ctype}.spurious_rate", 0.0) > IDENTIFICATION_SPURIOUS_RATE[ctype]:
                     return False
 
         if self.resolution_metrics is not None:
             for ctype in ConceptType:
-                if self.resolution_metrics.get(f"{ctype.value}.precision", 0.0) < RESOLUTION_PRECISION[ctype]:
+                if self.resolution_metrics.get(f"{ctype}.precision", 0.0) < RESOLUTION_PRECISION[ctype]:
                     return False
-                if self.resolution_metrics.get(f"{ctype.value}.recall", 0.0) < RESOLUTION_RECALL[ctype]:
+                if self.resolution_metrics.get(f"{ctype}.recall", 0.0) < RESOLUTION_RECALL[ctype]:
                     return False
 
         if (  # noqa: SIM103

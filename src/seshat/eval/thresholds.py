@@ -17,6 +17,13 @@ IDENTIFICATION_RECALL: dict[ConceptType, float] = {
     ConceptType.RISK: 0.80,
 }
 
+IDENTIFICATION_SPURIOUS_RATE: dict[ConceptType, float] = {
+    ConceptType.ACTION_ITEM: 0.10,
+    ConceptType.DECISION: 0.10,
+    ConceptType.OPEN_QUESTION: 0.10,
+    ConceptType.RISK: 0.10,
+}
+
 RESOLUTION_PRECISION: dict[ConceptType, float] = {
     ConceptType.ACTION_ITEM: 0.80,
     ConceptType.DECISION: 0.80,
