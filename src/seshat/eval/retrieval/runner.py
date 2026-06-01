@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import tempfile
 from typing import TYPE_CHECKING
 
 import httpx
@@ -12,6 +10,7 @@ import openai
 import pandas as pd
 
 from seshat.eval.cache import clear_cache_dir, read_or_run
+from seshat.eval.common import log_breakdown_artifact
 from seshat.eval.gate import upsert_gate
 from seshat.eval.models import RetrievalResult
 from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
@@ -162,12 +161,7 @@ class RetrievalEvalRunner:
         result_cache: dict[str, list[str]],
         run_id: str,
     ) -> None:
-        breakdown = _build_breakdown(eval_result, examples, example_nodes, result_cache)
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump(breakdown, f, indent=2)
-            breakdown_path = f.name
-
-        mlflow.log_artifact(breakdown_path, artifact_path="eval", run_id=run_id)
+        log_breakdown_artifact(_build_breakdown(eval_result, examples, example_nodes, result_cache), run_id)
 
 
 def _build_dataframe(

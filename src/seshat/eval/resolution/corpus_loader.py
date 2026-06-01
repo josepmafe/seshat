@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 import yaml
 
+from seshat.eval.common import matches_tags
 from seshat.eval.models import ResolutionCorpusExample, ResolutionCorpusNode
 from seshat.models.enums import NodeState, NodeStatus
 from seshat.models.nodes import KBNode, NodeMetadata
@@ -27,21 +28,9 @@ def load_corpus(
         examples.append(ex)
 
     if tag_filter:
-        examples = [ex for ex in examples if _matches_tags(ex.tags, tag_filter)]
+        examples = [ex for ex in examples if matches_tags(ex.tags, tag_filter)]
 
     return examples
-
-
-def _matches_tags(tags: dict[str, Any], tag_filter: dict[str, str | list[str]]) -> bool:
-    for key, wanted in tag_filter.items():
-        value = tags.get(key)
-        if isinstance(wanted, list):
-            if not (isinstance(value, list) and set(wanted) <= set(value)):
-                return False
-        else:
-            if value != wanted:
-                return False
-    return True
 
 
 def _validate_example(ex: ResolutionCorpusExample) -> None:
@@ -59,7 +48,7 @@ def build_kb_nodes(
     kb_nodes: dict[str, KBNode] = {}
 
     for corpus_node in example.source_nodes + example.kb_nodes:
-        node_id = uuid4()
+        node_id = uuid5(NAMESPACE_URL, f"{example.corpus_id}/{corpus_node.id}")
         slug_map[corpus_node.id] = node_id
         kb_nodes[corpus_node.id] = _corpus_node_to_kb_node(corpus_node, node_id)
 

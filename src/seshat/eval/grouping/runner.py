@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import tempfile
 from typing import TYPE_CHECKING
 
 import mlflow
@@ -11,6 +9,7 @@ from pydantic import BaseModel
 
 from seshat.agents.identification.base import AnchoredConcept, ConceptModel
 from seshat.eval.cache import clear_cache_dir, read_or_run
+from seshat.eval.common import log_breakdown_artifact
 from seshat.eval.gate import upsert_gate
 from seshat.eval.grouping.corpus_loader import load_corpus
 from seshat.eval.grouping.scorers import scorer
@@ -90,11 +89,7 @@ class GroupingEvalRunner:
         result_cache: dict[str, _GroupingCacheEntry],
         run_id: str,
     ) -> None:
-        breakdown = _build_breakdown(eval_result, examples, result_cache)
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump(breakdown, f, indent=2)
-            breakdown_path = f.name
-        mlflow.log_artifact(breakdown_path, artifact_path="eval", run_id=run_id)
+        log_breakdown_artifact(_build_breakdown(eval_result, examples, result_cache), run_id)
 
 
 async def _run_grouping(agent: GroupingAgent, example: GroupingCorpusExample) -> _GroupingCacheEntry:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import tempfile
 from typing import TYPE_CHECKING
 
 import mlflow
@@ -9,6 +7,7 @@ import mlflow.genai
 import pandas as pd
 
 from seshat.eval.cache import clear_cache_dir, read_or_run
+from seshat.eval.common import log_breakdown_artifact
 from seshat.eval.gate import upsert_gate
 from seshat.eval.resolution.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.resolution.scorers import scorer
@@ -98,12 +97,7 @@ class ResolutionEvalRunner:
         result_cache: dict[str, ResolutionResult],
         run_id: str,
     ) -> None:
-        breakdown = _build_breakdown(eval_result, examples, result_cache, self._slug_maps)
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump(breakdown, f, indent=2)
-            breakdown_path = f.name
-
-        mlflow.log_artifact(breakdown_path, artifact_path="eval", run_id=run_id)
+        log_breakdown_artifact(_build_breakdown(eval_result, examples, result_cache, self._slug_maps), run_id)
 
 
 def _build_dataframe(examples: list[ResolutionCorpusExample], slug_maps: dict[str, dict[str, UUID]]) -> pd.DataFrame:

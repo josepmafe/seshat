@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from seshat.eval.common import matches_tags
 from seshat.eval.models import IdentificationCorpusExample, IdentificationCorpusNode
 from seshat.models.enums import ConceptType
 
@@ -24,21 +25,9 @@ def load_corpus(
         examples.append(_parse_example(path.stem, data))
 
     if tag_filter:
-        examples = [ex for ex in examples if _matches_tags(ex.tags, tag_filter)]
+        examples = [ex for ex in examples if matches_tags(ex.tags, tag_filter)]
 
     return examples
-
-
-def _matches_tags(tags: dict[str, Any], tag_filter: dict[str, str | list[str]]) -> bool:
-    for key, wanted in tag_filter.items():
-        value = tags.get(key)
-        if isinstance(wanted, list):
-            if not (isinstance(value, list) and set(wanted) <= set(value)):
-                return False
-        else:
-            if value != wanted:
-                return False
-    return True
 
 
 def _parse_example(corpus_id: str, data: dict[str, Any]) -> IdentificationCorpusExample:

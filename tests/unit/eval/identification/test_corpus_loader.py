@@ -3,6 +3,7 @@ import pytest
 from seshat.config.settings import EvalConfig
 from seshat.eval.identification.corpus_loader import load_corpus
 from seshat.models.enums import ConceptType
+from tests.unit.eval.conftest import TagFilterContractTests
 
 
 @pytest.fixture(scope="class")
@@ -22,7 +23,11 @@ class TestCorpusLoader:
                 assert isinstance(node.type, ConceptType)
 
 
-class TestProductionCorpus:
+class TestProductionCorpus(TagFilterContractTests):
+    load_corpus = staticmethod(load_corpus)
+    corpus_dir_attr = "identification_corpus_dir"
+    tag_key = "tier"
+
     def test_all_files_load_and_have_valid_content(self, eval_corpus: EvalConfig):
         examples = load_corpus(eval_corpus.identification_corpus_dir)
         assert len(examples) > 0
@@ -35,27 +40,3 @@ class TestProductionCorpus:
                 assert isinstance(node.type, ConceptType)
                 assert node.title.strip()
                 assert node.description.strip()
-
-    def test_tags_are_parsed(self, eval_corpus: EvalConfig):
-        examples = load_corpus(eval_corpus.identification_corpus_dir)
-        tagged = [ex for ex in examples if ex.tags]
-        assert tagged, "expected at least one production corpus file to have tags"
-
-    def test_tag_filter_includes_matching(self, eval_corpus: EvalConfig):
-        all_examples = load_corpus(eval_corpus.identification_corpus_dir)
-        tiers = {ex.tags.get("tier") for ex in all_examples if "tier" in ex.tags}
-        assert tiers, "expected at least one example with a 'tier' tag"
-
-        tier = next(iter(tiers))
-        filtered = load_corpus(eval_corpus.identification_corpus_dir, tag_filter={"tier": tier})
-        assert all(ex.tags.get("tier") == tier for ex in filtered)
-        assert len(filtered) < len(all_examples)
-
-    def test_tag_filter_excludes_non_matching(self, eval_corpus: EvalConfig):
-        filtered = load_corpus(eval_corpus.identification_corpus_dir, tag_filter={"tier": "__nonexistent__"})
-        assert filtered == []
-
-    def test_tag_filter_none_returns_all(self, eval_corpus: EvalConfig):
-        all_examples = load_corpus(eval_corpus.identification_corpus_dir)
-        filtered = load_corpus(eval_corpus.identification_corpus_dir, tag_filter=None)
-        assert len(filtered) == len(all_examples)

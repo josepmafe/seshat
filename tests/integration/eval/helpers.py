@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from seshat.agents.identification.grouping import GroupingAgent
 from seshat.agents.identification.registry import IdentificationAgentRegistry
 from seshat.agents.resolution.registry import ResolutionRegistry
 from seshat.agents.verification import VerificationAgent
-from seshat.config.settings import ExtractionConfig
+from seshat.config.settings import EvalConfig, ExtractionConfig, ObservabilityConfig
 from seshat.eval.grouping.runner import GroupingEvalRunner
 from seshat.eval.identification.runner import IdentificationEvalRunner
 from seshat.eval.resolution.runner import ResolutionEvalRunner
@@ -19,10 +18,6 @@ from tests.integration.helpers import (
     cheap_verification_config,
     make_cheap_llm,
 )
-
-if TYPE_CHECKING:
-    from seshat.config.settings import EvalConfig
-
 
 CORPUS_BASE_DIR = Path(__file__).parent.parent.parent.parent / "data" / "eval" / "test_corpus"
 
@@ -88,3 +83,14 @@ def make_grouping_runner(config: EvalConfig) -> GroupingEvalRunner:
     id_config = cheap_identification_config()
     agent = GroupingAgent(llm=make_cheap_llm(), config=id_config)
     return GroupingEvalRunner(agent=agent, config=config)
+
+
+def make_eval_config(tmp_path: Path, experiment_name: str = "seshat-eval-test") -> EvalConfig:
+    return EvalConfig(
+        corpus_base_dir=CORPUS_BASE_DIR,
+        gate_path=tmp_path / "eval_gate.json",
+        observability=ObservabilityConfig(
+            mlflow_tracking_uri="sqlite:///" + str(tmp_path / "mlflow.db"),
+            mlflow_experiment_name=experiment_name,
+        ),
+    )
