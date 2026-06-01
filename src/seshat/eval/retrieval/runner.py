@@ -45,9 +45,11 @@ class RetrievalEvalRunner:
         self,
         vector_store: AbstractVectorStore,
         config: EvalConfig,
+        model_id: str | None = None,
     ) -> None:
         self._vs = vector_store
         self._config = config
+        self._model_id = model_id
 
     async def run(self) -> GateResult:
         mlflow.set_tracking_uri(self._config.observability.mlflow_tracking_uri)
@@ -71,6 +73,7 @@ class RetrievalEvalRunner:
             data=df,
             predict_fn=_predict,
             scorers=[scorer],
+            model_id=self._model_id,
         )
 
         run_id = eval_result.run_id

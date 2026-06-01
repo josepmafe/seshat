@@ -24,9 +24,10 @@ if TYPE_CHECKING:
 
 
 class VerificationEvalRunner:
-    def __init__(self, agent: VerificationAgent, config: EvalConfig) -> None:
+    def __init__(self, agent: VerificationAgent, config: EvalConfig, model_id: str | None = None) -> None:
         self._agent = agent
         self._config = config
+        self._model_id = model_id
 
     async def run(self, tag_filter: dict[str, str | list[str]] | None = None) -> GateResult:
         mlflow.set_tracking_uri(self._config.observability.mlflow_tracking_uri)
@@ -45,7 +46,7 @@ class VerificationEvalRunner:
             return {"supported": result_cache[key].supported}
 
         df = _build_dataframe(examples)
-        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer])
+        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=self._model_id)
 
         run_id = eval_result.run_id
         verification_metrics = _aggregate_metrics(eval_result)

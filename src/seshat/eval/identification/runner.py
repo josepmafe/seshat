@@ -29,9 +29,11 @@ class IdentificationEvalRunner:
         self,
         orchestrator: ExtractionOrchestrator,
         config: EvalConfig,
+        model_id: str | None = None,
     ) -> None:
         self._orchestrator = orchestrator
         self._config = config
+        self._model_id = model_id
 
     async def run(self, tag_filter: dict[str, str | list[str]] | None = None) -> GateResult:
         mlflow.set_tracking_uri(self._config.observability.mlflow_tracking_uri)
@@ -46,7 +48,7 @@ class IdentificationEvalRunner:
             return {"nodes": [n.model_dump(mode="json") for n in result_cache[corpus_id].nodes]}
 
         df = _build_dataframe(examples)
-        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer])
+        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=self._model_id)
 
         run_id = eval_result.run_id
         identification_metrics = _aggregate_metrics(eval_result)

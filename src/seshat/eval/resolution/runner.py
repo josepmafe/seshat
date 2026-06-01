@@ -31,9 +31,11 @@ class ResolutionEvalRunner:
         self,
         orchestrator: ExtractionOrchestrator,
         config: EvalConfig,
+        model_id: str | None = None,
     ) -> None:
         self._orchestrator = orchestrator
         self._config = config
+        self._model_id = model_id
         self._kb_nodes: dict[str, dict[str, KBNode]] = {}
         self._slug_maps: dict[str, dict[str, UUID]] = {}
 
@@ -58,7 +60,7 @@ class ResolutionEvalRunner:
             return {"relationships": [r.model_dump(mode="json") for r in result_cache[corpus_id].relationships]}
 
         df = _build_dataframe(examples, self._slug_maps)
-        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer])
+        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=self._model_id)
 
         run_id = eval_result.run_id
         resolution_metrics = _aggregate_metrics(eval_result)
