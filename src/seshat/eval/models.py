@@ -92,6 +92,8 @@ class GateResult(BaseModel):
     resolution_metrics: dict[str, float] | None = None
     # keys: "recall_at_5", "precision_at_5"
     retrieval_metrics: dict[str, float] | None = None
+    # keys: "precision", "recall"
+    verification_metrics: dict[str, float] | None = None
 
     @computed_field  # type: ignore[misc]
     @property
@@ -103,9 +105,16 @@ class GateResult(BaseModel):
             RESOLUTION_PRECISION,
             RESOLUTION_RECALL,
             RETRIEVAL_RECALL_AT_5,
+            VERIFICATION_PRECISION,
+            VERIFICATION_RECALL,
         )
 
-        if self.identification_metrics is None and self.resolution_metrics is None and self.retrieval_metrics is None:
+        if (
+            self.identification_metrics is None
+            and self.resolution_metrics is None
+            and self.retrieval_metrics is None
+            and self.verification_metrics is None
+        ):
             return False
 
         if self.identification_metrics is not None:
@@ -124,11 +133,17 @@ class GateResult(BaseModel):
                 if self.resolution_metrics.get(f"{ctype}.recall", 0.0) < RESOLUTION_RECALL[ctype]:
                     return False
 
-        if (  # noqa: SIM103
+        if (
             self.retrieval_metrics is not None
             and self.retrieval_metrics.get("recall_at_5", 0.0) < RETRIEVAL_RECALL_AT_5
         ):
             return False
+
+        if self.verification_metrics is not None:
+            if self.verification_metrics.get("precision", 0.0) < VERIFICATION_PRECISION:
+                return False
+            if self.verification_metrics.get("recall", 0.0) < VERIFICATION_RECALL:
+                return False
 
         return True
 

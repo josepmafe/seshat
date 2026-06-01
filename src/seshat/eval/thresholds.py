@@ -39,3 +39,6 @@ RESOLUTION_RECALL: dict[ConceptType, float] = {
 }
 
 RETRIEVAL_RECALL_AT_5: float = 0.70
+
+VERIFICATION_PRECISION: float = 0.85
+VERIFICATION_RECALL: float = 0.80

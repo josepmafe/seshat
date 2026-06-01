@@ -278,6 +278,13 @@ class EvalConfig(BaseConfig):
             "check if vector search surfaces the right nodes (similar and related neighbors)."
         ),
     )
+    run_verification: bool = Field(
+        default=True,
+        description=(
+            "Run the verification eval pass, i.e., "
+            "check if the verification agent correctly identifies grounded vs. hallucinated descriptions."
+        ),
+    )
     nli_scorer_enabled: bool = Field(
         default=False,
         description=(
@@ -295,6 +302,7 @@ class EvalConfig(BaseConfig):
     _identification_subdir: ClassVar[str] = "identification"
     _resolution_subdir: ClassVar[str] = "resolution"
     _retrieval_subdir: ClassVar[str] = "retrieval"
+    _verification_subdir: ClassVar[str] = "verification"
     # a hidden folder in the project root for caching intermediate results during eval runs; not intended for manual use
     _cache_dir: ClassVar[Path] = Path(__file__).resolve().parent.parent.parent.parent / ".seshat" / "eval_cache"
 
@@ -315,6 +323,11 @@ class EvalConfig(BaseConfig):
 
     @computed_field  # type: ignore[misc]
     @property
+    def verification_corpus_dir(self) -> Path:
+        return self.corpus_base_dir / self._verification_subdir
+
+    @computed_field  # type: ignore[misc]
+    @property
     def identification_cache_dir(self) -> Path:
         return self._cache_dir / self._identification_subdir
 
@@ -327,6 +340,11 @@ class EvalConfig(BaseConfig):
     @property
     def retrieval_cache_dir(self) -> Path:
         return self._cache_dir / self._retrieval_subdir
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def verification_cache_dir(self) -> Path:
+        return self._cache_dir / self._verification_subdir
 
     @field_validator("gate_path")
     @classmethod
@@ -342,6 +360,7 @@ class EvalConfig(BaseConfig):
             (self.run_identification, self.identification_corpus_dir),
             (self.run_resolution, self.resolution_corpus_dir),
             (self.run_retrieval, self.retrieval_corpus_dir),
+            (self.run_verification, self.verification_corpus_dir),
         ]
         for enabled, path in checks:
             if enabled and not path.is_dir():
@@ -350,7 +369,12 @@ class EvalConfig(BaseConfig):
 
     @model_validator(mode="after")
     def _create_cache_dirs(self) -> "EvalConfig":
-        for path in (self.identification_cache_dir, self.resolution_cache_dir, self.retrieval_cache_dir):
+        for path in (
+            self.identification_cache_dir,
+            self.resolution_cache_dir,
+            self.retrieval_cache_dir,
+            self.verification_cache_dir,
+        ):
             path.mkdir(parents=True, exist_ok=True)
         return self
 

@@ -116,6 +116,33 @@ class TestGateResultPassed:
         m["decision.spurious_rate"] = 0.20
         assert GateResult(run_id="r", identification_metrics=m).passed is False
 
+    def test_verification_below_precision_fails(self):
+        assert (
+            GateResult(
+                run_id="r",
+                verification_metrics={"precision": 0.50, "recall": 0.85},
+            ).passed
+            is False
+        )
+
+    def test_verification_below_recall_fails(self):
+        assert (
+            GateResult(
+                run_id="r",
+                verification_metrics={"precision": 0.90, "recall": 0.70},
+            ).passed
+            is False
+        )
+
+    def test_verification_meets_targets_passes(self):
+        assert (
+            GateResult(
+                run_id="r",
+                verification_metrics={"precision": 0.90, "recall": 0.85},
+            ).passed
+            is True
+        )
+
 
 class TestUpsertGate:
     def test_upsert_preserves_existing_blocks(self):
