@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import mlflow
@@ -66,12 +67,13 @@ class VerificationEvalRunner:
         self, examples: list[VerificationCorpusExample]
     ) -> dict[tuple[str, int], VerificationResult]:
         # Pre-populate before mlflow.genai.evaluate (sync) to avoid event-loop boundary issues.
-        results: dict[tuple[str, int], VerificationResult] = {}
-        for ex in examples:
-            for i, node in enumerate(ex.nodes):
-                cache_key = f"{ex.corpus_id}_{i}"
-                results[(ex.corpus_id, i)] = await read_or_run(
-                    self._config.verification_cache_dir / f"{cache_key}.json",
+        sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
+
+        async def _run_one(ex: VerificationCorpusExample, i: int) -> tuple[tuple[str, int], VerificationResult]:
+            node = ex.nodes[i]
+            async with sem:
+                result = await read_or_run(
+                    self._config.verification_cache_dir / f"{ex.corpus_id}_{i}.json",
                     VerificationResult,
                     self._agent.verify(
                         title=node.title,
@@ -80,7 +82,11 @@ class VerificationEvalRunner:
                         transcript=ex.transcript,
                     ),
                 )
-        return results
+            return (ex.corpus_id, i), result
+
+        tasks = [_run_one(ex, i) for ex in examples for i in range(len(ex.nodes))]
+        pairs = await asyncio.gather(*tasks)
+        return dict(pairs)
 
     def _log_breakdown(
         self,

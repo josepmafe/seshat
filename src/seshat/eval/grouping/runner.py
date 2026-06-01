@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import mlflow
@@ -73,14 +74,19 @@ class GroupingEvalRunner:
         return gate
 
     async def _run_all_predictions(self, examples: list[GroupingCorpusExample]) -> dict[str, _GroupingCacheEntry]:
-        results: dict[str, _GroupingCacheEntry] = {}
-        for ex in examples:
-            results[ex.corpus_id] = await read_or_run(
-                self._config.grouping_cache_dir / f"{ex.corpus_id}.json",
-                _GroupingCacheEntry,
-                _run_grouping(self._agent, ex),
-            )
-        return results
+        sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
+
+        async def _run_one(ex: GroupingCorpusExample) -> tuple[str, _GroupingCacheEntry]:
+            async with sem:
+                result = await read_or_run(
+                    self._config.grouping_cache_dir / f"{ex.corpus_id}.json",
+                    _GroupingCacheEntry,
+                    _run_grouping(self._agent, ex),
+                )
+            return ex.corpus_id, result
+
+        pairs = await asyncio.gather(*(_run_one(ex) for ex in examples))
+        return dict(pairs)
 
     def _log_breakdown(
         self,

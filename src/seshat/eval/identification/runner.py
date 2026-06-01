@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import mlflow
@@ -70,14 +71,19 @@ class IdentificationEvalRunner:
         # Pre-populate before mlflow.genai.evaluate (sync). Calling the orchestrator
         # inside _predict would cross event-loop boundaries — LangChain clients are
         # bound to the loop that created them and fail silently from a new thread.
-        results: dict[str, IdentificationResult] = {}
-        for ex in examples:
-            results[ex.corpus_id] = await read_or_run(
-                self._config.identification_cache_dir / f"{ex.corpus_id}.json",
-                IdentificationResult,
-                self._orchestrator._run_identification(ex.transcript, ex.corpus_id, job_id=ex.corpus_id, hints={}),
-            )
-        return results
+        sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
+
+        async def _run_one(ex: IdentificationCorpusExample) -> tuple[str, IdentificationResult]:
+            async with sem:
+                result = await read_or_run(
+                    self._config.identification_cache_dir / f"{ex.corpus_id}.json",
+                    IdentificationResult,
+                    self._orchestrator._run_identification(ex.transcript, ex.corpus_id, job_id=ex.corpus_id, hints={}),
+                )
+            return ex.corpus_id, result
+
+        pairs = await asyncio.gather(*(_run_one(ex) for ex in examples))
+        return dict(pairs)
 
     def _log_breakdown(
         self,

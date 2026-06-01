@@ -298,6 +298,11 @@ class EvalConfig(BaseConfig):
             "Enable NLI-based faithfulness scoring, i.e., check if the extracted information is faithful to the source."
         ),
     )
+    max_concurrent_predictions: int = Field(
+        default=10,
+        gt=0,
+        description="Maximum number of prediction coroutines that may run in parallel during eval.",
+    )
     # 0.0 disables score filtering so all candidates rank — calibrate before tightening.
     retrieval_score_threshold: float = Field(
         default=0.0,

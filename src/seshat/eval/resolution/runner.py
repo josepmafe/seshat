@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import mlflow
@@ -77,18 +78,23 @@ class ResolutionEvalRunner:
         return gate
 
     async def _run_all_predictions(self, examples: list[ResolutionCorpusExample]) -> dict[str, ResolutionResult]:
-        result_cache: dict[str, ResolutionResult] = {}
-        for ex in examples:
+        sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
+
+        async def _run_one(ex: ResolutionCorpusExample) -> tuple[str, ResolutionResult]:
             kb_nodes = self._kb_nodes[ex.corpus_id]
             source_nodes = [kb_nodes[n.id] for n in ex.source_nodes]
             kb_target_nodes = [kb_nodes[n.id] for n in ex.kb_nodes]
             per_source_targets: dict[UUID, list[KBNode]] = {src.id: kb_target_nodes for src in source_nodes}
-            result_cache[ex.corpus_id] = await read_or_run(
-                self._config.resolution_cache_dir / f"{ex.corpus_id}.json",
-                ResolutionResult,
-                self._orchestrator._run_resolution(source_nodes, per_source_targets, job_id=ex.corpus_id),
-            )
-        return result_cache
+            async with sem:
+                result = await read_or_run(
+                    self._config.resolution_cache_dir / f"{ex.corpus_id}.json",
+                    ResolutionResult,
+                    self._orchestrator._run_resolution(source_nodes, per_source_targets, job_id=ex.corpus_id),
+                )
+            return ex.corpus_id, result
+
+        pairs = await asyncio.gather(*(_run_one(ex) for ex in examples))
+        return dict(pairs)
 
     def _log_breakdown(
         self,
