@@ -4,6 +4,8 @@ import pytest
 
 from seshat.config.settings import EvalConfig
 
+pytestmark = pytest.mark.eval
+
 _DATA_ROOT = Path(__file__).parent.parent.parent.parent / "data" / "eval"
 _DUMMY_GATE = _DATA_ROOT / "gate.json"
 

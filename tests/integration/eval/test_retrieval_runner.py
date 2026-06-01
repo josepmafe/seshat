@@ -9,6 +9,7 @@ from tests.integration.eval.helpers import CORPUS_BASE_DIR
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.embedding,
+    pytest.mark.eval,
     SKIP_IF_NO_POSTGRES,
     SKIP_IF_NO_EMBEDDINGS_API,
 ]
