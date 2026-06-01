@@ -21,6 +21,7 @@ def upsert_gate(
     resolution_metrics: dict[str, float] | None = None,
     retrieval_metrics: dict[str, float] | None = None,
     verification_metrics: dict[str, float] | None = None,
+    grouping_metrics: dict[str, float] | None = None,
 ) -> GateResult:
     """Update only the supplied metric blocks; carry over the rest from the existing file."""
     if gate_path.exists():
@@ -33,6 +34,8 @@ def upsert_gate(
             retrieval_metrics = existing.retrieval_metrics
         if verification_metrics is None:
             verification_metrics = existing.verification_metrics
+        if grouping_metrics is None:
+            grouping_metrics = existing.grouping_metrics
 
     result = GateResult(
         run_id=run_id,
@@ -40,6 +43,7 @@ def upsert_gate(
         resolution_metrics=resolution_metrics,
         retrieval_metrics=retrieval_metrics,
         verification_metrics=verification_metrics,
+        grouping_metrics=grouping_metrics,
     )
     write_gate(result, gate_path)
     return result

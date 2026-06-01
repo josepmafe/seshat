@@ -94,11 +94,14 @@ class GateResult(BaseModel):
     retrieval_metrics: dict[str, float] | None = None
     # keys: "precision", "recall"
     verification_metrics: dict[str, float] | None = None
+    # keys: "group_hit_rate" (gated), "exact_match" (logged, not gated)
+    grouping_metrics: dict[str, float] | None = None
 
     @computed_field  # type: ignore[misc]
     @property
     def passed(self) -> bool:
         from seshat.eval.thresholds import (
+            GROUPING_GROUP_HIT_RATE,
             IDENTIFICATION_PRECISION,
             IDENTIFICATION_RECALL,
             IDENTIFICATION_SPURIOUS_RATE,
@@ -114,6 +117,7 @@ class GateResult(BaseModel):
             and self.resolution_metrics is None
             and self.retrieval_metrics is None
             and self.verification_metrics is None
+            and self.grouping_metrics is None
         ):
             return False
 
@@ -136,6 +140,12 @@ class GateResult(BaseModel):
         if (
             self.retrieval_metrics is not None
             and self.retrieval_metrics.get("recall_at_5", 0.0) < RETRIEVAL_RECALL_AT_5
+        ):
+            return False
+
+        if (
+            self.grouping_metrics is not None
+            and self.grouping_metrics.get("group_hit_rate", 0.0) < GROUPING_GROUP_HIT_RATE
         ):
             return False
 

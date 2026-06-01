@@ -143,6 +143,19 @@ class TestGateResultPassed:
             is True
         )
 
+    def test_grouping_below_group_hit_rate_fails(self):
+        assert GateResult(run_id="r", grouping_metrics={"group_hit_rate": 0.70, "exact_match": 0.50}).passed is False
+
+    def test_grouping_meets_group_hit_rate_passes(self):
+        assert GateResult(run_id="r", grouping_metrics={"group_hit_rate": 0.85, "exact_match": 0.70}).passed is True
+
+    def test_grouping_exact_match_not_gated(self):
+        # exact_match=0 but group_hit_rate above threshold — should pass
+        assert GateResult(run_id="r", grouping_metrics={"group_hit_rate": 0.85, "exact_match": 0.0}).passed is True
+
+    def test_grouping_none_not_gated(self):
+        assert GateResult(run_id="r", identification_metrics=_passing_identification()).passed is True
+
 
 class TestUpsertGate:
     def test_upsert_preserves_existing_blocks(self):

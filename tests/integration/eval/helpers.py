@@ -3,10 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from seshat.agents.identification.grouping import GroupingAgent
 from seshat.agents.identification.registry import IdentificationAgentRegistry
 from seshat.agents.resolution.registry import ResolutionRegistry
 from seshat.agents.verification import VerificationAgent
 from seshat.config.settings import ExtractionConfig
+from seshat.eval.grouping.runner import GroupingEvalRunner
 from seshat.eval.identification.runner import IdentificationEvalRunner
 from seshat.eval.resolution.runner import ResolutionEvalRunner
 from seshat.eval.verification.runner import VerificationEvalRunner
@@ -80,3 +82,9 @@ def make_verification_runner(config: EvalConfig) -> VerificationEvalRunner:
     verification_config = cheap_verification_config()
     agent = VerificationAgent(llm=make_cheap_llm(), config=verification_config)
     return VerificationEvalRunner(agent=agent, config=config)
+
+
+def make_grouping_runner(config: EvalConfig) -> GroupingEvalRunner:
+    id_config = cheap_identification_config()
+    agent = GroupingAgent(llm=make_cheap_llm(), config=id_config)
+    return GroupingEvalRunner(agent=agent, config=config)
