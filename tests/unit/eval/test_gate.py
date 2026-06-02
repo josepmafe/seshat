@@ -21,7 +21,7 @@ def _passing_resolution() -> dict[str, float]:
 def _passing_identification() -> dict[str, float]:
     return {
         "decision.precision": 0.85,
-        "decision.recall": 0.78,
+        "decision.recall": 0.82,
         "risk.precision": 0.77,
         "risk.recall": 0.81,
         "open_question.precision": 0.76,

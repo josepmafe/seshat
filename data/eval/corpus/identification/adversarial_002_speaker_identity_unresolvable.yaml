@@ -1,14 +1,15 @@
 description: >
-  Adversarial: unresolvable self-reference test. One speaker says "I'll take that" with no
-  prior name attribution in the transcript — no action item should be extracted for that.
-  A contrasting identifiable self-assignment (speaker addressed by name earlier, then accepts)
-  is also present and must be extracted.
+  Adversarial: self-reference resolution test with three cases. (1) Identifiable self-assignment:
+  speaker addressed by name earlier then accepts — extract with resolved name. (2) Anonymous
+  self-assignment: speaker says "I'll take that" with no prior name attribution — extract with
+  assignee="self". (3) Collective reference: "we'll get that sorted" — no identifiable owner,
+  do not extract.
 
 tags:
   tier: adversarial
   difficulty: hard
   focus: [action_item]
-  detail: "unresolvable 'I'll take that' vs. identifiable name-then-accept pattern"
+  detail: "named accept → name; anonymous self-assign → self; collective 'we' → not extracted"
 
 transcript: |
   We need to set up monitoring dashboards for the new payments service before the go-live.
@@ -17,6 +18,8 @@ transcript: |
   We should also document the alert runbook — it's still missing.
   I'll take that.
   Great, sounds like we have owners for both.
+  We also need to update the on-call rotation schedule before the end of the week.
+  Yeah, we'll get that sorted.
 
 expected:
   action_item:
@@ -28,6 +31,14 @@ expected:
       task: Configure the Grafana dashboards for the new payments service.
       assignee: Ravi
       due: by Thursday
+    - quote: "We should also document the alert runbook — it's still missing.\n\
+        I'll take that.\n\
+        Great, sounds like we have owners for both."
+      title: Document the alert runbook
+      description: An unidentified speaker self-assigned the task of documenting the missing alert runbook.
+      task: Document the alert runbook.
+      assignee: self
+      due: null
 
   decision: []
   risk: []

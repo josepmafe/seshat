@@ -12,7 +12,7 @@ IDENTIFICATION_PRECISION: dict[ConceptType, float] = {
 
 IDENTIFICATION_RECALL: dict[ConceptType, float] = {
     ConceptType.ACTION_ITEM: 0.85,
-    ConceptType.DECISION: 0.75,
+    ConceptType.DECISION: 0.80,
     ConceptType.OPEN_QUESTION: 0.75,
     ConceptType.RISK: 0.80,
 }
