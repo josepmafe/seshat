@@ -1,6 +1,6 @@
 import pytest
 
-from seshat.eval.tuning.models import (
+from seshat.eval.calibration.models import (
     IdentificationSweepResult,
     RetrievalSweepPoint,
     RetrievalSweepResult,
