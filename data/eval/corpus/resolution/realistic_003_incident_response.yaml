@@ -10,6 +10,18 @@ description: >
   - action item mitigates a prior risk (runbooks directly reduce MTTR for undocumented services)
   - three null pairs (same incident response domain, no direct logical connection)
 
+grey_area:
+  - pair: [src_decision_pagerduty_primary, kb_decision_data_team_oncall]
+    note: >
+      The PagerDuty mandate ("one tool, all teams") could be read as conflicting with the
+      data team's separate on-call rotation if "separate rotation" is interpreted as implying
+      a separate tool (OpsGenie). Under that reading, both decisions are simultaneously active
+      and enforce contradictory tooling for the data team's rotation, making conflicts_with
+      arguable. Scored as null because the two decisions govern different axes — which alerting
+      tool to use vs who owns the data-pipeline rotation — and the PagerDuty decision does not
+      directly prevent the data team from maintaining their rotation structure; it only mandates
+      the tool. A conflicts_with prediction is an understandable inference but not canonical.
+
 tags:
   tier: realistic
   pairing: mixed

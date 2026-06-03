@@ -42,14 +42,28 @@ class _EntryBase(BaseModel):
 
     source_id: str
     target_id: str
+    rationale: str = Field(
+        description="One sentence explaining why this classification was chosen or why null was assigned"
+    )
     rel_type: str | None
-    rationale: str = Field(description="One sentence explaining the classification")
 
     @field_validator("rel_type", mode="before")
     @classmethod
     def coerce_null_string(cls, v: object) -> object:
         # Some models return the string "null" instead of JSON null.
         return None if v == "null" else v
+
+
+class _SameTypeEntry(_EntryBase): ...
+
+
+class _CrossTypeEntry(_EntryBase):
+    evidence: str | None = Field(
+        description=(
+            "A verbatim or near-verbatim excerpt from the source node that directly supports the assigned rel_type — "
+            "null if no specific clause can be identified"
+        )
+    )
 
 
 E = TypeVar("E", bound=_EntryBase)
