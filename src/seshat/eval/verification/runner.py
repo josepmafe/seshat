@@ -32,9 +32,6 @@ class VerificationEvalRunner:
         self._model_id = model_id
 
     async def run(self, tag_filter: dict[str, str | list[str]] | None = None) -> GateResult:
-        mlflow.set_tracking_uri(self._config.observability.mlflow_tracking_uri)
-        mlflow.set_experiment(self._config.observability.mlflow_experiment_name)
-
         examples = load_corpus(self._config.verification_corpus_dir, tag_filter=tag_filter)
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="verification-no-corpus")

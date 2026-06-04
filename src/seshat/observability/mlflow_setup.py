@@ -7,13 +7,17 @@ from seshat.config.settings import ObservabilityConfig
 logger = logging.getLogger(__name__)
 
 
-def setup_mlflow(config: ObservabilityConfig) -> str:
+def setup_mlflow(config: ObservabilityConfig, *, disable_autolog: bool = False) -> str:
     """Configure MLflow tracking, enable LangChain autolog, and resolve experiment ID.
 
-    Returns the experiment ID. Called once at worker startup.
+    Returns the experiment ID. Called once at process startup.
+    Pass disable_autolog=True for eval entrypoints where mlflow.genai.evaluate manages its own runs.
     """
     mlflow.set_tracking_uri(config.mlflow_tracking_uri)
-    mlflow.langchain.autolog()  # type: ignore[attr-defined]
+    if disable_autolog:
+        mlflow.autolog(disable=True)
+    else:
+        mlflow.langchain.autolog()  # type: ignore[attr-defined]
 
     experiment = mlflow.set_experiment(config.mlflow_experiment_name)
     logger.info(

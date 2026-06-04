@@ -249,11 +249,20 @@ class ObservabilityConfig(BaseConfig):
     mlflow_experiment_name: str = "seshat"
 
 
+_EVAL_ROOT: Path = Path(__file__).resolve().parent.parent.parent.parent
+_DEFAULT_CORPUS_BASE_DIR: Path = _EVAL_ROOT / "data" / "eval"
+_DEFAULT_GATE_PATH: Path = _EVAL_ROOT / "data" / "eval_gate.json"
+
+
 class EvalConfig(BaseConfig):
     corpus_base_dir: Path = Field(
-        description=("Root directory for eval corpora. Expected subdirs: identification/, resolution/, retrieval/.")
+        default=_DEFAULT_CORPUS_BASE_DIR,
+        description=("Root directory for eval corpora. Expected subdirs: one per eval harness."),
     )
-    gate_path: Path = Field(description="Full path (including filename) for the GateResult JSON output.")
+    gate_path: Path = Field(
+        default=_DEFAULT_GATE_PATH,
+        description="Full path (including filename) for the GateResult JSON output.",
+    )
     observability: ObservabilityConfig = Field(
         default_factory=lambda: ObservabilityConfig(mlflow_experiment_name="seshat-eval")
     )
@@ -317,7 +326,7 @@ class EvalConfig(BaseConfig):
     _verification_subdir: ClassVar[str] = "verification"
     _grouping_subdir: ClassVar[str] = "grouping"
     # a hidden folder in the project root for caching intermediate results during eval runs; not intended for manual use
-    _cache_dir: ClassVar[Path] = Path(__file__).resolve().parent.parent.parent.parent / ".seshat" / "eval_cache"
+    _cache_dir: ClassVar[Path] = _EVAL_ROOT / ".seshat" / "eval_cache"
 
     @computed_field  # type: ignore[misc]
     @property
@@ -369,7 +378,7 @@ class EvalConfig(BaseConfig):
     def grouping_cache_dir(self) -> Path:
         return self._cache_dir / self._grouping_subdir
 
-    @field_validator("gate_path")
+    @field_validator("gate_path", mode="after")
     @classmethod
     def _validate_gate_path(cls, v: Path) -> Path:
         if v.suffix != ".json":

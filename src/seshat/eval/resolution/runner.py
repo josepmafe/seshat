@@ -42,9 +42,6 @@ class ResolutionEvalRunner:
 
     async def run(self, tag_filter: dict[str, str | list[str]] | None = None) -> GateResult:
         mlflow.autolog(disable=True)
-        mlflow.set_tracking_uri(self._config.observability.mlflow_tracking_uri)
-        mlflow.set_experiment(self._config.observability.mlflow_experiment_name)
-
         examples = load_corpus(self._config.resolution_corpus_dir, tag_filter=tag_filter)
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="resolution-no-corpus")
