@@ -28,12 +28,12 @@ _DUMMY_GATE = _DATA_ROOT / "gate.json"
 
 @pytest.fixture(scope="session")
 def eval_corpus() -> EvalConfig:
-    return EvalConfig(corpus_base_dir=_DATA_ROOT / "corpus", gate_path=_DUMMY_GATE)
+    return EvalConfig(corpus_base_dir=_DATA_ROOT / "corpora", gate_path=_DUMMY_GATE)
 
 
 @pytest.fixture(scope="session")
 def eval_test_corpus() -> EvalConfig:
-    return EvalConfig(corpus_base_dir=_DATA_ROOT / "test_corpus", gate_path=_DUMMY_GATE)
+    return EvalConfig(corpus_base_dir=_DATA_ROOT / "test_corpora", gate_path=_DUMMY_GATE)
 
 
 class TagFilterContractTests:
