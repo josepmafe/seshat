@@ -161,7 +161,7 @@ _PROMPTS: dict[ConceptType, str] = {
 }
 
 
-_RESULT_MODELS = {
+_RESULT_MODELS: dict[ConceptType, type[_DecisionResult]] = {
     ConceptType.RISK: _DecisionToRiskResult,
     ConceptType.OPEN_QUESTION: _DecisionToOpenQuestionResult,
     ConceptType.ACTION_ITEM: _DecisionToActionItemResult,

@@ -11,6 +11,7 @@ from seshat.models.api import NodeFilter, SearchResult
 
 if TYPE_CHECKING:
     from seshat.config.settings import EvalConfig
+    from seshat.models.nodes import KBNode
     from seshat.vector_store.base_store import AbstractVectorStore
 
 # corpus_id → (results sorted desc by score, expected_ids)
@@ -86,14 +87,14 @@ class RetrievalMetaScorer:
         best_idx = int(np.argmax([p.recall_at_5 for p in points]))
         return RetrievalSweepResult(points=points, suggested_threshold=points[best_idx].threshold)
 
-    async def _seed(self, nodes: list) -> None:
-        async def _upsert(node) -> None:
+    async def _seed(self, nodes: list[KBNode]) -> None:
+        async def _upsert(node: KBNode) -> None:
             metadata = {"node_type": node.type.value, "confidence": node.confidence}
             await self._vs.upsert(str(node.id), text=f"{node.title} {node.description}", metadata=metadata)
 
         await asyncio.gather(*(_upsert(n) for n in nodes))
 
-    async def _teardown(self, nodes: list) -> None:
+    async def _teardown(self, nodes: list[KBNode]) -> None:
         await asyncio.gather(*(self._vs.delete(str(n.id)) for n in nodes))
 
 
