@@ -94,6 +94,9 @@ class CrossTypeResolutionRegistry:
         sources_by_type: dict[ConceptType, list[KBNode]],
         per_source_targets: dict[UUID, list[KBNode]],
     ) -> Iterator[tuple[tuple[ConceptType, ConceptType], list[KBNode], dict[UUID, list[KBNode]]]]:
+        """Skip pairs where no source has any target of the right type —
+        avoids spawning an LLM task with an empty candidate list.
+        """
         for src_type, tgt_type in self._agents_mapping:
             sources = sources_by_type.get(src_type, [])
             if not sources:
