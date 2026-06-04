@@ -1,6 +1,6 @@
 import pytest
 
-from seshat.config.settings import EvalConfig
+from seshat.config.eval_settings import EvalConfig
 from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
 
 

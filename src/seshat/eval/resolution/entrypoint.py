@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 
 from seshat.blob_store.factory import get_blob_store
-from seshat.config.settings import EvalConfig, SeshatConfig
+from seshat.config.eval_settings import EvalConfig
+from seshat.config.settings import SeshatConfig
 from seshat.eval.resolution.runner import ResolutionEvalRunner
 from seshat.knowledge_store.factory import get_kb_store
 from seshat.observability.mlflow_setup import setup_mlflow

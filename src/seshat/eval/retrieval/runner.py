@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
     from mlflow.genai.evaluation.entities import EvaluationResult
 
-    from seshat.config.settings import EvalConfig
+    from seshat.config.eval_settings import EvalConfig
     from seshat.eval.models import GateResult, RetrievalCorpusExample
     from seshat.models.nodes import KBNode
     from seshat.vector_store.base_store import AbstractVectorStore

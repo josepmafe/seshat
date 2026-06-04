@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
-from seshat.config.settings import EvalConfig, SeshatConfig
+from seshat.config.eval_settings import EvalConfig
+from seshat.config.settings import SeshatConfig
 from seshat.eval.retrieval.runner import RetrievalEvalRunner
 from seshat.observability.mlflow_setup import setup_mlflow
 from seshat.utils.log import get_logger

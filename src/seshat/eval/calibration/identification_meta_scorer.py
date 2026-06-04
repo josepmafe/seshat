@@ -12,7 +12,8 @@ from seshat.eval.identification.matcher import match_nodes
 from seshat.models.enums import ConceptType
 
 if TYPE_CHECKING:
-    from seshat.config.settings import ConfidenceWeights, EvalConfig
+    from seshat.config.eval_settings import EvalConfig
+    from seshat.config.settings import ConfidenceWeights
     from seshat.eval.models import IdentificationCorpusExample
     from seshat.models.nodes import IdentificationResult
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator

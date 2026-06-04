@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 
 from seshat.agents.identification.grouping import GroupingAgent
-from seshat.config.settings import EvalConfig, SeshatConfig
+from seshat.config.eval_settings import EvalConfig
+from seshat.config.settings import SeshatConfig
 from seshat.eval.grouping.runner import GroupingEvalRunner
 from seshat.observability.mlflow_setup import setup_mlflow
 from seshat.pipeline.llm_factory import get_identification_llm

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from mlflow.genai.evaluation.entities import EvaluationResult
 
     from seshat.agents.identification.grouping import GroupingAgent
-    from seshat.config.settings import EvalConfig
+    from seshat.config.eval_settings import EvalConfig
     from seshat.eval.grouping.corpus_loader import GroupingCorpusExample, GroupingCorpusItem
     from seshat.eval.models import GateResult
 

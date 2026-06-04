@@ -10,7 +10,7 @@ from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
 from seshat.models.api import NodeFilter, SearchResult
 
 if TYPE_CHECKING:
-    from seshat.config.settings import EvalConfig
+    from seshat.config.eval_settings import EvalConfig
     from seshat.models.nodes import KBNode
     from seshat.vector_store.base_store import AbstractVectorStore
 
