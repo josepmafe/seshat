@@ -8,13 +8,15 @@ import mlflow.genai
 import pandas as pd
 
 from seshat.agents.verification import VerificationResult
-from seshat.eval.cache import clear_cache_dir, read_or_run
+from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.common import log_breakdown_artifact
 from seshat.eval.gate import upsert_gate
 from seshat.eval.verification.corpus_loader import load_corpus
 from seshat.eval.verification.scorers import scorer
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from mlflow.genai.evaluation.entities import EvaluationResult
 
     from seshat.agents.verification import VerificationAgent
@@ -37,7 +39,7 @@ class VerificationEvalRunner:
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="verification-no-corpus")
 
-        result_cache = await self._run_all_predictions(examples)
+        result_cache, touched = await self._run_all_predictions(examples)
 
         def _predict(corpus_id: str, node_index: int) -> dict:
             key = (corpus_id, node_index)
@@ -60,20 +62,28 @@ class VerificationEvalRunner:
         mlflow.log_metrics({**verification_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
         if tag_filter:
             mlflow.log_params({f"tag_filter.{k}": str(v) for k, v in tag_filter.items()}, run_id=run_id)
-        clear_cache_dir(self._config.verification_cache_dir)
+
+        sweep_stale_entries(
+            self._config.verification_cache_dir,
+            corpus_ids=[ex.corpus_id for ex in examples],
+            touched=touched,
+        )
         return gate
 
     async def _run_all_predictions(
         self, examples: list[VerificationCorpusExample]
-    ) -> dict[tuple[str, int], VerificationResult]:
+    ) -> tuple[dict[tuple[str, int], VerificationResult], set[Path]]:
         # Pre-populate before mlflow.genai.evaluate (sync) to avoid event-loop boundary issues.
         sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
+        agent_hash = self._agent.fingerprint()
 
-        async def _run_one(ex: VerificationCorpusExample, i: int) -> tuple[tuple[str, int], VerificationResult]:
+        async def _run_one(ex: VerificationCorpusExample, i: int) -> tuple[tuple[str, int], VerificationResult, Path]:
+            cache_fp = build_cache_fp(self._config.verification_cache_dir, ex, agent_hash=agent_hash, index=i)
             node = ex.nodes[i]
+
             async with sem:
-                result = await read_or_run(
-                    self._config.verification_cache_dir / f"{ex.corpus_id}_{i}.json",
+                result, used = await read_or_run(
+                    cache_fp,
                     VerificationResult,
                     self._agent.verify(
                         title=node.title,
@@ -82,11 +92,13 @@ class VerificationEvalRunner:
                         transcript=ex.transcript,
                     ),
                 )
-            return (ex.corpus_id, i), result
+            return (ex.corpus_id, i), result, used
 
         tasks = [_run_one(ex, i) for ex in examples for i in range(len(ex.nodes))]
-        pairs = await asyncio.gather(*tasks)
-        return dict(pairs)
+        triples = await asyncio.gather(*tasks)
+        results = {key: result for key, result, _ in triples}
+        touched = {used for _, _, used in triples}
+        return results, touched
 
     def _log_breakdown(
         self,

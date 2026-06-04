@@ -7,7 +7,7 @@ import mlflow
 import mlflow.genai
 import pandas as pd
 
-from seshat.eval.cache import clear_cache_dir, read_or_run
+from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.common import log_breakdown_artifact
 from seshat.eval.gate import upsert_gate
 from seshat.eval.resolution.corpus_loader import build_kb_nodes, load_corpus
@@ -16,6 +16,7 @@ from seshat.models.enums import ConceptType
 from seshat.models.nodes import ResolutionResult
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from uuid import UUID
 
     from mlflow.genai.evaluation.entities import EvaluationResult
@@ -40,6 +41,7 @@ class ResolutionEvalRunner:
         self._slug_maps: dict[str, dict[str, UUID]] = {}
 
     async def run(self, tag_filter: dict[str, str | list[str]] | None = None) -> GateResult:
+        mlflow.autolog(disable=True)
         mlflow.set_tracking_uri(self._config.observability.mlflow_tracking_uri)
         mlflow.set_experiment(self._config.observability.mlflow_experiment_name)
 
@@ -52,7 +54,7 @@ class ResolutionEvalRunner:
             self._kb_nodes[ex.corpus_id] = kb_nodes
             self._slug_maps[ex.corpus_id] = slug_map
 
-        result_cache = await self._run_all_predictions(examples)
+        result_cache, touched = await self._run_all_predictions(examples)
 
         def _predict(corpus_id: str) -> dict:
             if corpus_id not in result_cache:
@@ -74,27 +76,42 @@ class ResolutionEvalRunner:
         mlflow.log_metrics({**resolution_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
         if tag_filter:
             mlflow.log_params({f"tag_filter.{k}": str(v) for k, v in tag_filter.items()}, run_id=run_id)
-        clear_cache_dir(self._config.resolution_cache_dir)
+
+        sweep_stale_entries(
+            self._config.resolution_cache_dir,
+            corpus_ids=[ex.corpus_id for ex in examples],
+            touched=touched,
+        )
         return gate
 
-    async def _run_all_predictions(self, examples: list[ResolutionCorpusExample]) -> dict[str, ResolutionResult]:
+    async def _run_all_predictions(
+        self, examples: list[ResolutionCorpusExample]
+    ) -> tuple[dict[str, ResolutionResult], set[Path]]:
         sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
 
-        async def _run_one(ex: ResolutionCorpusExample) -> tuple[str, ResolutionResult]:
+        async def _run_one(ex: ResolutionCorpusExample) -> tuple[str, ResolutionResult, Path]:
             kb_nodes = self._kb_nodes[ex.corpus_id]
             source_nodes = [kb_nodes[n.id] for n in ex.source_nodes]
             kb_target_nodes = [kb_nodes[n.id] for n in ex.kb_nodes]
             per_source_targets: dict[UUID, list[KBNode]] = {src.id: kb_target_nodes for src in source_nodes}
+
+            agent_hash = self._orchestrator._resolution_registry.fingerprint_for_types(
+                source_types={n.type for n in source_nodes}, target_types={n.type for n in kb_target_nodes}
+            )
+            cache_fp = build_cache_fp(self._config.resolution_cache_dir, ex, agent_hash=agent_hash)
+
             async with sem:
-                result = await read_or_run(
-                    self._config.resolution_cache_dir / f"{ex.corpus_id}.json",
+                result, used = await read_or_run(
+                    cache_fp,
                     ResolutionResult,
                     self._orchestrator._run_resolution(source_nodes, per_source_targets, job_id=ex.corpus_id),
                 )
-            return ex.corpus_id, result
+            return ex.corpus_id, result, used
 
-        pairs = await asyncio.gather(*(_run_one(ex) for ex in examples))
-        return dict(pairs)
+        triples = await asyncio.gather(*(_run_one(ex) for ex in examples))
+        results = {corpus_id: result for corpus_id, result, _ in triples}
+        touched = {used for _, _, used in triples}
+        return results, touched
 
     def _log_breakdown(
         self,

@@ -67,6 +67,10 @@ def _singleton(ac: AnchoredConcept[M]) -> ConceptGroup[M]:
 
 
 class GroupingAgent(_BaseAgent):
+    @property
+    def _system_prompt(self) -> str:
+        return _GROUPING_PROMPT
+
     async def group(
         self,
         items: list[AnchoredConcept[M]],

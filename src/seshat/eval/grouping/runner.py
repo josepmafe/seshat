@@ -9,7 +9,7 @@ import pandas as pd
 from pydantic import BaseModel
 
 from seshat.agents.identification.base import AnchoredConcept, ConceptModel
-from seshat.eval.cache import clear_cache_dir, read_or_run
+from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.common import log_breakdown_artifact
 from seshat.eval.gate import upsert_gate
 from seshat.eval.grouping.corpus_loader import load_corpus
@@ -17,6 +17,8 @@ from seshat.eval.grouping.scorers import scorer
 from seshat.models.enums import ConceptType
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from mlflow.genai.evaluation.entities import EvaluationResult
 
     from seshat.agents.identification.grouping import GroupingAgent
@@ -48,7 +50,7 @@ class GroupingEvalRunner:
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="grouping-no-corpus")
 
-        result_cache = await self._run_all_predictions(examples)
+        result_cache, touched = await self._run_all_predictions(examples)
 
         def _predict(corpus_id: str) -> dict:
             if corpus_id not in result_cache:
@@ -70,23 +72,30 @@ class GroupingEvalRunner:
         mlflow.log_metrics({**grouping_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
         if tag_filter:
             mlflow.log_params({f"tag_filter.{k}": str(v) for k, v in tag_filter.items()}, run_id=run_id)
-        clear_cache_dir(self._config.grouping_cache_dir)
+
+        sweep_stale_entries(
+            self._config.grouping_cache_dir,
+            corpus_ids=[ex.corpus_id for ex in examples],
+            touched=touched,
+        )
         return gate
 
-    async def _run_all_predictions(self, examples: list[GroupingCorpusExample]) -> dict[str, _GroupingCacheEntry]:
+    async def _run_all_predictions(
+        self, examples: list[GroupingCorpusExample]
+    ) -> tuple[dict[str, _GroupingCacheEntry], set[Path]]:
         sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
+        agent_hash = self._agent.fingerprint()
 
-        async def _run_one(ex: GroupingCorpusExample) -> tuple[str, _GroupingCacheEntry]:
+        async def _run_one(ex: GroupingCorpusExample) -> tuple[str, _GroupingCacheEntry, Path]:
+            cache_fp = build_cache_fp(self._config.grouping_cache_dir, ex, agent_hash=agent_hash)
             async with sem:
-                result = await read_or_run(
-                    self._config.grouping_cache_dir / f"{ex.corpus_id}.json",
-                    _GroupingCacheEntry,
-                    _run_grouping(self._agent, ex),
-                )
-            return ex.corpus_id, result
+                result, used = await read_or_run(cache_fp, _GroupingCacheEntry, _run_grouping(self._agent, ex))
+            return ex.corpus_id, result, used
 
-        pairs = await asyncio.gather(*(_run_one(ex) for ex in examples))
-        return dict(pairs)
+        triples = await asyncio.gather(*(_run_one(ex) for ex in examples))
+        results = {corpus_id: result for corpus_id, result, _ in triples}
+        touched = {used for _, _, used in triples}
+        return results, touched
 
     def _log_breakdown(
         self,

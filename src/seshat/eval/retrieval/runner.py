@@ -9,7 +9,7 @@ import mlflow.genai
 import openai
 import pandas as pd
 
-from seshat.eval.cache import clear_cache_dir, read_or_run
+from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.common import log_breakdown_artifact
 from seshat.eval.gate import upsert_gate
 from seshat.eval.models import RetrievalResult
@@ -20,6 +20,7 @@ from seshat.utils.log import get_logger
 from seshat.utils.retry import async_retry
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from uuid import UUID
 
     from mlflow.genai.evaluation.entities import EvaluationResult
@@ -60,7 +61,7 @@ class RetrievalEvalRunner:
 
         # Build UUID maps once — build_kb_nodes calls uuid4() so must not be called twice.
         example_nodes = {ex.corpus_id: build_kb_nodes(ex) for ex in examples}
-        result_cache = await self._run_all_predictions(examples, example_nodes)
+        result_cache, touched = await self._run_all_predictions(examples, example_nodes)
 
         def _predict(corpus_id: str) -> dict:
             if corpus_id not in result_cache:
@@ -85,24 +86,32 @@ class RetrievalEvalRunner:
             retrieval_metrics=retrieval_metrics,
         )
         mlflow.log_metrics({**retrieval_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
-        clear_cache_dir(self._config.retrieval_cache_dir)
+
+        sweep_stale_entries(
+            self._config.retrieval_cache_dir,
+            corpus_ids=[ex.corpus_id for ex in examples],
+            touched=touched,
+        )
         return gate
 
     async def _run_all_predictions(
         self,
         examples: list[RetrievalCorpusExample],
         example_nodes: dict[str, tuple[KBNode, list[KBNode], dict[str, UUID]]],
-    ) -> dict[str, list[str]]:
+    ) -> tuple[dict[str, list[str]], set[Path]]:
         result_cache: dict[str, list[str]] = {}
+        touched: set[Path] = set()
         for ex in examples:
             query_node, candidate_kb_nodes, _ = example_nodes[ex.corpus_id]
-            result = await read_or_run(
-                self._config.retrieval_cache_dir / f"{ex.corpus_id}.json",
+            cache_fp = build_cache_fp(self._config.retrieval_cache_dir, ex)
+            result, used = await read_or_run(
+                cache_fp,
                 RetrievalResult,
                 self._fetch_example(query_node, candidate_kb_nodes),
             )
             result_cache[ex.corpus_id] = result.retrieved_ids
-        return result_cache
+            touched.add(used)
+        return result_cache, touched
 
     async def _fetch_example(self, query_node: KBNode, candidate_kb_nodes: list[KBNode]) -> RetrievalResult:
         seeded = await self._seed_candidates(candidate_kb_nodes)

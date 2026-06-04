@@ -9,6 +9,7 @@ from seshat.agents.identification.open_question import OpenQuestionIdentificatio
 from seshat.agents.identification.risk import RiskIdentificationAgent
 from seshat.config.settings import ExtractionConfig
 from seshat.models.enums import ConceptType
+from seshat.utils.hashing import fingerprint
 
 
 class IdentificationAgentRegistry:
@@ -30,3 +31,12 @@ class IdentificationAgentRegistry:
         if agent is None:
             raise KeyError(f"No agent registered for {concept_type}")
         return agent
+
+    def fingerprint(self) -> str:
+        """8-char hex digest of all agents' system prompts concatenated.
+
+        All four concept types always fire per example (parallel fan-out in the orchestrator),
+        so any prompt change busts the full identification cache.
+        """
+        combined = "".join(agent._system_prompt for agent in self._agents.values())
+        return fingerprint(combined)

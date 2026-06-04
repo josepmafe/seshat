@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, TypeVar
 
 from pydantic import BaseModel
 
+from seshat.utils.hashing import fingerprint
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
@@ -29,6 +30,13 @@ class _BaseAgent:
     def __init__(self, llm: BaseChatModel, config: _LLMConfig) -> None:
         self._llm = llm
         self._max_retries = config.max_retries
+
+    def fingerprint(self) -> str:
+        return fingerprint(self._system_prompt)
+
+    @property
+    def _system_prompt(self) -> str:
+        raise NotImplementedError
 
     async def _retryable_structured_ainvoke(
         self,
