@@ -5,7 +5,6 @@ from typing import Any
 
 import mlflow.genai
 from mlflow.entities import Feedback
-from rapidfuzz import fuzz
 
 from seshat.eval.identification.matcher import MatchedNode, MatchResult, match_nodes
 from seshat.eval.models import IdentificationCorpusNode
@@ -96,6 +95,8 @@ def _field_accuracy_feedback(matched: list[MatchedNode]) -> list[Feedback]:
 def _field_accuracy_fuzzy_fields_feedback(
     ctype: ConceptType, expected_fields: dict[str, Any], predicted_fields: dict[str, Any]
 ) -> list[Feedback]:
+    from rapidfuzz import fuzz
+
     feedbacks: list[Feedback] = []
 
     for field in _FUZZY_FIELDS.get(ctype, []):
