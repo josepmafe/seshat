@@ -130,3 +130,6 @@ markers = [
     "eval: eval harness tests (unit and integration); excluded from CI, run locally after agent/RAG changes",
 ]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = ["src/seshat/eval/*"]
