@@ -75,7 +75,8 @@ class EvalConfig(BaseSettings):
         gt=0,
         description="Maximum number of prediction coroutines that may run in parallel during eval.",
     )
-    # 0.0 disables score filtering so all candidates rank — calibrate before tightening.
+    # 0.0 virtually disables score filtering, so all candidates rank.
+    # we recommend to calibrate it using the retrieval meta-scorer and set via EVAL__RETRIEVAL_SCORE_THRESHOLD
     retrieval_score_threshold: float = Field(
         default=0.0,
         ge=0,
