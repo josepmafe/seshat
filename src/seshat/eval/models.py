@@ -70,6 +70,7 @@ class RetrievalCorpusNode(BaseModel):
 class RetrievalCorpusExample(BaseModel):
     corpus_id: str
     description: str
+    tags: dict[str, Any] = Field(default_factory=dict)
     query_node: RetrievalCorpusNode
     candidate_nodes: list[RetrievalCorpusNode]
     expected_relevant_ids: list[str]  # slugs from candidate_nodes
@@ -78,12 +79,8 @@ class RetrievalCorpusExample(BaseModel):
 # ── Retrieval result ─────────────────────────────────────────────────────────
 
 
-class RetrievalResult(BaseModel):
-    retrieved_ids: list[str]
-
-
 class RetrievalScoredResult(BaseModel):
-    """Slug-keyed search results with scores — used by RetrievalMetaScorer's file cache."""
+    """Slug-keyed search results with scores."""
 
     results: list[tuple[str, float]]  # (slug, score) pairs, sorted desc by score
 

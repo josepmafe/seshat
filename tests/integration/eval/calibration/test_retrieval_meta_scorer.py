@@ -45,16 +45,15 @@ class _StubVectorStore(AbstractVectorStore):
 @pytest.mark.integration
 class TestRetrievalMetaScorerIntegration:
     @pytest.mark.asyncio
-    async def test_build_cache_then_sweep_end_to_end(self, tmp_path: Path) -> None:
-        """Real corpus loader + stub vector store; verifies the full build→sweep path runs
-        without errors and produces one cache entry per corpus file."""
+    async def test_sweep_end_to_end(self, tmp_path: Path) -> None:
+        """Real corpus loader + stub vector store; verifies the full sweep path runs
+        without errors and produces one result point per step."""
         config = make_eval_config(tmp_path, "seshat-retrieval-meta-scorer")
         scorer = RetrievalMetaScorer(vector_store=_StubVectorStore(), config=config, step=0.1)
 
-        await scorer.build_cache()
+        result = await scorer.sweep_threshold()
 
-        assert scorer._cache is not None
         corpus_files = list(config.retrieval_corpus_dir.glob("*.yaml"))
-        assert len(scorer._cache) == len(corpus_files)
-
-        scorer.sweep_threshold()  # must not raise
+        assert len(result.points) == 11  # step=0.1 → 0.0, 0.1, …, 1.0
+        assert len(corpus_files) > 0
+        assert result.suggested_threshold is not None

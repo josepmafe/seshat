@@ -12,16 +12,15 @@ import pandas as pd
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.gate import upsert_gate
 from seshat.eval.mlflow_logging import log_eval_run_metadata
-from seshat.eval.models import RetrievalResult
+from seshat.eval.models import RetrievalScoredResult
 from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
-from seshat.eval.retrieval.scorers import scorer
+from seshat.eval.retrieval.scorers import TOP_K, scorer
 from seshat.models.api import NodeFilter
 from seshat.utils.log import get_logger
 from seshat.utils.retry import async_retry
 
 if TYPE_CHECKING:
     from pathlib import Path
-    from uuid import UUID
 
     from mlflow.genai.evaluation.entities import EvaluationResult
 
@@ -50,16 +49,14 @@ class RetrievalEvalRunner:
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="retrieval-no-corpus")
 
-        # Build UUID maps once — build_kb_nodes calls uuid4() so must not be called twice.
-        example_nodes = {ex.corpus_id: build_kb_nodes(ex) for ex in examples}
-        result_cache, touched = await self._run_all_predictions(examples, example_nodes)
+        result_cache, touched = await self._run_all_predictions(examples)
 
         def _predict(corpus_id: str) -> dict:
             if corpus_id not in result_cache:
                 raise KeyError(f"corpus_id {corpus_id!r} not found in result cache — mlflow unpacking mismatch")
             return {"retrieved_ids": result_cache[corpus_id]}
 
-        df = _build_dataframe(examples, example_nodes)
+        df = _build_dataframe(examples)
         eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=model_id)
 
         run_id = eval_result.run_id
@@ -76,7 +73,7 @@ class RetrievalEvalRunner:
             gate_passed=gate.passed,
             corpus_dir=self._config.retrieval_corpus_dir,
             corpus_examples=examples,
-            breakdown_artifact=_build_breakdown(eval_result, examples, example_nodes, result_cache),
+            breakdown_artifact=_build_breakdown(eval_result, examples, result_cache),
         )
 
         sweep_stale_entries(
@@ -89,39 +86,39 @@ class RetrievalEvalRunner:
     async def _run_all_predictions(
         self,
         examples: list[RetrievalCorpusExample],
-        example_nodes: dict[str, tuple[KBNode, list[KBNode], dict[str, UUID]]],
     ) -> tuple[dict[str, list[str]], set[Path]]:
         result_cache: dict[str, list[str]] = {}
         touched: set[Path] = set()
         for ex in examples:
-            query_node, candidate_kb_nodes, _ = example_nodes[ex.corpus_id]
             cache_fp = build_cache_fp(self._config.retrieval_cache_dir, ex)
-            result, used = await read_or_run(
-                cache_fp,
-                RetrievalResult,
-                self._fetch_example(query_node, candidate_kb_nodes),
-            )
-            result_cache[ex.corpus_id] = result.retrieved_ids
+            scored, used = await read_or_run(cache_fp, RetrievalScoredResult, self._fetch_example(ex))
+            threshold = self._config.retrieval_score_threshold or 0.0
+            retrieved_ids = [slug for slug, score in scored.results if score >= threshold]
+            result_cache[ex.corpus_id] = retrieved_ids[:TOP_K]
             touched.add(used)
         return result_cache, touched
 
-    async def _fetch_example(self, query_node: KBNode, candidate_kb_nodes: list[KBNode]) -> RetrievalResult:
+    async def _fetch_example(self, ex: RetrievalCorpusExample) -> RetrievalScoredResult:
+        query_node, candidate_kb_nodes, slug_map = build_kb_nodes(ex)
         seeded = await self._seed_candidates(candidate_kb_nodes)
         if not seeded:
-            return RetrievalResult(retrieved_ids=[])
+            return RetrievalScoredResult(results=[])
+
+        query = f"{query_node.title} {query_node.description} {ex.query_node.quote[:80]}".strip()
+        node_filter = NodeFilter(node_type=None)
+        uuid_to_slug = {str(v): k for k, v in slug_map.items()}
         try:
-            query = f"{query_node.title} {query_node.description}"
-            node_filter = NodeFilter(node_type=query_node.type)
-            results = await self._search(query, node_filter)
-            return RetrievalResult(retrieved_ids=[r.node_id for r in results])
+            results = await self._search(query, node_filter, top_k=len(candidate_kb_nodes))
+            return RetrievalScoredResult(results=[(uuid_to_slug[r.node_id], r.score) for r in results])
         finally:
             await self._teardown_candidates(candidate_kb_nodes)
 
     @async_retry(retryable_exceptions=(httpx.ReadError, openai.APIConnectionError))
-    async def _search(self, query: str, node_filter: NodeFilter) -> list:
-        return await self._vs.search(
-            query, top_k=5, node_filter=node_filter, score_threshold=self._config.retrieval_score_threshold
-        )
+    async def _search(self, query: str, node_filter: NodeFilter, top_k: int) -> list:
+        # score_threshold=None: full unfiltered results are cached so both the runner
+        # (applies retrieval_score_threshold + top-5 at read time) and the meta-scorer
+        # (sweeps all thresholds) can reuse the same cache file.
+        return await self._vs.search(query, top_k=top_k, node_filter=node_filter, score_threshold=None)
 
     async def _seed_candidates(self, nodes: list[KBNode]) -> bool:
         """Upsert candidate nodes. Returns False if all nodes failed (example should be skipped)."""
@@ -155,18 +152,13 @@ class RetrievalEvalRunner:
         await asyncio.gather(*(_delete(node) for node in nodes))
 
 
-def _build_dataframe(
-    examples: list[RetrievalCorpusExample],
-    example_nodes: dict[str, tuple[KBNode, list[KBNode], dict[str, UUID]]],
-) -> pd.DataFrame:
+def _build_dataframe(examples: list[RetrievalCorpusExample]) -> pd.DataFrame:
     rows = []
     for ex in examples:
-        _, _, slug_map = example_nodes[ex.corpus_id]
-        expected_uuids = [str(slug_map[s]) for s in ex.expected_relevant_ids if s in slug_map]
         rows.append(
             {
                 "inputs": {"corpus_id": ex.corpus_id},
-                "expectations": {"expected_relevant_ids": expected_uuids},
+                "expectations": {"expected_relevant_ids": ex.expected_relevant_ids},
             }
         )
     return pd.DataFrame(rows)
@@ -184,7 +176,6 @@ def _aggregate_metrics(eval_result: EvaluationResult) -> dict[str, float]:
 def _build_breakdown(
     eval_result: EvaluationResult,
     examples: list[RetrievalCorpusExample],
-    example_nodes: dict[str, tuple[KBNode, list[KBNode], dict[str, UUID]]],
     result_cache: dict[str, list[str]],
 ) -> dict:
     assert eval_result.result_df is not None
@@ -195,12 +186,10 @@ def _build_breakdown(
             v = row.get(f"{metric}/value")
             scores[metric] = float(v) if not pd.isna(v) else None
 
-        _, _, slug_map = example_nodes[ex.corpus_id]
-        uuid_to_slug = {str(v): k for k, v in slug_map.items()}
         breakdown[ex.corpus_id] = {
             "scores": scores,
             "query": ex.query_node.id,
             "expected": ex.expected_relevant_ids,
-            "retrieved": [uuid_to_slug.get(uid, uid) for uid in result_cache[ex.corpus_id]],
+            "retrieved": result_cache[ex.corpus_id],
         }
     return breakdown

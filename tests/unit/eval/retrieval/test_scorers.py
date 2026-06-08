@@ -38,7 +38,7 @@ class TestRetrievalScorer:
             expectations={"expected_relevant_ids": ["id-1"]},
         )
         by_name = {f.name: f.value for f in feedbacks}
-        assert by_name["precision_at_5"] == pytest.approx(1 / 3)
+        assert by_name["precision_at_5"] == pytest.approx(1 / 5)
 
     def test_empty_retrieved_ids_gives_zero_scores(self):
         # retrieved_ids=[] with non-empty expected → recall=0, precision=0, no error

@@ -26,8 +26,9 @@ class RetrievalSweepPoint(BaseModel):
     threshold: float
     recall_at_5: float
     precision_at_5: float
+    macro_f2: float
 
 
 class RetrievalSweepResult(BaseModel):
     points: list[RetrievalSweepPoint]  # sorted ascending by threshold
-    suggested_threshold: float  # argmax(recall_at_5); ties → lower threshold
+    suggested_threshold: float  # argmax(macro_f2); ties → lower threshold
