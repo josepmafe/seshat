@@ -5,7 +5,7 @@ description: >
 
 tags:
   tier: boundary
-  difficulty: hard
+  difficulty: medium
   focus: [open_question, action_item]
   detail: "OQ survives when evaluation determines path"
 

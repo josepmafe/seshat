@@ -1,14 +1,15 @@
 description: >
-  Negative: the team raises an unresolved question about which A/B testing approach to adopt,
-  but then assigns a concrete investigation to a named person who explicitly accepts that the
-  assignment will settle the question. The Open Question is absorbed — no OQ should be extracted.
-  Models that over-extract will emit a spurious Open Question alongside the Action Item.
+  Boundary: the team raises an unresolved question about which A/B testing approach to adopt
+  and assigns a named person who explicitly claims the action item will answer it. Both the
+  Open Question and the Action Item must be extracted — the assignment creates the resolution
+  path but does not close the question. Models that treat explicit acceptance language
+  ("That comparison will answer it") as absorption will drop the OQ spuriously.
 
 tags:
-  tier: negative
+  tier: boundary
   difficulty: hard
-  focus: [open_question]
-  detail: "investigation assigned with explicit acceptance absorbs OQ"
+  focus: [open_question, action_item]
+  detail: "OQ survives when assignee explicitly claims the AI will answer it"
 
 transcript: |
   Before we commit to the new experiment roadmap, we need to sort out which A/B testing
@@ -27,7 +28,24 @@ transcript: |
   by next Friday.
 
 expected:
-  open_question: []
+  open_question:
+    - quote: "Before we commit to the new experiment roadmap, we need to sort out which A/B testing\n\
+        approach we're going with. The question is whether we buy a third-party platform or\n\
+        build the assignment and bucketing layer in-house. Both have real trade-offs and we\n\
+        haven't evaluated them properly yet.\n\
+        Right — vendor cost is predictable but we lose flexibility on custom metrics. Building\n\
+        in-house gives us full control but could take two sprints just to get a reliable\n\
+        bucketing service.\n\
+        We shouldn't decide without numbers. We need an actual cost and effort estimate before\n\
+        we can pick a direction.\n\
+        Agreed, we can't commit to the experiment roadmap until that question is answered."
+      title: Should we buy a third-party A/B testing platform or build in-house?
+      description: >
+        The team has not decided whether to adopt a third-party A/B testing platform or build
+        an in-house assignment and bucketing layer. The question is explicitly deferred pending
+        a cost and effort comparison, which Omar is assigned to produce.
+      question: Should the team buy a third-party A/B testing platform or build the assignment and bucketing layer in-house?
+      context: Neither option has been properly evaluated; a cost and effort estimate is needed before a direction can be chosen.
 
   action_item:
     - quote: "Omar, can you pull together a proper comparison — vendor pricing, estimated build effort,\n\
