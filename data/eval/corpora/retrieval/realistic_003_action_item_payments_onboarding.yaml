@@ -1,0 +1,95 @@
+corpus_id: action-item-payments-flyway-onboarding-mixed-pool
+description: >
+  Realistic mixed-pool positive: an action item to onboard the payments service to Flyway
+  should surface the prior action item it depends_on (provision staging), and the risk it
+  helps mitigate (schema drift). The pool mixes all four node types across migration,
+  security, and hiring domains to verify that infrastructure nodes unrelated to the
+  payments onboarding are not surfaced.
+
+tags:
+  tier: realistic
+  source_type: action_item
+  polarity: positive
+  difficulty: hard
+
+query_node:
+  id: onboard-payments-flyway
+  type: action_item
+  title: "Onboard the payments service to Flyway"
+  description: "Omar will migrate the payments service from its ad-hoc SQL scripts to Flyway-managed migrations as the first onboarding target."
+  quote: "Omar, payments service first — get it onto Flyway and prove out the process."
+
+candidate_nodes:
+  # --- Strong positive: action item this one depends_on ---
+  - id: provision-staging-action
+    type: action_item
+    title: "Provision a dedicated staging environment for Flyway onboarding tests"
+    description: "The platform team needs to provision a staging environment before any service can be onboarded to Flyway for testing."
+    quote: "Platform team, provision staging first — nothing can be onboarded until we have somewhere to test."
+
+  # --- Weak positive: risk that this action item partially mitigates ---
+  - id: schema-drift-risk
+    type: risk
+    title: "Mixed migration tooling across services may cause schema drift"
+    description: "If some services use Flyway while others continue with ad-hoc scripts, schema drift between services becomes harder to detect and resolve."
+    quote: "Half the services on a new tool and half on scripts means no single view of migration state."
+
+  # --- Hard negatives: same migration domain, not related to payments onboarding ---
+  - id: flyway-adoption-decision
+    type: decision
+    title: "Adopt Flyway for all database migrations going forward"
+    description: "The team decided to standardise on Flyway as the migration toolchain, replacing ad-hoc SQL scripts."
+    quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable."
+
+  - id: rollback-strategy-oq
+    type: open_question
+    title: "What is the rollback strategy if a Flyway migration fails mid-deployment?"
+    description: "The team has not defined a rollback procedure for failed Flyway migrations in production."
+    quote: "If a migration fails halfway, what do we do? We haven't defined that yet."
+
+  - id: partial-rollout-risk
+    type: risk
+    title: "Services not yet on Flyway may apply conflicting schema changes during the freeze"
+    description: "If any service team bypasses the schema freeze, ad-hoc changes during Flyway rollout could corrupt migration state in already-onboarded services."
+    quote: "The real risk is a team that hasn't heard about the freeze applying a script manually."
+
+  - id: schema-freeze-decision
+    type: decision
+    title: "Freeze all schema changes until the Flyway rollout is complete"
+    description: "No service may apply schema changes until all services have been onboarded to Flyway."
+    quote: "Nothing touches the schema until every service is on Flyway — we can't have mixed migration state mid-rollout."
+
+  - id: update-runbook-action
+    type: action_item
+    title: "Update the on-call runbook for the payments service"
+    description: "The on-call rotation runbook for the payments service needs updating to reflect the new escalation path."
+    quote: "Someone update the payments runbook — the escalation path is out of date."
+
+  # --- Easy negatives: completely different domain ---
+  - id: secrets-rotation-action
+    type: action_item
+    title: "Rotate all production API keys before end of sprint"
+    description: "Following the security audit, all production API keys must be rotated before the sprint ends."
+    quote: "Every prod API key needs to be rotated — security audit flagged it."
+
+  - id: key-person-risk
+    type: risk
+    title: "Critical domain knowledge concentrated in one engineer"
+    description: "The entire payments integration is understood by a single engineer; if that person leaves, the team cannot maintain the integration."
+    quote: "If that person goes on holiday we can't touch payments, it's all in their head."
+
+  - id: crm-migration-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team's legacy CRM will be migrated to Salesforce by end of Q2."
+    quote: "We're moving to Salesforce, the old CRM is being retired."
+
+  - id: budget-overrun-risk
+    type: risk
+    title: "Project is tracking 20% over budget with no approved contingency"
+    description: "Current spend trajectory puts the project 20% over budget by end of Q3, with no contingency allocated."
+    quote: "We're going to blow the budget by Q3 and there's no contingency approved."
+
+expected_relevant_ids:
+  - provision-staging-action
+  - schema-drift-risk

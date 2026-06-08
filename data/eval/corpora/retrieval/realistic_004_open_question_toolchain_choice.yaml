@@ -1,0 +1,95 @@
+corpus_id: oq-toolchain-choice-mixed-pool
+description: >
+  Realistic mixed-pool positive: an open question about which migration toolchain to adopt
+  (Flyway vs Liquibase) should surface the decision that resolves it and the risk that
+  motivated it. The pool mixes all four node types across migration, consent, and
+  unrelated domains to verify that adjacent tooling nodes with no direct link are not
+  surfaced.
+
+tags:
+  tier: realistic
+  source_type: open_question
+  polarity: positive
+  difficulty: hard
+
+query_node:
+  id: toolchain-oq
+  type: open_question
+  title: "Should we use Flyway or Liquibase for database migrations?"
+  description: "The team has not yet chosen between Flyway and Liquibase; both were shortlisted after a prototype evaluation and no deadline has been set."
+  quote: "Flyway or Liquibase — we need to pick one before we can start onboarding services."
+
+candidate_nodes:
+  # --- Strong positive: decision that resolves this question ---
+  - id: flyway-adoption-decision
+    type: decision
+    title: "Adopt Flyway for all database migrations going forward"
+    description: "The team decided to standardise on Flyway as the migration toolchain, replacing ad-hoc SQL scripts currently maintained per service."
+    quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable. Agreed."
+
+  # --- Weak positive: risk that motivated the toolchain evaluation ---
+  - id: schema-drift-risk
+    type: risk
+    title: "Mixed migration tooling across services may cause schema drift"
+    description: "If some services use Flyway while others continue with ad-hoc scripts, schema drift between services becomes harder to detect and resolve."
+    quote: "Half the services on a new tool and half on scripts means no single view of migration state."
+
+  # --- Hard negatives: same migration domain, not directly answering the question ---
+  - id: rollback-strategy-oq
+    type: open_question
+    title: "What is the rollback strategy if a Flyway migration fails mid-deployment?"
+    description: "The team has not defined a rollback procedure for failed Flyway migrations in production."
+    quote: "If a migration fails halfway, what do we do? We haven't defined that yet."
+
+  - id: provision-staging-action
+    type: action_item
+    title: "Provision a dedicated staging environment for Flyway onboarding tests"
+    description: "The platform team needs to provision a staging environment before any service can be onboarded to Flyway for testing."
+    quote: "Platform team, provision staging first — nothing can be onboarded until we have somewhere to test."
+
+  - id: adhoc-scripts-decision
+    type: decision
+    title: "Each service maintains its own ad-hoc SQL migration scripts"
+    description: "Each service team manages schema migrations independently using plain SQL scripts checked into their service repository."
+    quote: "Each team owns their schema scripts — no shared tooling needed at this scale."
+
+  - id: schema-freeze-decision
+    type: decision
+    title: "Freeze all schema changes until the Flyway rollout is complete"
+    description: "No service may apply schema changes until all services have been onboarded to Flyway."
+    quote: "Nothing touches the schema until every service is on Flyway."
+
+  - id: partial-rollout-risk
+    type: risk
+    title: "Services not yet on Flyway may apply conflicting schema changes during the freeze"
+    description: "If any service team bypasses the schema freeze, ad-hoc changes during Flyway rollout could corrupt migration state in already-onboarded services."
+    quote: "The real risk is a team that hasn't heard about the freeze applying a script manually."
+
+  # --- Easy negatives: completely different domain ---
+  - id: consent-storage-decision
+    type: decision
+    title: "Use Postgres for consent record storage until data platform migration"
+    description: "The team chose Postgres over a document store as the consent record store."
+    quote: "Let's go with Postgres for now, until we move to the centralised data platform."
+
+  - id: dpia-risk
+    type: risk
+    title: "Consent service omitted from DPIA blocks go-live compliance"
+    description: "The consent service was not included in the DPIA submitted to the DPO, flagged as a blocker to going live."
+    quote: "If the DPIA isn't updated before we go live, we're non-compliant on day one."
+
+  - id: cms-oq
+    type: open_question
+    title: "Build consent banner in-house or use a third-party CMP?"
+    description: "The team deferred the consent banner decision pending legal confirmation on jurisdiction coverage."
+    quote: "Do we build the banner ourselves or use OneTrust? Legal hasn't confirmed yet."
+
+  - id: rename-team-action
+    type: action_item
+    title: "Update all internal documentation to reflect team rename"
+    description: "The Platform team has been renamed to Infrastructure Engineering; all internal docs and Slack channels need updating."
+    quote: "Someone update the docs and Slack channels to reflect the new team name."
+
+expected_relevant_ids:
+  - flyway-adoption-decision
+  - schema-drift-risk

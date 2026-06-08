@@ -1,0 +1,118 @@
+corpus_id: decision-remove-rate-limit-retrieves-ddos-risk
+description: >
+  Cross-type (decision→risk): a decision to remove rate limiting from a public
+  API should surface existing KB risks about DDoS exposure and API abuse.
+  cloud-cost-spike and gdpr-compliance are semantically adjacent but embed too
+  close to other API risks for the model to reliably rank above hard negatives;
+  kept as candidates but not expected. 15 candidates, 2 expected relevant.
+tags:
+  tier: cross_type
+  source_type: decision
+  polarity: positive
+  difficulty: medium
+
+query_node:
+  id: remove-rate-limiting
+  type: decision
+  title: "Remove rate limiting from the public search API"
+  description: "The product team decided to remove all rate-limiting caps from the public search API to reduce friction for high-volume integrators."
+  quote: "remove the rate limits from search, our enterprise customers keep hitting them"
+
+candidate_nodes:
+  # --- Strong positives (~2-3): near-paraphrase or very tightly semantically linked ---
+  - id: ddos-exposure
+    type: risk
+    title: "Unprotected public endpoints expose the service to DDoS attacks"
+    description: "Without rate limiting or traffic throttling, a single abusive caller can saturate backend resources and degrade service for all users."
+    quote: "without rate limits a bad actor can just hammer us until we fall over"
+
+  - id: api-abuse
+    type: risk
+    title: "Uncapped API access enables bulk data scraping"
+    description: "Removing caps allows automated clients to extract the full dataset with no friction, undermining data licensing agreements and competitive positioning."
+    quote: "without limits anyone can just scrape everything we have"
+
+  # --- Weak positives (relevant but embed too close to hard negatives; not expected) ---
+  - id: cloud-cost-spike
+    type: risk
+    title: "Unexpected traffic surge may cause cloud cost overrun"
+    description: "A sudden increase in API call volume, whether legitimate or abusive, could drive compute and egress costs far beyond the approved quarterly budget."
+    quote: "one viral integration and our cloud bill explodes"
+
+  - id: gdpr-compliance
+    type: risk
+    title: "Uncontrolled data access may breach GDPR obligations"
+    description: "Allowing unrestricted bulk access to data containing EU resident information may violate GDPR data minimisation and purpose-limitation principles."
+    quote: "if EU data is in there with no controls, we might have a GDPR problem"
+
+  # --- Hard negatives (~4-5): API-adjacent risks, but unrelated to rate limiting ---
+  - id: api-versioning-breaks-clients
+    type: risk
+    title: "API versioning changes may silently break older client integrations"
+    description: "Introducing a new API version without a formal deprecation notice could break third-party clients that have not been notified, causing unexpected failures in production."
+    quote: "if we change the API without telling integrators, their apps just break"
+
+  - id: openapi-spec-outdated
+    type: risk
+    title: "Outdated OpenAPI spec causes integration confusion and contract drift"
+    description: "The public OpenAPI specification has not been updated in four months and no longer reflects the live API, leading to incorrect client codegen and integration errors."
+    quote: "the spec is months out of date, clients are generating the wrong code"
+
+  - id: unauthenticated-internal-endpoints
+    type: risk
+    title: "Internal API endpoints lack authentication controls"
+    description: "Several internal service-to-service API endpoints have no authentication requirement, meaning any process on the internal network can call them without credentials."
+    quote: "internal endpoints have no auth, anything on the network can call them"
+
+  - id: missing-request-validation
+    type: risk
+    title: "Missing request validation lets malformed data reach the database"
+    description: "API endpoints do not validate or sanitise incoming request payloads; malformed data can pass through to the persistence layer and cause data integrity issues."
+    quote: "no input validation means garbage data can reach the DB directly"
+
+  - id: absent-api-contract-tests
+    type: risk
+    title: "No API contract tests increase regression risk between services"
+    description: "There are no consumer-driven contract tests between upstream and downstream services; breaking API changes can be deployed without any automated detection."
+    quote: "without contract tests, a breaking change in one service won't be caught until prod"
+
+  - id: api-pagination-missing
+    type: risk
+    title: "Unbounded list endpoints return full datasets without pagination"
+    description: "Several list API endpoints return all matching records in a single response with no pagination; large datasets can cause response timeouts and excessive memory pressure on the server."
+    quote: "the list endpoints return everything at once, a big dataset will time out"
+
+  # --- Easy negatives (~4-5): completely different domain/topic ---
+  - id: office-lease-expiry
+    type: risk
+    title: "Office lease expires before a new location is secured"
+    description: "The current office lease ends in eight months and a replacement site has not been identified, risking operational disruption for the whole company."
+    quote: "our lease is up in eight months and we haven't found a new place"
+
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Hiring freeze may delay key engineering positions"
+    description: "An anticipated company-wide hiring freeze could prevent filling two senior engineering roles needed for the Q3 roadmap."
+    quote: "if the freeze hits we can't fill those two roles in time"
+
+  - id: q3-team-offsite-risk
+    type: risk
+    title: "Q3 team offsite may be disrupted by venue or travel issues"
+    description: "The Q3 team offsite venue has not been confirmed and travel arrangements are pending; last-minute cancellations could undermine team morale and planning objectives."
+    quote: "the offsite venue isn't booked yet, we might have to cancel last minute"
+
+  - id: logo-redesign-delays
+    type: risk
+    title: "Logo redesign delays may push back the planned rebrand launch"
+    description: "The external agency has missed two review milestones; if the logo redesign is not finalised within three weeks, the planned marketing rebrand launch will slip."
+    quote: "the agency is behind, the rebrand launch is at risk"
+
+  - id: catering-vendor-reliability
+    type: risk
+    title: "Sole catering vendor for office events may be unreliable"
+    description: "The office relies on a single catering supplier for all events; two recent cancellations suggest the vendor is overcommitted and may fail to deliver for major events."
+    quote: "the caterer has let us down twice, we need a backup for the big events"
+
+expected_relevant_ids:
+  - ddos-exposure
+  - api-abuse

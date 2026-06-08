@@ -1,0 +1,119 @@
+corpus_id: risk-data-breach-retrieves-security-risks
+description: >
+  Same-type (risk→risk): a new data-breach risk should surface existing KB
+  risks about PII exposure, missing encryption at rest, and stale dependencies.
+  weak-auth is semantically related but embeds too close to operational risks
+  for the model to reliably rank it above same-domain hard negatives; it is
+  kept as a candidate but not expected. 15 candidates, 3 expected relevant.
+tags:
+  tier: same_type
+  source_type: risk
+  polarity: positive
+  difficulty: medium
+
+query_node:
+  id: customer-data-breach
+  type: risk
+  title: "Customer PII data breach via unsecured S3 bucket"
+  description: "An S3 bucket containing customer personally identifiable information is publicly accessible without authentication, creating an imminent data-breach risk."
+  quote: "anyone can call that endpoint without a token, all customer data is just out there"
+
+candidate_nodes:
+  # --- Strong positives ---
+  - id: pii-leakage
+    type: risk
+    title: "PII leakage through unencrypted storage"
+    description: "Customer personally identifiable information is stored without encryption at rest, increasing the impact of any storage-layer breach."
+    quote: "the PII fields aren't encrypted, a storage compromise means a full exposure"
+
+  - id: weak-auth
+    type: risk
+    title: "Weak authentication tokens allow session hijacking"
+    description: "Short-lived tokens without rotation increase the risk of session hijacking by a compromised client."
+    quote: "tokens don't rotate, a stolen one is valid far too long"
+
+  # --- Weak positives (relevant but embed close to hard negatives; not expected) ---
+  - id: stale-dependencies
+    type: risk
+    title: "Unpatched third-party dependencies with known CVEs"
+    description: "Several direct dependencies have disclosed critical CVEs and have not been updated in over six months, creating an exploitable attack surface."
+    quote: "we haven't updated those packages in six months, there are open CVEs"
+
+  - id: missing-encryption-at-rest
+    type: risk
+    title: "Database volumes lack encryption at rest"
+    description: "The primary database volumes are provisioned without server-side encryption, meaning a physical or snapshot compromise exposes raw customer data."
+    quote: "the DB volumes aren't encrypted, anyone with snapshot access sees everything"
+
+  # --- Hard negatives (~4-5): same domain/type, same risk taxonomy, but not security ---
+  - id: sla-breach-risk
+    type: risk
+    title: "Upstream API latency may breach customer SLA commitments"
+    description: "A third-party upstream API has exhibited p99 latency spikes that, if sustained, will push the service past its contractual 99.9% uptime SLA."
+    quote: "that upstream is slow enough that we'll miss SLA if it keeps up"
+
+  - id: single-point-failure
+    type: risk
+    title: "Single point of failure in the message broker"
+    description: "The message broker has no failover replica, meaning a node failure halts all asynchronous processing."
+    quote: "if the broker goes down, the whole async pipeline stops"
+
+  - id: failed-deployments-rollback
+    type: risk
+    title: "No automated rollback increases deployment failure blast radius"
+    description: "Deployments that introduce regressions cannot be automatically reverted; the manual rollback process takes 30–60 minutes, extending customer impact windows."
+    quote: "bad deploys take an hour to roll back manually, that's too long"
+
+  - id: capacity-planning-gap
+    type: risk
+    title: "Insufficient capacity planning may cause production outages under peak load"
+    description: "Current infrastructure sizing is based on average load; projected seasonal traffic peaks have not been provisioned for, creating outage risk."
+    quote: "we've sized for average traffic, not peak, something will break at Christmas"
+
+  - id: dependency-outage-cascade
+    type: risk
+    title: "Third-party payment provider outage could cascade to order processing"
+    description: "The payment integration has no circuit breaker or fallback queue; a provider outage blocks all order completions in real time."
+    quote: "if the payment provider goes down we can't complete any orders"
+
+  - id: vendor-lock-in
+    type: risk
+    title: "Deep vendor lock-in with primary cloud provider"
+    description: "Heavy use of proprietary managed services creates dependency on a single cloud vendor, raising migration costs and business continuity risk if the vendor changes pricing or terms."
+    quote: "we're so deep into their managed services, moving would take years"
+
+  # --- Easy negatives (~4-5): completely different domain/topic ---
+  - id: office-lease-no-backup-site
+    type: risk
+    title: "Office lease expiry without a backup site identified"
+    description: "The current office lease expires in eight months and no alternative location has been shortlisted, risking operational disruption for the whole company."
+    quote: "the lease is up in eight months and we haven't found anywhere else"
+
+  - id: hiring-freeze-roadmap
+    type: risk
+    title: "Company-wide hiring freeze may delay key roadmap positions"
+    description: "An anticipated hiring freeze could prevent backfilling two senior roles, delaying committed roadmap deliverables by at least one quarter."
+    quote: "if the freeze hits we can't fill those two roles in time"
+
+  - id: budget-overrun-cloud
+    type: risk
+    title: "Cloud spending may exceed the approved annual budget"
+    description: "Current growth in egress and compute consumption puts the annual cloud budget at risk of overrun by Q3."
+    quote: "at this rate we'll blow the cloud budget before autumn"
+
+  - id: team-offsite-cancellation
+    type: risk
+    title: "Team offsite may be cancelled due to venue availability"
+    description: "The preferred venue for the annual team offsite is double-booked and a replacement has not been found, putting the event at risk."
+    quote: "the venue fell through, we might have to cancel the offsite entirely"
+
+  - id: vendor-selection-delay
+    type: risk
+    title: "Delayed vendor selection slows analytics platform procurement"
+    description: "The analytics platform vendor selection has been in committee review for three months with no decision, delaying the data team's Q3 work."
+    quote: "we still haven't picked a vendor, the data team is blocked"
+
+expected_relevant_ids:
+  - pii-leakage
+  - missing-encryption-at-rest
+  - stale-dependencies

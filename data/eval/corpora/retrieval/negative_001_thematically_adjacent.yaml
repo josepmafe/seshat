@@ -1,0 +1,118 @@
+corpus_id: decision-logging-format-no-relation-to-observability-risks
+description: >
+  Discriminating negative case: a decision about structured log format is
+  thematically adjacent to observability risks in the KB, but there is no
+  direct semantic link between the log FORMAT choice and any of the risks.
+  The scorer treats empty expected_relevant_ids as a negative case: a perfect
+  score requires nothing being retrieved above threshold. The pool contains 8
+  hard negatives (observability risks that are topically near but not
+  semantically linked to log format) and 7 easy negatives (completely
+  off-topic risks from HR, office, and business domains).
+
+tags:
+  tier: negative
+  source_type: decision
+  polarity: negative
+  difficulty: hard
+
+query_node:
+  id: adopt-json-logging
+  type: decision
+  title: "Adopt structured JSON logging across all services"
+  description: "All services must emit logs as structured JSON objects with standard fields (timestamp, level, service, trace_id). Free-form text logs are prohibited."
+  quote: "everyone switches to structured JSON logs, no more freeform text"
+
+candidate_nodes:
+  # --- Hard negatives (observability risks, thematically adjacent but NOT about log format) ---
+  - id: missing-tracing
+    type: risk
+    title: "Lack of distributed tracing makes cross-service debugging slow"
+    description: "Without distributed tracing instrumentation, diagnosing latency issues that cross multiple services requires manually correlating logs by hand."
+    quote: "we have no tracing, debugging cross-service latency is a nightmare"
+
+  - id: no-alerting
+    type: risk
+    title: "No automated alerting on error rate spikes"
+    description: "The team currently relies on manual checks of dashboards to detect elevated error rates; there is no automated alert that fires when thresholds are exceeded."
+    quote: "nobody gets paged when errors spike, we rely on someone noticing"
+
+  - id: alert-fatigue
+    type: risk
+    title: "Alert fatigue from too many low-severity pages"
+    description: "Engineers are receiving a high volume of low-severity pages that do not require action, leading to alert fatigue and slower response to genuine incidents."
+    quote: "everyone ignores pages now because there are too many false alarms"
+
+  - id: log-retention-cost
+    type: risk
+    title: "Log storage costs growing faster than budget allows"
+    description: "Log volume growth is outpacing the approved storage budget; without retention policies, costs will exceed the annual allocation."
+    quote: "logs are eating the budget, we need retention policies"
+
+  - id: dashboard-staleness
+    type: risk
+    title: "Operational dashboards show stale metrics after scale-out"
+    description: "After horizontal scaling events, some dashboard panels continue to show pre-scale metrics for up to 10 minutes due to a caching issue in the metrics aggregator."
+    quote: "dashboards lie after we scale out, the numbers don't update for ages"
+
+  - id: no-slo-defined
+    type: risk
+    title: "No SLOs defined for the public API"
+    description: "Without agreed service-level objectives for availability and latency, there is no objective basis for measuring whether the service is meeting user expectations."
+    quote: "we don't have SLOs, so we don't know if we're actually meeting customer expectations"
+
+  - id: metrics-pipeline-no-schema
+    type: risk
+    title: "Metrics pipeline has no schema validation, allowing silent data corruption"
+    description: "The metrics ingestion pipeline accepts any payload without validation; malformed or incorrectly typed metric events are silently dropped or stored with wrong types, corrupting dashboards."
+    quote: "the metrics pipeline will accept anything, bad payloads corrupt the data with no warning"
+
+  - id: tracing-not-sampled-correctly
+    type: risk
+    title: "Distributed tracing not sampled correctly, missing high-latency requests"
+    description: "The current head-based sampling configuration drops a fixed percentage of all traces regardless of latency; this means the slow requests most useful for debugging are no more likely to be captured than fast ones."
+    quote: "our sampler doesn't bias towards slow requests, so the traces we keep are basically random"
+
+  # --- Easy negatives (completely off-topic risks) ---
+  - id: hiring-freeze
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling the two senior engineering roles required to deliver the roadmap on time."
+    quote: "if the freeze happens those two roles won't get filled and we'll miss the roadmap"
+
+  - id: office-lease
+    type: risk
+    title: "Office lease expires before a replacement site is secured"
+    description: "The current office lease ends in seven months and no alternative site has been shortlisted, creating a risk of operational disruption if relocation is not arranged in time."
+    quote: "the lease is up in seven months and we haven't started looking for a new place"
+
+  - id: vendor-lock-in
+    type: risk
+    title: "Deep vendor lock-in to a single cloud provider limits negotiating leverage"
+    description: "The architecture relies on several provider-specific managed services with no portable alternatives; switching providers would require a full rebuild, removing any pricing leverage at renewal."
+    quote: "we're so deep into one cloud provider they can charge us whatever they want"
+
+  - id: key-person-dependency
+    type: risk
+    title: "Critical domain knowledge concentrated in one engineer"
+    description: "The entire payments integration is understood by a single engineer; if that person leaves or is unavailable, the team has no ability to maintain or extend the integration."
+    quote: "if that person goes on holiday we can't touch payments, it's all in their head"
+
+  - id: budget-overrun
+    type: risk
+    title: "Project is tracking 20% over budget with no approved contingency"
+    description: "Current spend trajectory puts the project 20% over the approved budget by end of Q3, and no contingency budget has been allocated to absorb the overrun."
+    quote: "we're going to blow the budget by Q3 and there's no contingency approved"
+
+  - id: team-restructuring-delay
+    type: risk
+    title: "Pending team restructuring may delay Q3 deliverables"
+    description: "An announced but not yet finalised team restructuring is creating uncertainty about reporting lines and responsibilities, slowing decision-making and risking Q3 delivery."
+    quote: "nobody knows who owns what until the restructure is done, everything is moving slowly"
+
+  - id: product-roadmap-ambiguity
+    type: risk
+    title: "Unclear product roadmap beyond Q3 is causing team retention risk"
+    description: "Engineers are concerned about job security and direction because no roadmap beyond Q3 has been communicated, increasing the likelihood of voluntary attrition."
+    quote: "people are nervous because there's no plan after Q3, we might start losing good engineers"
+
+expected_relevant_ids: []

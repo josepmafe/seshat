@@ -1,0 +1,116 @@
+corpus_id: negative-decision-infra-same-jargon
+description: >
+  Negative case: a decision to adopt Kubernetes for container orchestration shares
+  infrastructure jargon with the candidate pool (deployments, services, clusters,
+  Postgres, API gateway) but none of the KB nodes are semantically linked to this
+  specific decision. The Kubernetes decision neither supersedes, mitigates, resolves,
+  nor depends on any node in the pool — they are concurrent unrelated infrastructure
+  decisions and risks from the same team. A correct retrieval system must return nothing
+  above threshold for this query.
+
+tags:
+  tier: negative
+  source_type: decision
+  polarity: negative
+  difficulty: hard
+
+query_node:
+  id: adopt-kubernetes
+  type: decision
+  title: "Adopt Kubernetes for container orchestration"
+  description: "The team decided to use Kubernetes as the container orchestration platform for all production workloads, replacing the current manually-managed VM fleet."
+  quote: "We're going with Kubernetes, it's the right choice for our scale."
+
+candidate_nodes:
+  # --- Hard negatives: same infra domain, same team, plausibly related at first glance ---
+  - id: postgres-decision
+    type: decision
+    title: "Use PostgreSQL as the primary relational database"
+    description: "PostgreSQL is selected as the sole relational persistence layer for all services."
+    quote: "We're standardising on PostgreSQL, no more mixed database landscape."
+
+  - id: api-gateway-decision
+    type: decision
+    title: "Introduce an API gateway for all external traffic"
+    description: "All inbound external requests must route through a centralised API gateway responsible for auth, rate-limiting, and routing."
+    quote: "Everything from outside goes through the gateway first."
+
+  - id: centralise-auth-decision
+    type: decision
+    title: "Build a centralised authentication and authorisation service"
+    description: "A dedicated internal auth service will own all token issuance and permission checks, replacing per-service auth logic."
+    quote: "One auth service, all services delegate to it."
+
+  - id: connection-pool-risk
+    type: risk
+    title: "Blue-green deploy cutover may cause brief connection pool exhaustion"
+    description: "During blue-green cutovers, the connection pool may momentarily be saturated if both old and new instances are draining simultaneously."
+    quote: "We've seen the pool spike during cutover — old and new instances both holding connections."
+
+  - id: vendor-lock-in-risk
+    type: risk
+    title: "Deep vendor lock-in to a single cloud provider limits negotiating leverage"
+    description: "The architecture relies on several provider-specific managed services; switching providers would require a full rebuild."
+    quote: "We're so deep into one cloud provider they can charge us whatever they want."
+
+  - id: no-slo-risk
+    type: risk
+    title: "No SLOs defined for the public API"
+    description: "Without agreed service-level objectives, there is no objective basis for measuring whether the service meets user expectations."
+    quote: "We don't have SLOs, so we don't know if we're actually meeting customer expectations."
+
+  - id: schema-freeze-decision
+    type: decision
+    title: "Freeze all schema changes until the Flyway rollout is complete"
+    description: "No service may apply schema changes until all services have been onboarded to Flyway."
+    quote: "Nothing touches the schema until every service is on Flyway."
+
+  - id: provision-staging-action
+    type: action_item
+    title: "Provision a dedicated staging environment for Flyway onboarding tests"
+    description: "The platform team needs to provision a staging environment before any service can be onboarded to Flyway."
+    quote: "Platform team, provision staging first."
+
+  - id: configure-rotations-action
+    type: action_item
+    title: "Configure PagerDuty on-call rotations for all backend services"
+    description: "The platform team needs to configure on-call rotation schedules in PagerDuty for all backend services."
+    quote: "Configure the backend on-call rotations in PagerDuty before the next sprint ends."
+
+  - id: deploy-strategy-oq
+    type: open_question
+    title: "Should we adopt blue-green or canary deploys for stateful services?"
+    description: "The team has not chosen between blue-green and canary deployment strategies for stateful services that require database migrations."
+    quote: "Blue-green or canary for stateful services? We need a call on this before the next release."
+
+  - id: monorepo-decision
+    type: decision
+    title: "Keep a monorepo structure for all service code"
+    description: "All microservice source code will remain in a single Git monorepo to simplify cross-service changes."
+    quote: "We keep the monorepo, splitting repos would cause more pain than it solves."
+
+  - id: graphql-decision
+    type: decision
+    title: "Adopt GraphQL for the internal data API layer"
+    description: "The platform team decided to replace internal REST endpoints with a GraphQL schema."
+    quote: "We're switching internal APIs to GraphQL, REST is too rigid for our query patterns."
+
+  - id: dns-failover-oq
+    type: open_question
+    title: "Should we implement active-active or active-passive DNS failover?"
+    description: "The disaster recovery working group has not yet chosen a DNS failover strategy for the primary region."
+    quote: "Active-active or active-passive for DNS failover? No decision yet."
+
+  - id: react-frontend-decision
+    type: decision
+    title: "Adopt React for the customer-facing frontend"
+    description: "The frontend team will use React as the component framework for all new customer-facing pages."
+    quote: "Frontend goes React, we need a modern component model."
+
+  - id: missing-tracing-risk
+    type: risk
+    title: "Lack of distributed tracing makes cross-service debugging slow"
+    description: "Without distributed tracing, diagnosing latency issues that cross multiple services requires manually correlating logs."
+    quote: "We have no tracing, debugging cross-service latency is a nightmare."
+
+expected_relevant_ids: []

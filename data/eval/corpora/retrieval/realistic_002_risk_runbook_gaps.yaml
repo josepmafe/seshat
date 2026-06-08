@@ -1,0 +1,101 @@
+corpus_id: risk-runbook-gaps-mixed-pool
+description: >
+  Realistic mixed-pool positive: a risk about incomplete runbooks for newly added on-call
+  services should surface the prior undocumented-services risk it amends, and the action
+  item that directly mitigates it. The pool mixes all four node types across incident
+  response, alerting, and unrelated domains to verify that same-domain but non-linked
+  nodes are not surfaced.
+
+tags:
+  tier: realistic
+  source_type: risk
+  polarity: positive
+  difficulty: hard
+
+query_node:
+  id: risk-runbook-gaps
+  type: risk
+  title: "Incomplete runbooks for newly added pipeline services increase MTTR"
+  description: "The data pipeline services being added to the backend on-call rotation lack runbooks. On-call engineers unfamiliar with these services will have no documented recovery steps, increasing mean time to resolution."
+  quote: "Those pipeline services have no runbooks — the first time someone gets paged for one at 3am, they're flying blind."
+
+candidate_nodes:
+  # --- Strong positive: prior risk that this one amends ---
+  - id: mttr-undocumented-risk
+    type: risk
+    title: "Undocumented services in the on-call rotation increase mean time to resolution"
+    description: "Services added to the on-call rotation without runbooks or documentation increase the risk of prolonged incidents because engineers lack recovery guidance."
+    quote: "Every undocumented service we add to on-call is a liability — incidents take longer to resolve when there's no playbook."
+
+  # --- Weak positive: action item that directly mitigates this risk ---
+  - id: write-pipeline-runbooks-action
+    type: action_item
+    title: "Write runbooks for all pipeline services before rotation handover"
+    description: "The data engineering team will write runbooks for each pipeline service before the rotation handover, covering failure modes, recovery steps, and escalation contacts."
+    quote: "Data engineering, write the runbooks for every pipeline service before we hand over to backend on-call."
+
+  # --- Hard negatives: same incident response domain, not directly linked ---
+  - id: alert-fatigue-risk
+    type: risk
+    title: "Alert fatigue from low-fidelity alerts reduces on-call responsiveness"
+    description: "A high volume of low-priority or duplicate alerts desensitises on-call engineers, increasing the risk that critical alerts are missed or responded to slowly."
+    quote: "Too many noisy alerts and on-call starts ignoring them — that's how critical pages get missed."
+
+  - id: pagerduty-decision
+    type: decision
+    title: "PagerDuty is the single alerting and on-call management tool for all teams"
+    description: "The team decided to standardise on PagerDuty as the sole alerting and on-call rotation management tool, replacing OpsGenie."
+    quote: "PagerDuty is it — one tool, all teams. OpsGenie is out."
+
+  - id: audit-alert-rules-action
+    type: action_item
+    title: "Audit and prune low-fidelity alert rules in PagerDuty"
+    description: "Many alert rules fire too frequently on transient conditions. An audit to remove or raise thresholds on low-fidelity rules is needed."
+    quote: "Audit the alert rules and kill the noisy ones — if it fires every five minutes it's not an alert, it's wallpaper."
+
+  - id: oncall-scope-decision
+    type: decision
+    title: "The backend on-call rotation covers all services including data pipeline services"
+    description: "The backend engineering team decided to expand their on-call rotation to include data pipeline services."
+    quote: "Backend on-call will cover the data pipeline services going forward."
+
+  - id: oncall-ownership-oq
+    type: open_question
+    title: "Should the backend on-call rotation absorb the data team on-call responsibilities?"
+    description: "The team has been debating whether to consolidate on-call ownership by merging the data team rotation into the backend rotation."
+    quote: "Do we merge the data team into the backend on-call rota, or keep them separate?"
+
+  - id: configure-rotations-action
+    type: action_item
+    title: "Configure PagerDuty on-call rotations for all backend services"
+    description: "The platform team needs to configure the on-call rotation schedules in PagerDuty for all backend services."
+    quote: "Platform team, configure the backend on-call rotations in PagerDuty before the next sprint ends."
+
+  # --- Easy negatives: completely different domain ---
+  - id: consent-schema-risk
+    type: risk
+    title: "Missing consent schema version field will cause compliance gaps on policy updates"
+    description: "Without a version field on consent records, the service cannot determine which wording version a user accepted."
+    quote: "If we update the consent wording, we won't know which version a user accepted."
+
+  - id: postgres-consent-decision
+    type: decision
+    title: "Use Postgres for consent record storage until data platform migration"
+    description: "The team chose Postgres over a document store as the consent record store."
+    quote: "Let's go with Postgres for now, until we move to the centralised data platform."
+
+  - id: dpia-update-action
+    type: action_item
+    title: "Update DPIA to include the consent service"
+    description: "Marcus will update the Data Protection Impact Assessment to cover the consent service before go-live sign-off."
+    quote: "Someone needs to update the DPIA to include the consent service."
+
+  - id: cms-selection-oq
+    type: open_question
+    title: "Build consent banner in-house or use a third-party CMP?"
+    description: "The team deferred the consent banner decision pending legal confirmation on whether OneTrust covers all required cross-border jurisdictions."
+    quote: "Do we build the banner ourselves or use OneTrust? Legal hasn't confirmed jurisdiction coverage yet."
+
+expected_relevant_ids:
+  - mttr-undocumented-risk
+  - write-pipeline-runbooks-action

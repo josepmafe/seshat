@@ -1,0 +1,116 @@
+corpus_id: negative-risk-process-same-team
+description: >
+  Negative case: a risk about the engineering team lacking a documented incident
+  post-mortem process is thematically adjacent to the candidate pool (same team, same
+  sprint, incident-response and observability domain) but no KB node directly relates
+  to post-mortem process. The pool nodes address alerting tooling, on-call rotations,
+  runbooks, and SLOs — all incident-response concerns, but none specifically about the
+  post-mortem workflow. A correct retrieval system must return nothing above threshold.
+
+tags:
+  tier: negative
+  source_type: risk
+  polarity: negative
+  difficulty: hard
+
+query_node:
+  id: no-postmortem-process-risk
+  type: risk
+  title: "No documented post-mortem process means incidents repeat without learning"
+  description: "The team has no standardised blameless post-mortem template or process; when incidents resolve, learnings are not captured and similar failures recur."
+  quote: "We fix the incident, close the ticket, and move on — nobody writes up what happened or why, so we get the same problems again next quarter."
+
+candidate_nodes:
+  # --- Hard negatives: same incident response domain, same team, but about tooling/rotation ---
+  - id: pagerduty-decision
+    type: decision
+    title: "PagerDuty is the single alerting and on-call management tool for all teams"
+    description: "The team standardised on PagerDuty as the sole alerting and on-call rotation management tool."
+    quote: "PagerDuty is it — one tool, all teams. OpsGenie is out."
+
+  - id: alert-fatigue-risk
+    type: risk
+    title: "Alert fatigue from low-fidelity alerts reduces on-call responsiveness"
+    description: "A high volume of low-priority alerts desensitises on-call engineers."
+    quote: "Too many noisy alerts and on-call starts ignoring them."
+
+  - id: mttr-undocumented-risk
+    type: risk
+    title: "Undocumented services in the on-call rotation increase mean time to resolution"
+    description: "Services without runbooks increase incident duration because engineers lack recovery guidance."
+    quote: "Every undocumented service we add to on-call is a liability."
+
+  - id: write-pipeline-runbooks-action
+    type: action_item
+    title: "Write runbooks for all pipeline services before rotation handover"
+    description: "The data engineering team will write runbooks for each pipeline service before the rotation handover."
+    quote: "Data engineering, write the runbooks for every pipeline service before we hand over to backend on-call."
+
+  - id: configure-rotations-action
+    type: action_item
+    title: "Configure PagerDuty on-call rotations for all backend services"
+    description: "The platform team needs to configure on-call rotation schedules in PagerDuty."
+    quote: "Configure the backend on-call rotations in PagerDuty before the next sprint ends."
+
+  - id: no-slo-risk
+    type: risk
+    title: "No SLOs defined for the public API"
+    description: "Without agreed service-level objectives, there is no objective basis for measuring whether the service meets expectations."
+    quote: "We don't have SLOs, so we don't know if we're actually meeting customer expectations."
+
+  - id: audit-alert-rules-action
+    type: action_item
+    title: "Audit and prune low-fidelity alert rules"
+    description: "Many alert rules fire too frequently on transient conditions; an audit is needed."
+    quote: "Audit the alert rules and kill the noisy ones."
+
+  - id: oncall-scope-decision
+    type: decision
+    title: "The backend on-call rotation covers all services including data pipeline services"
+    description: "The backend engineering team expanded their on-call rotation to include data pipeline services."
+    quote: "Backend on-call will cover the data pipeline services going forward."
+
+  - id: missing-tracing-risk
+    type: risk
+    title: "Lack of distributed tracing makes cross-service debugging slow"
+    description: "Without distributed tracing, diagnosing latency issues requires manually correlating logs."
+    quote: "We have no tracing, debugging cross-service latency is a nightmare."
+
+  - id: oncall-ownership-oq
+    type: open_question
+    title: "Should the backend on-call rotation absorb the data team on-call responsibilities?"
+    description: "The team has been debating whether to consolidate on-call ownership."
+    quote: "Do we merge the data team into the backend on-call rota, or keep them separate?"
+
+  - id: opsgenie-decision
+    type: decision
+    title: "OpsGenie is the primary alerting and on-call management tool"
+    description: "The team previously standardised on OpsGenie for alerting and on-call management."
+    quote: "OpsGenie for all alerting and on-call — one tool across the backend."
+
+  - id: evaluate-tools-action
+    type: action_item
+    title: "Evaluate PagerDuty and OpsGenie and recommend an alerting tool"
+    description: "The platform lead was asked to evaluate both tools and produce a recommendation."
+    quote: "Platform lead, evaluate PagerDuty vs OpsGenie and give us a recommendation next cycle."
+
+  # --- Easy negatives: completely different domain ---
+  - id: crm-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team's legacy CRM will be migrated to Salesforce by end of Q2."
+    quote: "We're moving to Salesforce, the old CRM is being retired."
+
+  - id: budget-overrun-risk
+    type: risk
+    title: "Project is tracking 20% over budget with no approved contingency"
+    description: "Current spend trajectory puts the project 20% over budget by end of Q3."
+    quote: "We're going to blow the budget by Q3 and there's no contingency approved."
+
+  - id: office-lease-oq
+    type: open_question
+    title: "Should we renew the downtown office lease or relocate?"
+    description: "The current downtown office lease expires in eight months and no decision has been made."
+    quote: "The lease is up soon — do we renew or start looking for a new space?"
+
+expected_relevant_ids: []

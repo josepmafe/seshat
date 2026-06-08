@@ -1,0 +1,95 @@
+corpus_id: decision-pagerduty-adoption-mixed-pool
+description: >
+  Realistic mixed-pool positive: a decision to standardise on PagerDuty should surface
+  the prior OpsGenie decision it supersedes, the open question about on-call ownership
+  it partially resolves, and the alert-fatigue risk that motivated consolidation. The
+  pool mixes all four node types across alerting, migration, and unrelated domains.
+
+tags:
+  tier: realistic
+  source_type: decision
+  polarity: positive
+  difficulty: hard
+
+query_node:
+  id: pagerduty-decision
+  type: decision
+  title: "PagerDuty is the single alerting and on-call management tool for all teams"
+  description: "The team decided to standardise on PagerDuty as the sole alerting and on-call rotation management tool, replacing the mix of OpsGenie and homegrown scripts."
+  quote: "PagerDuty is it — one tool, all teams. OpsGenie is out, the scripts are out. Agreed."
+
+candidate_nodes:
+  # --- Strong positive: prior decision this one supersedes ---
+  - id: opsgenie-decision
+    type: decision
+    title: "OpsGenie is the primary alerting and on-call management tool"
+    description: "The team standardised on OpsGenie for alerting and on-call management across all backend services."
+    quote: "OpsGenie for all alerting and on-call — one tool across the backend."
+
+  # --- Weak positives: open question partially resolved; risk that motivated the decision ---
+  - id: oncall-ownership-oq
+    type: open_question
+    title: "Should the backend on-call rotation absorb the data team on-call responsibilities?"
+    description: "The team has been debating whether to consolidate on-call ownership by merging the data team rotation into the backend rotation."
+    quote: "Do we merge the data team into the backend on-call rota, or keep them separate?"
+
+  - id: alert-fatigue-risk
+    type: risk
+    title: "Alert fatigue from low-fidelity alerts reduces on-call responsiveness"
+    description: "A high volume of low-priority or duplicate alerts desensitises on-call engineers, increasing the risk that critical alerts are missed or responded to slowly."
+    quote: "Too many noisy alerts and on-call starts ignoring them — that's how critical pages get missed."
+
+  # --- Hard negatives: same incident response domain, not linked to this decision ---
+  - id: configure-rotations-action
+    type: action_item
+    title: "Configure PagerDuty on-call rotations for all backend services"
+    description: "The platform team needs to configure the on-call rotation schedules in PagerDuty for all backend services."
+    quote: "Platform team, configure the backend on-call rotations in PagerDuty before next sprint ends."
+
+  - id: audit-alert-rules-action
+    type: action_item
+    title: "Audit and prune low-fidelity alert rules"
+    description: "Many alert rules fire too frequently on transient conditions; an audit to remove or raise thresholds on low-fidelity rules is needed."
+    quote: "Audit the alert rules and kill the noisy ones."
+
+  - id: mttr-undocumented-risk
+    type: risk
+    title: "Undocumented services in the on-call rotation increase mean time to resolution"
+    description: "Services added to the on-call rotation without runbooks increase the risk of prolonged incidents."
+    quote: "Every undocumented service we add to on-call is a liability."
+
+  - id: evaluate-tools-action
+    type: action_item
+    title: "Evaluate PagerDuty and OpsGenie and recommend an alerting tool"
+    description: "The platform lead was asked to evaluate both tools and produce a recommendation before the next planning cycle."
+    quote: "Platform lead, evaluate PagerDuty vs OpsGenie and give us a recommendation next cycle."
+
+  # --- Easy negatives: completely different domain ---
+  - id: flyway-adoption-decision
+    type: decision
+    title: "Adopt Flyway for all database migrations going forward"
+    description: "The team standardised on Flyway as the migration toolchain, replacing ad-hoc SQL scripts."
+    quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable."
+
+  - id: schema-drift-risk
+    type: risk
+    title: "Mixed migration tooling across services may cause schema drift"
+    description: "If some services use Flyway while others continue with ad-hoc scripts, schema drift becomes harder to detect."
+    quote: "Half the services on a new tool and half on scripts means no single view of migration state."
+
+  - id: dpia-update-action
+    type: action_item
+    title: "Update DPIA to include the consent service"
+    description: "The DPIA must be updated to cover the consent service before go-live sign-off."
+    quote: "Someone needs to update the DPIA to include the consent service."
+
+  - id: budget-overrun-risk
+    type: risk
+    title: "Project is tracking 20% over budget with no approved contingency"
+    description: "Current spend trajectory puts the project 20% over budget by end of Q3."
+    quote: "We're going to blow the budget by Q3 and there's no contingency approved."
+
+expected_relevant_ids:
+  - opsgenie-decision
+  - oncall-ownership-oq
+  - alert-fatigue-risk

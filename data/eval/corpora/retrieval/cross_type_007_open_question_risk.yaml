@@ -1,0 +1,120 @@
+corpus_id: open-question-vendor-lock-in-retrieves-related-risks
+description: >
+  Cross-type (open_question→risk): an open question about multi-cloud strategy
+  should surface existing KB risks about vendor lock-in, regulatory data
+  residency, and provider API breaking changes. proprietary-service-discontinuation
+  is related but embeds below cloud-egress-costs in the ranking; kept as
+  candidate but not expected. 15 candidates, 3 expected relevant.
+
+tags:
+  tier: cross_type
+  source_type: open_question
+  polarity: positive
+  difficulty: medium
+
+query_node:
+  id: multi-cloud-strategy
+  type: open_question
+  title: "Should we adopt a multi-cloud strategy to reduce vendor dependency?"
+  description: "The architecture team is debating whether to design the platform to run across two cloud providers from the start, or to remain single-cloud and defer portability."
+  quote: "do we go multi-cloud now or stay single-cloud and revisit later?"
+
+candidate_nodes:
+  # --- Strong positives (near-paraphrase / tightly linked to vendor lock-in) ---
+  - id: vendor-lock-in-risk
+    type: risk
+    title: "Deep vendor lock-in with cloud provider limits negotiating leverage"
+    description: "Heavy reliance on proprietary managed services increases switching costs and reduces the organisation's ability to renegotiate pricing or respond to service degradation."
+    quote: "we're so embedded in their ecosystem that we can't easily move or push back on pricing"
+
+  - id: proprietary-service-discontinuation
+    type: risk
+    title: "Proprietary managed service may be discontinued without notice"
+    description: "The workflow orchestration service used by the pipeline is a niche managed offering; if the provider discontinues it, migration would require significant re-engineering."
+    quote: "that managed service has a small user base, the provider could kill it any time"
+
+  # --- Weak positives (genuinely relevant but loosely linked) ---
+  - id: regulatory-data-residency
+    type: risk
+    title: "Single-region deployment may violate data residency requirements"
+    description: "Running all workloads in one geographic region may conflict with emerging data residency regulations in target markets, requiring costly re-architecture."
+    quote: "if we stay in one region we might break data residency rules in some markets"
+
+  - id: provider-api-breaking-changes
+    type: risk
+    title: "Cloud provider API changes could break our infrastructure automation"
+    description: "Infrastructure-as-code scripts and deployment pipelines depend on cloud provider API contracts; undocumented breaking changes in provider APIs have previously caused outages."
+    quote: "provider API changes have burned us before, if we're single-cloud we have no fallback"
+
+  # --- Hard negatives (cloud/infra risks that are NOT about vendor lock-in or multi-cloud) ---
+  - id: cloud-egress-costs
+    type: risk
+    title: "Cloud egress costs could exceed budget projections as data volume grows"
+    description: "Current architecture routes significant data between regions; at projected data volumes, egress fees may exceed the annual infrastructure budget."
+    quote: "egress fees are fine now but at 10x data volume we'll blow the infra budget"
+
+  - id: iam-misconfiguration
+    type: risk
+    title: "Misconfigured IAM policies expose sensitive storage buckets to public access"
+    description: "A recent audit found several object storage buckets with overly permissive IAM policies; a misconfiguration could result in a data breach."
+    quote: "the IAM audit found buckets that could be made public by a one-line mistake"
+
+  - id: missing-cost-allocation-tags
+    type: risk
+    title: "Absent cost allocation tags make it impossible to attribute cloud spend"
+    description: "Cloud resources lack consistent cost allocation tags; finance cannot determine which team or product line is responsible for which portion of the monthly bill."
+    quote: "nobody can tell which team is spending what on cloud, the tags are a disaster"
+
+  - id: sla-partial-outage-gap
+    type: risk
+    title: "Cloud provider SLA does not cover partial service degradations"
+    description: "The provider SLA only compensates for complete service unavailability; partial degradations affecting a subset of customers are not covered, leaving the business exposed."
+    quote: "the SLA only pays out for full outages, partial degradations are on us"
+
+  - id: autoscaling-over-provisioning
+    type: risk
+    title: "Auto-scaling group misconfiguration causes runaway over-provisioning"
+    description: "Misconfigured scale-up triggers have previously caused the auto-scaling group to over-provision by an order of magnitude, resulting in unexpected cost spikes."
+    quote: "a bad scaling policy once ballooned our instance count 10x overnight"
+
+  # --- Easy negatives (completely off-topic) ---
+  - id: key-person-dependency
+    type: risk
+    title: "Only one engineer understands the legacy ETL pipeline"
+    description: "A single engineer holds all institutional knowledge of the legacy ETL system; their departure would severely impact the team's ability to maintain it."
+    quote: "if that one person leaves, nobody else knows how the ETL works"
+
+  - id: sprint-velocity-decline
+    type: risk
+    title: "Declining sprint velocity suggests team capacity issues"
+    description: "Average sprint velocity has fallen 20% over the past six sprints; the root cause is not yet identified but may indicate unsustainable workload or growing technical debt."
+    quote: "velocity is down 20% over six sprints, something is wrong but we don't know what"
+
+  - id: unclear-product-roadmap
+    type: risk
+    title: "Unclear product roadmap creates planning uncertainty for engineering"
+    description: "Frequent changes to the product roadmap make it difficult for engineering to plan capacity and avoid wasted implementation work."
+    quote: "the roadmap changes every two weeks, we can't plan anything properly"
+
+  - id: q3-offsite-cancellation
+    type: risk
+    title: "Q3 team offsite cancellation may reduce morale for distributed team"
+    description: "Budget cuts may force cancellation of the annual team offsite; for a fully-distributed team this is the main in-person cohesion event."
+    quote: "if the offsite gets cancelled again, morale on the distributed team will tank"
+
+  - id: brand-refresh-delay
+    type: risk
+    title: "Brand refresh delay blocks new marketing materials"
+    description: "The ongoing brand refresh has been delayed six weeks; the marketing team cannot publish new campaign assets until brand guidelines are finalised."
+    quote: "the brand refresh is six weeks late, marketing is blocked on everything"
+
+  - id: office-lease-expiry
+    type: risk
+    title: "Office lease expires in 18 months with no renewal plan in place"
+    description: "The current office lease expires in 18 months and no renewal or relocation plan has been initiated; late action could leave the company without premises."
+    quote: "the lease is up in 18 months and nobody has started the renewal conversation"
+
+expected_relevant_ids:
+  - vendor-lock-in-risk
+  - regulatory-data-residency
+  - provider-api-breaking-changes
