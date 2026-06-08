@@ -5,10 +5,14 @@ from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 from pydantic import BaseModel
 
 from seshat.utils.hashing import fingerprint
+from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
     from pathlib import Path
+
+logger = get_logger(__name__)
+
 
 M = TypeVar("M", bound=BaseModel)
 
@@ -49,6 +53,7 @@ async def read_or_run(
     # the LLM calls this function wraps, so asyncio.to_thread is not worth the added noise.
     if cache_fp.exists():  # noqa: ASYNC240
         coro.close()
+        logger.debug("Cache hit in %r call: using result from %s", coro.__name__, cache_fp)
         return model_cls.model_validate_json(cache_fp.read_text()), cache_fp  # noqa: ASYNC240
     result = await coro
     cache_fp.write_text(result.model_dump_json())  # noqa: ASYNC240

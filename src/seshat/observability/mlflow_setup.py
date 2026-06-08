@@ -14,14 +14,11 @@ def setup_mlflow(config: ObservabilityConfig, *, disable_autolog: bool = False) 
     Pass disable_autolog=True for eval entrypoints where mlflow.genai.evaluate manages its own runs.
     """
     mlflow.set_tracking_uri(config.mlflow_tracking_uri)
-    if disable_autolog:
-        mlflow.autolog(disable=True)
-    else:
-        mlflow.langchain.autolog()  # type: ignore[attr-defined]
+    mlflow.langchain.autolog(disable=disable_autolog)  # type: ignore[attr-defined]
 
     experiment = mlflow.set_experiment(config.mlflow_experiment_name)
     logger.info(
-        "MLflow configured: uri=%s, experiment=%s (id=%s)",
+        "MLflow configured: uri=%r, experiment=%r (id=%s)",
         config.mlflow_tracking_uri,
         config.mlflow_experiment_name,
         experiment.experiment_id,

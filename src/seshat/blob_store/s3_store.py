@@ -50,7 +50,7 @@ class S3BlobStore:
         self._client: S3Client | None = None
 
         logger.debug(
-            "S3BlobStore initialised (bucket=%s region=%s endpoint=%s)",
+            "S3BlobStore initialised (bucket=%r region=%r endpoint=%r)",
             self._bucket,
             self._region,
             self._endpoint_url,
@@ -61,7 +61,7 @@ class S3BlobStore:
         self._client_ctx = self._session.create_client("s3", region_name=self._region, endpoint_url=self._endpoint_url)
         # Enter it manually here so the client lifetime spans the store's connect/close lifecycle.
         self._client = cast("S3Client", await self._client_ctx.__aenter__())
-        logger.info("S3BlobStore client connected (bucket=%s)", self._bucket)
+        logger.info("S3BlobStore client connected (bucket=%r)", self._bucket)
 
     async def close(self) -> None:
         if self._client_ctx is not None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -82,6 +83,7 @@ class GroupingAgent(_BaseAgent):
         id_prefix = concept_type[0].upper()
         id_to_item, prompt_items = self._index_items(items, id_prefix)
 
+        t0 = time.perf_counter()
         try:
             result = await self._retryable_structured_ainvoke(
                 messages=self._build_messages(prompt_items),
@@ -100,6 +102,14 @@ class GroupingAgent(_BaseAgent):
             )
             return [_singleton(ac) for ac in items]
 
+        elapsed_ms = round((time.perf_counter() - t0) * 1000)
+        logger.debug(
+            "GroupingAgent grouped %d items into groups for %s (elapsed: %dms)",
+            len(items),
+            concept_type,
+            elapsed_ms,
+            extra={"elapsed_ms": elapsed_ms, "concept_type": concept_type},
+        )
         return self._assemble_groups(result, id_to_item)
 
     @staticmethod

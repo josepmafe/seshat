@@ -4,6 +4,16 @@ from contextvars import ContextVar
 _job_id_var: ContextVar[str] = ContextVar("job_id", default="")
 
 _LOG_FORMAT = "%(asctime)s %(levelname)s [%(job_id)s] %(name)s: %(message)s"
+_NOISY_LOGGERS = (
+    "aiobotocore",
+    "botocore",
+    "httpx",
+    "langchain",
+    "langchain_core",
+    "langchain_aws",
+    "langchain_openai",
+    "mlflow",
+)
 
 
 def set_job_id(job_id: str) -> None:
@@ -32,3 +42,6 @@ def configure_logging(level: int = logging.INFO) -> None:
     handler.addFilter(_job_id_filter)
     logging.root.addHandler(handler)
     logging.root.setLevel(level)
+
+    for name in _NOISY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
