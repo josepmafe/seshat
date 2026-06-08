@@ -38,6 +38,24 @@ class ResolutionRegistry:
         self._same_type = SameTypeResolutionRegistry(llm, config)
         self._cross_type = CrossTypeResolutionRegistry(llm, config)
 
+    def fingerprint(self) -> str:
+        """8-char hex digest of all same-type and cross-type agent prompts."""
+        prompts = [agent._system_prompt for agent in self._same_type._agents.values()]
+        prompts += [agent._system_prompt for agent in self._cross_type._agents_mapping.values()]
+        return fingerprint("".join(prompts))
+
+    def prompt_texts(self) -> dict[str, str]:
+        texts = {
+            f"same_type-{concept_type}": agent._system_prompt for concept_type, agent in self._same_type._agents.items()
+        }
+        texts.update(
+            {
+                f"cross_type-{src}-to-{tgt}": agent._system_prompt
+                for (src, tgt), agent in self._cross_type._agents_mapping.items()
+            }
+        )
+        return texts
+
     def fingerprint_for_types(self, source_types: set[ConceptType], target_types: set[ConceptType]) -> str:
         """8-char hex digest of only the agents that fire for the given source/target type sets.
 

@@ -34,6 +34,9 @@ class _BaseAgent:
     def fingerprint(self) -> str:
         return fingerprint(self._system_prompt)
 
+    def prompt_texts(self) -> dict[str, str]:
+        return {"system": self._system_prompt}
+
     @property
     def _system_prompt(self) -> str:
         raise NotImplementedError

@@ -40,3 +40,6 @@ class IdentificationAgentRegistry:
         """
         combined = "".join(agent._system_prompt for agent in self._agents.values())
         return fingerprint(combined)
+
+    def prompt_texts(self) -> dict[str, str]:
+        return {concept_type: agent._system_prompt for concept_type, agent in self._agents.items()}
