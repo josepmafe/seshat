@@ -8,59 +8,69 @@ import mlflow.genai
 import pandas as pd
 
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
-from seshat.eval.common import log_breakdown_artifact
 from seshat.eval.gate import upsert_gate
 from seshat.eval.identification.corpus_loader import IdentificationCorpusExample, load_corpus
 from seshat.eval.identification.scorers import scorer
+from seshat.eval.mlflow_logging import configure_trace_processors, log_eval_run_metadata
 from seshat.models.enums import ConceptType
 from seshat.models.nodes import IdentificationResult
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from mlflow.entities.span import LiveSpan
     from mlflow.genai.evaluation.entities import EvaluationResult
 
     from seshat.config.eval_settings import EvalConfig
+    from seshat.eval.corpus_tags import CorpusTagFilter
     from seshat.eval.models import GateResult
     from seshat.models.nodes import KBNode
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 
 
 class IdentificationEvalRunner:
-    def __init__(
-        self,
-        orchestrator: ExtractionOrchestrator,
-        config: EvalConfig,
-        model_id: str | None = None,
-    ) -> None:
+    def __init__(self, orchestrator: ExtractionOrchestrator, config: EvalConfig) -> None:
         self._orchestrator = orchestrator
         self._config = config
-        self._model_id = model_id
 
-    async def run(self, tag_filter: dict[str, str | list[str]] | None = None) -> GateResult:
+    async def run(self, tag_filter: CorpusTagFilter | None = None, model_id: str | None = None) -> GateResult:
         examples = load_corpus(self._config.identification_corpus_dir, tag_filter=tag_filter)
         result_cache, touched = await self._run_all_predictions(examples)
 
-        def _predict(transcript: str, corpus_id: str) -> dict:
+        expected_by_id = {ex.corpus_id: ex.expected_nodes for ex in examples}
+
+        def _predict(corpus_id: str, transcript: str) -> dict:
             if corpus_id not in result_cache:
                 raise KeyError(f"corpus_id {corpus_id!r} not found in result cache — mlflow unpacking mismatch")
-            return {"nodes": [n.model_dump(mode="json") for n in result_cache[corpus_id].nodes]}
 
+            return {
+                # used by the scorer
+                "nodes": [n.model_dump(mode="json") for n in result_cache[corpus_id].nodes],
+                # used for debugging in the MLflow UI (shown in traces output); not part of the scorer input
+                "expected_nodes": [n.model_dump(mode="json", exclude={"quote"}) for n in expected_by_id[corpus_id]],
+            }
+
+        configure_trace_processors(_slim_output_nodes)
         df = _build_dataframe(examples)
-        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=self._model_id)
+        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=model_id)
 
         run_id = eval_result.run_id
         identification_metrics = _aggregate_metrics(eval_result)
-        self._log_breakdown(eval_result, examples, result_cache, run_id)
 
         gate = upsert_gate(
             self._config.gate_path,
             run_id=run_id,
             identification_metrics=identification_metrics,
         )
-        mlflow.log_metrics({**identification_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
-        if tag_filter:
-            mlflow.log_params({f"tag_filter.{k}": str(v) for k, v in tag_filter.items()}, run_id=run_id)
+        log_eval_run_metadata(
+            run_id=run_id,
+            harness="identification",
+            gate_passed=gate.passed,
+            corpus_dir=self._config.identification_corpus_dir,
+            corpus_examples=examples,
+            breakdown_artifact=_build_breakdown(eval_result, examples, result_cache),
+            tag_filter=tag_filter,
+        )
 
         sweep_stale_entries(
             self._config.identification_cache_dir,
@@ -93,14 +103,29 @@ class IdentificationEvalRunner:
         touched = {used for _, _, used in triples}
         return results, touched
 
-    def _log_breakdown(
-        self,
-        eval_result: EvaluationResult,
-        examples: list[IdentificationCorpusExample],
-        result_cache: dict[str, IdentificationResult],
-        run_id: str,
-    ) -> None:
-        log_breakdown_artifact(_build_breakdown(eval_result, examples, result_cache), run_id)
+
+def _slim_node(n: dict) -> dict:
+    slim = {"type": n["type"], "title": n["title"], "description": n["description"]}
+
+    confidence = n.get("confidence")
+    if confidence is not None:
+        slim["confidence"] = confidence
+
+    return slim
+
+
+def _slim_output_nodes(span: LiveSpan) -> None:
+    if not span.outputs or not isinstance(span.outputs, dict):
+        return
+
+    slimmed = {}
+    for k, v in span.outputs.items():
+        if isinstance(v, list) and v and isinstance(v[0], dict):
+            slimmed[k] = [_slim_node(n) for n in v]
+        else:
+            slimmed[k] = v
+    if slimmed != span.outputs:
+        span.set_outputs(slimmed)
 
 
 def _build_dataframe(examples: list[IdentificationCorpusExample]) -> pd.DataFrame:
@@ -110,6 +135,7 @@ def _build_dataframe(examples: list[IdentificationCorpusExample]) -> pd.DataFram
             {
                 "inputs": {"transcript": ex.transcript, "corpus_id": ex.corpus_id},
                 "expectations": {"expected_nodes": [n.model_dump(mode="json") for n in ex.expected_nodes]},
+                "tags": {f"corpus.{k}": str(v) for k, v in ex.tags.items()},
             }
         )
     return pd.DataFrame(rows)

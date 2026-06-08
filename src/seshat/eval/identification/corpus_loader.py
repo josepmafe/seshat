@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from seshat.eval.common import matches_tags
+from seshat.eval.corpus_tags import matches_tags
 from seshat.eval.models import IdentificationCorpusExample, IdentificationCorpusNode
 from seshat.models.enums import ConceptType
 

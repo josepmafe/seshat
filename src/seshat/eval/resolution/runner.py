@@ -8,8 +8,8 @@ import mlflow.genai
 import pandas as pd
 
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
-from seshat.eval.common import log_breakdown_artifact
 from seshat.eval.gate import upsert_gate
+from seshat.eval.mlflow_logging import log_eval_run_metadata
 from seshat.eval.resolution.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.resolution.scorers import scorer
 from seshat.models.enums import ConceptType
@@ -22,25 +22,20 @@ if TYPE_CHECKING:
     from mlflow.genai.evaluation.entities import EvaluationResult
 
     from seshat.config.eval_settings import EvalConfig
-    from seshat.eval.models import GateResult, ResolutionCorpusExample
+    from seshat.eval.corpus_tags import CorpusTagFilter
+    from seshat.eval.models import GateResult, ResolutionCorpusExample, ResolutionCorpusNode
     from seshat.models.nodes import KBNode
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 
 
 class ResolutionEvalRunner:
-    def __init__(
-        self,
-        orchestrator: ExtractionOrchestrator,
-        config: EvalConfig,
-        model_id: str | None = None,
-    ) -> None:
+    def __init__(self, orchestrator: ExtractionOrchestrator, config: EvalConfig) -> None:
         self._orchestrator = orchestrator
         self._config = config
-        self._model_id = model_id
         self._kb_nodes: dict[str, dict[str, KBNode]] = {}
         self._slug_maps: dict[str, dict[str, UUID]] = {}
 
-    async def run(self, tag_filter: dict[str, str | list[str]] | None = None) -> GateResult:
+    async def run(self, tag_filter: CorpusTagFilter | None = None, model_id: str | None = None) -> GateResult:
         mlflow.autolog(disable=True)
         examples = load_corpus(self._config.resolution_corpus_dir, tag_filter=tag_filter)
         if not examples:
@@ -53,26 +48,48 @@ class ResolutionEvalRunner:
 
         result_cache, touched = await self._run_all_predictions(examples)
 
-        def _predict(corpus_id: str) -> dict:
+        expected_relations_by_id = {ex.corpus_id: ex.expected_relations for ex in examples}
+
+        def _predict(corpus_id: str, _source_nodes: list[dict], _kb_nodes: list[dict]) -> dict:
             if corpus_id not in result_cache:
                 raise KeyError(f"corpus_id {corpus_id!r} not found in result cache — mlflow unpacking mismatch")
-            return {"relationships": [r.model_dump(mode="json") for r in result_cache[corpus_id].relationships]}
+            relationships = result_cache[corpus_id].relationships
+            uuid_to_slug = {v: k for k, v in self._slug_maps[corpus_id].items()}
+            return {
+                "relations": [
+                    {
+                        "source": uuid_to_slug.get(r.source_id, str(r.source_id)),
+                        "target": uuid_to_slug.get(r.target_id, str(r.target_id)),
+                        "rel_type": r.rel_type,
+                    }
+                    for r in relationships
+                ],
+                "expected_relations": [
+                    {"source": r.source, "target": r.target, "rel_type": r.rel_type.value}
+                    for r in expected_relations_by_id[corpus_id]
+                ],
+            }
 
-        df = _build_dataframe(examples, self._slug_maps)
-        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=self._model_id)
+        df = _build_dataframe(examples)
+        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=model_id)
 
         run_id = eval_result.run_id
         resolution_metrics = _aggregate_metrics(eval_result)
-        self._log_breakdown(eval_result, examples, result_cache, run_id)
 
         gate = upsert_gate(
             self._config.gate_path,
             run_id=run_id,
             resolution_metrics=resolution_metrics,
         )
-        mlflow.log_metrics({**resolution_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
-        if tag_filter:
-            mlflow.log_params({f"tag_filter.{k}": str(v) for k, v in tag_filter.items()}, run_id=run_id)
+        log_eval_run_metadata(
+            run_id=run_id,
+            harness="resolution",
+            gate_passed=gate.passed,
+            corpus_dir=self._config.resolution_corpus_dir,
+            corpus_examples=examples,
+            breakdown_artifact=_build_breakdown(eval_result, examples, result_cache, self._slug_maps),
+            tag_filter=tag_filter,
+        )
 
         sweep_stale_entries(
             self._config.resolution_cache_dir,
@@ -110,32 +127,30 @@ class ResolutionEvalRunner:
         touched = {used for _, _, used in triples}
         return results, touched
 
-    def _log_breakdown(
-        self,
-        eval_result: EvaluationResult,
-        examples: list[ResolutionCorpusExample],
-        result_cache: dict[str, ResolutionResult],
-        run_id: str,
-    ) -> None:
-        log_breakdown_artifact(_build_breakdown(eval_result, examples, result_cache, self._slug_maps), run_id)
+
+def _slim_node(n: ResolutionCorpusNode) -> dict:
+    return {"id": n.id, "type": n.type.value, "title": n.title, "description": n.description}
 
 
-def _build_dataframe(examples: list[ResolutionCorpusExample], slug_maps: dict[str, dict[str, UUID]]) -> pd.DataFrame:
+def _build_dataframe(examples: list[ResolutionCorpusExample]) -> pd.DataFrame:
     rows = []
     for ex in examples:
-        uuid_str_map = {k: str(v) for k, v in slug_maps[ex.corpus_id].items()}
         slug_to_type = {n.id: n.type.value for n in ex.source_nodes + ex.kb_nodes}
         rows.append(
             {
-                "inputs": {"corpus_id": ex.corpus_id},
+                "inputs": {
+                    "corpus_id": ex.corpus_id,
+                    "_source_nodes": [_slim_node(n) for n in ex.source_nodes],
+                    "_kb_nodes": [_slim_node(n) for n in ex.kb_nodes],
+                },
                 "expectations": {
                     "expected_relations": [
                         {"source": r.source, "target": r.target, "rel_type": r.rel_type.value}
                         for r in ex.expected_relations
                     ],
-                    "slug_to_uuid": uuid_str_map,
                     "slug_to_type": slug_to_type,
                 },
+                "tags": {f"corpus.{k}": str(v) for k, v in ex.tags.items()},
             }
         )
     return pd.DataFrame(rows)

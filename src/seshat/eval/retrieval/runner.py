@@ -10,8 +10,8 @@ import openai
 import pandas as pd
 
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
-from seshat.eval.common import log_breakdown_artifact
 from seshat.eval.gate import upsert_gate
+from seshat.eval.mlflow_logging import log_eval_run_metadata
 from seshat.eval.models import RetrievalResult
 from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.retrieval.scorers import scorer
@@ -41,17 +41,11 @@ class RetrievalEvalRunner:
     Any pre-existing nodes in the collection will appear in search results and corrupt scores.
     """
 
-    def __init__(
-        self,
-        vector_store: AbstractVectorStore,
-        config: EvalConfig,
-        model_id: str | None = None,
-    ) -> None:
+    def __init__(self, vector_store: AbstractVectorStore, config: EvalConfig) -> None:
         self._vs = vector_store
         self._config = config
-        self._model_id = model_id
 
-    async def run(self) -> GateResult:
+    async def run(self, model_id: str | None = None) -> GateResult:
         examples = load_corpus(self._config.retrieval_corpus_dir)
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="retrieval-no-corpus")
@@ -66,23 +60,24 @@ class RetrievalEvalRunner:
             return {"retrieved_ids": result_cache[corpus_id]}
 
         df = _build_dataframe(examples, example_nodes)
-        eval_result = mlflow.genai.evaluate(
-            data=df,
-            predict_fn=_predict,
-            scorers=[scorer],
-            model_id=self._model_id,
-        )
+        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=model_id)
 
         run_id = eval_result.run_id
         retrieval_metrics = _aggregate_metrics(eval_result)
-        self._log_breakdown(eval_result, examples, example_nodes, result_cache, run_id)
 
         gate = upsert_gate(
             self._config.gate_path,
             run_id=run_id,
             retrieval_metrics=retrieval_metrics,
         )
-        mlflow.log_metrics({**retrieval_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
+        log_eval_run_metadata(
+            run_id=run_id,
+            harness="retrieval",
+            gate_passed=gate.passed,
+            corpus_dir=self._config.retrieval_corpus_dir,
+            corpus_examples=examples,
+            breakdown_artifact=_build_breakdown(eval_result, examples, example_nodes, result_cache),
+        )
 
         sweep_stale_entries(
             self._config.retrieval_cache_dir,
@@ -158,16 +153,6 @@ class RetrievalEvalRunner:
                 )
 
         await asyncio.gather(*(_delete(node) for node in nodes))
-
-    def _log_breakdown(
-        self,
-        eval_result: EvaluationResult,
-        examples: list[RetrievalCorpusExample],
-        example_nodes: dict[str, tuple[KBNode, list[KBNode], dict[str, UUID]]],
-        result_cache: dict[str, list[str]],
-        run_id: str,
-    ) -> None:
-        log_breakdown_artifact(_build_breakdown(eval_result, examples, example_nodes, result_cache), run_id)
 
 
 def _build_dataframe(
