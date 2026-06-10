@@ -185,7 +185,7 @@ class RAGConfig(BaseConfig):
     enabled: bool = True
     top_k: int = Field(default=5, gt=0)
     # TODO: calibrate against labeled retrieval corpus; 0.5 is a placeholder for text-embedding-3-small cosine scores
-    min_score: float = Field(
+    min_similarity_score: float = Field(
         default=0.5, ge=0, le=1, description="Minimum similarity score [0, 1] to retain a retrieved result."
     )
     max_context_tokens: int = Field(

@@ -1,21 +1,44 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from seshat.agents.identification.registry import IdentificationAgentRegistry
 from seshat.agents.resolution.registry import ResolutionRegistry
+from seshat.agents.verification import VerificationAgent
+from seshat.blob_store.factory import get_blob_store
+from seshat.knowledge_store.factory import get_kb_store
 from seshat.pipeline.extraction.node_retriever import NodeRetriever
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
-from seshat.pipeline.llm_factory import get_identification_llm, get_resolution_llm
+from seshat.pipeline.llm_factory import get_identification_llm, get_resolution_llm, get_verification_llm
+from seshat.vector_store.factory import get_vector_store
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from seshat.blob_store.s3_store import S3BlobStore
     from seshat.config.settings import SeshatConfig
     from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.vector_store.base_store import AbstractVectorStore
 
 
-def build_orchestrator(
+@asynccontextmanager
+async def build_orchestrator(seshat_config: SeshatConfig) -> AsyncIterator[ExtractionOrchestrator]:
+    kb_store = get_kb_store(seshat_config)
+    await kb_store.connect()
+
+    vector_store = get_vector_store(seshat_config)
+    blob_store = get_blob_store(seshat_config)
+    await blob_store.connect()
+
+    try:
+        yield _build_orchestrator(seshat_config, kb_store, vector_store, blob_store)
+    finally:
+        await kb_store.close()
+        await blob_store.close()
+
+
+def _build_orchestrator(
     config: SeshatConfig,
     kb_store: PostgresKBStore,
     vector_store: AbstractVectorStore,
@@ -26,6 +49,12 @@ def build_orchestrator(
     identification_registry = IdentificationAgentRegistry(llm=identification_llm, config=config.extraction)
     resolution_registry = ResolutionRegistry(llm=resolution_llm, config=config.extraction.resolution)
     node_retriever = NodeRetriever(rag_config=config.rag, kb_store=kb_store, vector_store=vector_store)
+
+    verification_agent = None
+    if config.extraction.verification is not None:
+        verification_llm = get_verification_llm(config)
+        verification_agent = VerificationAgent(llm=verification_llm, config=config.extraction.verification)
+
     return ExtractionOrchestrator(
         config=config.extraction,
         identification_registry=identification_registry,
@@ -33,4 +62,5 @@ def build_orchestrator(
         node_retriever=node_retriever,
         kb_store=kb_store,
         blob_store=blob_store,
+        verification_agent=verification_agent,
     )
