@@ -55,8 +55,11 @@ class GroupingEvalRunner:
         def _predict(corpus_id: str, _items: list[dict]) -> dict:
             if corpus_id not in result_cache:
                 raise KeyError(f"corpus_id {corpus_id!r} not in result cache")
+
             return {
+                # used by the scorer
                 "predicted_groups": result_cache[corpus_id].groups,
+                # used for debugging in the MLflow UI (shown in traces output); not part of the scorer input
                 "expected_groups": expected_by_id[corpus_id],
             }
 

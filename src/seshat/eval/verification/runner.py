@@ -46,8 +46,11 @@ class VerificationEvalRunner:
             key = (corpus_id, node_index)
             if key not in result_cache:
                 raise KeyError(f"key {key!r} not in result cache — mlflow unpacking mismatch")
+
             return {
+                # used by the scorer
                 "supported": result_cache[key].supported,
+                # used for debugging in the MLflow UI (shown in traces output); not part of the scorer input
                 "expected_supported": expected_by_key[key],
             }
 

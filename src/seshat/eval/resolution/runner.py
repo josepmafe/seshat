@@ -53,9 +53,11 @@ class ResolutionEvalRunner:
         def _predict(corpus_id: str, _source_nodes: list[dict], _kb_nodes: list[dict]) -> dict:
             if corpus_id not in result_cache:
                 raise KeyError(f"corpus_id {corpus_id!r} not found in result cache — mlflow unpacking mismatch")
+
             relationships = result_cache[corpus_id].relationships
             uuid_to_slug = {v: k for k, v in self._slug_maps[corpus_id].items()}
             return {
+                # used by the scorer
                 "relations": [
                     {
                         "source": uuid_to_slug.get(r.source_id, str(r.source_id)),
@@ -64,6 +66,7 @@ class ResolutionEvalRunner:
                     }
                     for r in relationships
                 ],
+                # used for debugging in the MLflow UI (shown in traces output); not part of the scorer input
                 "expected_relations": [
                     {"source": r.source, "target": r.target, "rel_type": r.rel_type.value}
                     for r in expected_relations_by_id[corpus_id]

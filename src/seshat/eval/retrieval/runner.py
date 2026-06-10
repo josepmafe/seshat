@@ -25,7 +25,8 @@ if TYPE_CHECKING:
     from mlflow.genai.evaluation.entities import EvaluationResult
 
     from seshat.config.eval_settings import EvalConfig
-    from seshat.eval.models import GateResult, RetrievalCorpusExample
+    from seshat.eval.corpus_tags import CorpusTagFilter
+    from seshat.eval.models import GateResult, RetrievalCorpusExample, RetrievalCorpusNode
     from seshat.models.nodes import KBNode
     from seshat.vector_store.base_store import AbstractVectorStore
 
@@ -44,17 +45,25 @@ class RetrievalEvalRunner:
         self._vs = vector_store
         self._config = config
 
-    async def run(self, model_id: str | None = None) -> GateResult:
-        examples = load_corpus(self._config.retrieval_corpus_dir)
+    async def run(self, tag_filter: CorpusTagFilter | None = None, model_id: str | None = None) -> GateResult:
+        examples = load_corpus(self._config.retrieval_corpus_dir, tag_filter=tag_filter)
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="retrieval-no-corpus")
 
         result_cache, touched = await self._run_all_predictions(examples)
 
-        def _predict(corpus_id: str) -> dict:
+        expected_by_id = {ex.corpus_id: ex.expected_relevant_ids for ex in examples}
+
+        def _predict(corpus_id: str, _query_node: dict, _candidate_nodes: list[dict]) -> dict:
             if corpus_id not in result_cache:
                 raise KeyError(f"corpus_id {corpus_id!r} not found in result cache — mlflow unpacking mismatch")
-            return {"retrieved_ids": result_cache[corpus_id]}
+
+            return {
+                # used by the scorer
+                "retrieved_ids": result_cache[corpus_id],
+                # used for debugging in the MLflow UI (shown in traces output); not part of the scorer input
+                "expected_relevant_ids": expected_by_id[corpus_id],
+            }
 
         df = _build_dataframe(examples)
         eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=model_id)
@@ -74,6 +83,7 @@ class RetrievalEvalRunner:
             corpus_dir=self._config.retrieval_corpus_dir,
             corpus_examples=examples,
             breakdown_artifact=_build_breakdown(eval_result, examples, result_cache),
+            tag_filter=tag_filter,
         )
 
         sweep_stale_entries(
@@ -153,12 +163,20 @@ class RetrievalEvalRunner:
 
 
 def _build_dataframe(examples: list[RetrievalCorpusExample]) -> pd.DataFrame:
+    def _slim_node(n: RetrievalCorpusNode) -> dict:
+        return {"id": n.id, "type": n.type.value, "title": n.title, "description": n.description}
+
     rows = []
     for ex in examples:
         rows.append(
             {
-                "inputs": {"corpus_id": ex.corpus_id},
+                "inputs": {
+                    "corpus_id": ex.corpus_id,
+                    "_query_node": _slim_node(ex.query_node),
+                    "_candidate_nodes": [_slim_node(node) for node in ex.candidate_nodes],
+                },
                 "expectations": {"expected_relevant_ids": ex.expected_relevant_ids},
+                "tags": {f"corpus.{k}": str(v) for k, v in ex.tags.items()},
             }
         )
     return pd.DataFrame(rows)
