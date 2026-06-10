@@ -11,15 +11,21 @@ class TypeMetrics(BaseModel):
     f1: float
 
 
-class SweepPoint(BaseModel):
+class TypePC(BaseModel):
+    precision_approved: float  # TP_auto / (TP_auto + FP_auto); NaN-safe: 1.0 when no nodes approved
+    coverage: float  # (TP_auto + FP_auto) / total_extracted; 0.0 when nothing extracted
+
+
+class IdentificationSweepPoint(BaseModel):
     threshold: float
-    metrics: dict[ConceptType, TypeMetrics]
-    macro_f1: float
+    precision_approved: float  # aggregate across all types
+    coverage: float  # aggregate across all types
+    per_type: dict[ConceptType, TypePC]
 
 
 class IdentificationSweepResult(BaseModel):
-    points: list[SweepPoint]
-    suggested_threshold: float  # argmax(macro_f1); ties → lower threshold
+    points: list[IdentificationSweepPoint]
+    suggested_threshold: float  # argmax coverage s.t. precision_approved >= p_target; ties → lower threshold
 
 
 class RetrievalSweepPoint(BaseModel):
