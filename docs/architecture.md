@@ -54,18 +54,29 @@ Key design decisions and their rationale. Full detail lives in [docs/superpowers
 
 ## Confidence Scoring
 
-Two signals, weighted and normalised:
+**Heuristics** is the sole continuous confidence signal; it is always active and drives
+`KBNode.confidence` and the auto-approval threshold. The formula combines three spaCy-based
+sub-signals (quote length, title specificity, description directness); see
+[docs/superpowers/specs/2026-04-21-seshat-design.md](superpowers/specs/2026-04-21-seshat-design.md)
+for the full formula.
 
-```
-final = Σ(w_i × s_i) / Σ(w_i)   [unavailable signals excluded from both]
-```
+**Verification** is a hard binary gate, not a signal blended into a score. When a
+`VerificationLLMConfig` is present, a lightweight second LLM agent independently judges
+whether each extracted node is well-supported by its source quote. A node that fails the gate
+is rejected (auto-mode) or held in `PENDING_REVIEW` alongside its heuristics score.
 
-| Signal | Availability | Default weight |
-|--------|-------------|----------------|
-| Verification agent | When configured | 0.70 |
-| Heuristics (spaCy) | Always | 0.30 |
+Auto-approval policy:
 
-**Verification agent must use a different `LLMProvider` than the extraction agent** (enforced by `model_validator`). Same-provider verification produces correlated errors. Weakest valid configuration: no verification agent → heuristics-only; startup warning issued.
+| Condition | Outcome |
+|-----------|---------|
+| `verification_passed` is `None` (disabled or retries exhausted) and heuristics ≥ threshold | APPROVED (auto) |
+| `verification_passed` is `True` and heuristics ≥ threshold | APPROVED (auto) |
+| `verification_passed` is `False` | REJECTED |
+| heuristics < threshold | REJECTED (auto-mode) or PENDING_REVIEW (manual mode) |
+
+**Verification agent must use a different `LLMProvider` than the extraction agent** (enforced
+by `model_validator`). Same-provider verification produces correlated errors. Weakest valid
+configuration: no verification agent → heuristics-only; startup warning issued.
 
 ---
 

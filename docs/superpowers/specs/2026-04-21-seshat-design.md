@@ -347,7 +347,6 @@ class ExtractionConfig(BaseModel):
     max_hint_nodes: int = 20                        # most recent same-type KB nodes included in extraction-time hint
     max_hint_tokens: int = 1000                     # hard token cap on the hint; oldest nodes dropped first if exceeded
     verification: VerificationLLMConfig | None = None  # None = heuristics-only scoring; see Confidence Scoring
-    confidence_weights: ConfidenceWeights = ConfidenceWeights()
     identification_timeout_seconds: float | None = None  # wall-clock cap on the full identification pass; None = no cap
     resolution_timeout_seconds: float | None = None      # wall-clock cap on the full resolution pass; None = no cap
     grouped_identification_types: set[ConceptType] = {ConceptType.DECISION}  # types passed through the grouping step; toggleable without code deploy
@@ -360,20 +359,6 @@ class ExtractionConfig(BaseModel):
 # in src/seshat/eval/cache.py (keyed on corpus file hash) to avoid re-running the same
 # example during iteration — this is eval-internal and not exposed in ExtractionConfig.
 
-class ConfidenceWeights(BaseModel):
-    verification: float = 0.70  # weight when verification agent is configured; ignored otherwise
-    heuristics: float = 0.30    # always active
-
-    # Unavailable signals are excluded from both numerator and denominator — weights redistribute
-    # proportionally rather than collapsing to zero. Examples:
-    #   verification + heuristics → (0.70*vf + 0.30*h) / 1.0
-    #   heuristics only           → h / 1.0
-
-    # redistribute(disabled_signals) zeros the named signals and rescales the remainder to sum to 1.0.
-    # Only "verification" is disableable — heuristics is always active.
-
-# These are the baseline values. Adjust only after running seshat eval on the labelled corpus
-# and confirming the calibration — the formula and weights are fixed until eval data justifies a change.
 ```
 
 > **Prompt token budget (MVP — no chunking):** the transcript is passed in full; each agent call assembles:
@@ -395,7 +380,7 @@ class ConfidenceWeights(BaseModel):
 class RAGConfig(BaseModel):
     enabled: bool = True
     top_k: int = 5        # candidates retained from vector search (fed to graph traversal)
-    min_score: float = 0.5  # minimum similarity score [0, 1] to retain a retrieved result; calibrate against retrieval corpus before tightening
+    min_score: float = 0.5  # minimum similarity score [0, 1]; set by RetrievalMetaScorer.sweep_threshold() (argmax macro-F2 over the retrieval corpus)
     max_context_tokens: int = 4000
     traversal_max_depth: int = 1                            # direct neighbours only for MVP
     traversal_rel_types: list[RelationshipType] | None = None  # None = all relationship types
@@ -638,14 +623,9 @@ class FailedResolutionSource(BaseModel):
 
 ### Confidence Scoring
 
-Confidence is derived from two signals, weighted and normalised:
+**Heuristics** is the sole continuous confidence signal; `KBNode.confidence` equals the heuristics score directly.
 
-```
-final = sum(w_i * s_i  for each available signal i)
-      / sum(w_i         for each available signal i)
-```
-
-Weights come from `ExtractionConfig.confidence_weights`. When verification is disabled (`verification=None`), it is excluded from both numerator and denominator — its weight redistributes to heuristics. `final` always lies in [0, 1] regardless of which signals are active.
+**Verification** is a hard binary gate, not a blended signal. When `ExtractionConfig.verification` is configured, a separate lightweight agent independently judges each extracted node. A node that fails (`verification_passed=False`) is rejected outright regardless of its heuristics score. When verification is disabled or retries are exhausted, `verification_passed` is `None` and the decision falls through to the heuristics threshold alone.
 
 1. **Verification agent** — a separate lightweight agent (cheap model: `gpt-4o-mini`, `claude-haiku`) that receives the extraction and source quote and answers a binary "is this well-supported?" question. Must use a different `LLMProvider` than the extraction agent — same-provider verification produces correlated errors (enforced by `model_validator`). Example pairing: extraction on `anthropic`, verification on `openai`.
 2. **Heuristics** — always active. Formula:
@@ -680,21 +660,22 @@ title_specificity = 0.45 * has_named_entity + 0.35 * has_qualifier + 0.20 * word
 
 > **Note:** the original spec defined bucketed (0.0 / 0.5 / 1.0) title_specificity and directness scoring. The implementation uses continuous composite / multiplicative formulas which are more nuanced and better suited to calibration. The `seshat eval` gate calibrates against the implemented formula, not the original buckets.
 
-**Active signals per configuration:**
+**Auto-approval policy:**
 
-| `verification` | Active signals | Effective weights (default) |
+| `verification_passed` | heuristics vs threshold | Outcome |
 |---|---|---|
-| configured | verification + heuristics | 0.70 / 0.30 |
-| `None` | **heuristics only** | 1.0 — weakest configuration; startup warning issued |
+| `None` (disabled or retries exhausted) | ≥ threshold | APPROVED (auto) |
+| `True` | ≥ threshold | APPROVED (auto) |
+| `False` | any | REJECTED |
+| any | < threshold | REJECTED (auto-mode) or PENDING_REVIEW (manual mode) |
 
-The `verification=None` combination is the weakest: no verification agent. Valid but must be used with awareness — the `confidence_threshold` calibrated against heuristics-only scores is not comparable to one calibrated with verification enabled.
+When `verification=None`, no verification agent runs and startup issues a warning. The heuristics threshold calibrated in a heuristics-only run is not directly comparable to one calibrated with verification enabled — recalibrate when toggling verification.
 
 ```python
 class ConfidenceBreakdown(BaseModel):
-    verification_enabled: bool           # True when a VerificationLLMConfig is present
-    verification: float | None = None    # None when verification agent not configured
-    heuristics: float                    # always present
-    final: float                         # normalised weighted sum per formula above; echoes KBNode.confidence
+    verification_enabled: bool             # True when a VerificationLLMConfig is present
+    verification_passed: bool | None       # None when verification is disabled or retries exhausted
+    heuristics: float                      # always present; echoes KBNode.confidence
 ```
 
 ### Prompt Injection Mitigation
@@ -771,7 +752,7 @@ A hard token cap (`max_hint_tokens`) is enforced after assembly: if the serialis
 ### Retrieval Flow
 
 - **Embedding target:** each new `KBNode` is embedded from `title + description` — node-to-node comparison is homogeneous and avoids the semantic distance problem of comparing raw transcript chunks against distilled KB summaries. **Known limitation:** `text-embedding-3-small` is a general-purpose semantic model — it conflates semantic similarity with logical coupling. Two Decisions on the same topic but independent may score highly similar; a Risk and a Decision with a `MITIGATES` relationship may score dissimilar. This is the primary reason the retrieval baseline must be measured before real use. If recall@5 < 0.7, switching the embedding model (e.g. a domain-specific or fine-tuned encoder) is the first tuning lever, before increasing `top_k`.
-- **Vector search:** semantic similarity via embedding model (pgvector for MVP), per new node against same-type KB nodes. Returns top-K candidates — no reranker in MVP (see Decisions Deferred).
+- **Vector search:** semantic similarity via embedding model (pgvector for MVP), per new node against all KB nodes regardless of type. Returns top-K candidates — no reranker in MVP (see Decisions Deferred). Cross-type search is intentional: a DECISION source node may need to resolve against RISK or OPEN_QUESTION targets; restricting to same-type would miss valid candidates for cross-type resolution agents.
 - **Graph traversal:** structural retrieval from KB Store — direct neighbours of top-K candidates (both inbound and outbound edges, depth=1). For MVP (Postgres): SQL join on `ops.kb_relationships`. For Neo4j: Cypher query. Same interface.
 
 ### Resolution
@@ -826,6 +807,13 @@ The `top_k=5` default must be justified against a measured baseline before MVP s
 3. For each new node with a known ground-truth match in the KB, measure **recall@5**: fraction of known matches appearing in the top-5 retrieved candidates.
 4. If recall@5 is below 0.7 with default settings, tune `top_k` upward or adjust the embedding model before locking defaults.
 5. Also measure **precision@5** alongside recall@5. High recall with low precision@5 (suggested floor: ≥ 0.6) means resolution agents receive many irrelevant candidates — noisy resolution, not just incomplete retrieval. Low precision@5 with acceptable recall@5 is the signal to invest in reranking (see Decisions Deferred).
+
+**Threshold calibration** is performed by `RetrievalMetaScorer.sweep_threshold()`, which
+sweeps `score_threshold` across [0, 1] and selects the value that maximises **macro-F2**
+(beta=2) — a recall-weighted metric that prevents the degenerate threshold=0 solution.
+Positive corpus examples contribute F2; negative examples (no expected matches) contribute
+specificity (1 if nothing returned, 0 otherwise). Both feed the macro average. The
+suggested threshold is written back to `RAGConfig.min_score`.
 
 `seshat eval` runs this retrieval baseline alongside extraction evaluation — both are part of the same MLflow eval run, linked to the same experiment.
 

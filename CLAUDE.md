@@ -2,8 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Behavioral rules
-
 ## The Four Principles in Detail
 
 ### 1. Think Before Coding
@@ -76,23 +74,35 @@ Strong success criteria let the LLM loop independently. Weak criteria ("make it 
 ```
 seshat/
 ├── src/seshat/
-│   ├── agents/          # LLM agents: identification (extraction) and resolution families
-│   ├── blob_store/      # S3 blob store abstraction (aioboto3)
-│   ├── config/          # Pydantic settings (EvalConfig, LLMConfig, ConfidenceWeights, …)
-│   ├── eval/            # MLflow-backed eval harnesses and calibration meta-scorers
-│   ├── knowledge_store/ # Postgres-backed KB node persistence
-│   ├── models/          # Pydantic domain models (KBNode, enums, …)
-│   ├── observability/   # MLflow tracing and run management
-│   ├── pipeline/        # ExtractionOrchestrator and extraction sub-pipeline
-│   ├── secrets/         # AWS Secrets Manager helpers
-│   ├── utils/           # Shared utilities
-│   └── vector_store/    # pgvector semantic search abstraction
-├── tests/               # pytest test suite (unit/ and integration/)
-├── data/eval/           # Ground-truth YAML corpus fixtures for the eval harnesses
-├── alembic/             # DB migration scripts
-├── docs/                # Architecture docs, SDD, design specs
-└── pyproject.toml       # Single source of truth for deps, tool config, metadata
+│   ├── agents/                  # LLM agents
+│   │   ├── identification/      # Extraction agents (grouping, registry)
+│   │   └── resolution/          # Resolution agents
+│   │       ├── same_type/       # Same-type conflict resolution
+│   │       └── cross_type/      # Cross-type conflict resolution
+│   ├── blob_store/              # S3 blob store abstraction (aioboto3)
+│   ├── config/                  # Pydantic settings (EvalConfig, LLMConfig, ExtractionConfig, …)
+│   ├── eval/                    # MLflow-backed eval harnesses
+│   │   ├── identification/      # Identification eval runner
+│   │   ├── resolution/          # Resolution eval runner
+│   │   ├── retrieval/           # Retrieval eval runner
+│   │   ├── grouping/            # Grouping eval runner
+│   │   ├── verification/        # Verification eval runner
+│   │   └── calibration/         # Meta-scorer calibration
+│   ├── knowledge_store/         # Postgres-backed KB node persistence
+│   ├── models/                  # Pydantic domain models (KBNode, enums, …)
+│   ├── observability/           # MLflow tracing and run management
+│   ├── pipeline/                # Orchestration
+│   │   └── extraction/          # Extraction sub-pipeline
+│   ├── secrets/                 # AWS Secrets Manager helpers
+│   ├── utils/                   # Shared utilities
+│   └── vector_store/            # pgvector semantic search abstraction
+├── tests/                       # pytest test suite (unit/ and integration/)
+├── data/eval/                   # Ground-truth YAML corpus fixtures for the eval harnesses
+├── alembic/                     # DB migration scripts
+├── docs/                        # Architecture docs, SDD, design specs
+└── pyproject.toml               # Single source of truth for deps, tool config, metadata
 ```
+
 ## Running Tests
 
 The default `uv run pytest` run excludes the `llm` marker (see `addopts` in `pyproject.toml`). Use these commands depending on what you want to cover:
