@@ -184,7 +184,7 @@ def _filter_by_threshold(result: IdentificationResult, threshold: float, ignore_
         if breakdown is None:
             continue
 
-        if not ignore_verification and breakdown.verification is not None and breakdown.verification != 1:
+        if not ignore_verification and breakdown.verification_passed is False:
             continue
 
         if breakdown.heuristics >= threshold:

@@ -1,26 +1,28 @@
 import pytest
 
 from seshat.eval.calibration.models import (
+    IdentificationSweepPoint,
     IdentificationSweepResult,
     RetrievalSweepPoint,
     RetrievalSweepResult,
-    SweepPoint,
-    TypeMetrics,
+    TypePC,
 )
 from seshat.models.enums import ConceptType
 
 
 class TestIdentificationSweepResult:
     def test_round_trips(self):
-        point = SweepPoint(
+        point = IdentificationSweepPoint(
             threshold=0.5,
-            metrics={ConceptType.DECISION: TypeMetrics(precision=0.8, recall=0.7, f1=0.747)},
-            macro_f1=0.747,
+            precision_approved=0.8,
+            coverage=0.7,
+            per_type={ConceptType.DECISION: TypePC(precision_approved=0.8, coverage=0.7)},
         )
         result = IdentificationSweepResult(points=[point], suggested_threshold=0.5)
         assert result.suggested_threshold == pytest.approx(0.5)
         assert result.points[0].threshold == pytest.approx(0.5)
-        assert result.points[0].macro_f1 == pytest.approx(0.747)
+        assert result.points[0].precision_approved == pytest.approx(0.8)
+        assert result.points[0].coverage == pytest.approx(0.7)
 
     def test_empty_points_allowed(self):
         result = IdentificationSweepResult(points=[], suggested_threshold=0.0)

@@ -39,31 +39,12 @@ class _PendingNode:
     concept_fields: dict[str, Any]
     job_id: str
     heuristics: float
-    verification: float | None = None
+    verification: bool | None = None
     breakdown: ConfidenceBreakdown | None = None
     status: NodeStatus = NodeStatus.PENDING_REVIEW
     approval_method: ApprovalMethod | None = None
     approved_at: datetime | None = None
     pending_reason: str | None = None
-
-    def assign_status(self, config: ExtractionConfig) -> None:
-        assert self.breakdown is not None
-        threshold = config.confidence_threshold
-        if config.per_type_thresholds and self.concept_type in config.per_type_thresholds:
-            threshold = config.per_type_thresholds[self.concept_type]
-
-        if config.auto_mode:
-            self.status = NodeStatus.APPROVED
-            self.approval_method = ApprovalMethod.AUTO
-            self.approved_at = datetime.now(UTC)
-            # TODO: set approved_by to job submitter once user_id is threaded through ExtractionConfig
-        elif self.breakdown.final >= threshold:
-            self.status = NodeStatus.APPROVED
-            self.approval_method = ApprovalMethod.THRESHOLD
-            self.approved_at = datetime.now(UTC)
-        else:
-            self.status = NodeStatus.PENDING_REVIEW
-            self.pending_reason = f"confidence {self.breakdown.final:.2f} < threshold {threshold:.2f}"
 
     def build(self) -> KBNode:
         assert self.breakdown is not None, "breakdown must be set before building KBNode"
@@ -71,7 +52,7 @@ class _PendingNode:
             type=self.concept_type,
             title=self.title,
             description=self.description,
-            confidence=self.breakdown.final,
+            confidence=self.breakdown.heuristics,
             quote_anchors=self.quote_anchors,
             status=self.status,
             metadata=NodeMetadata(
@@ -84,6 +65,44 @@ class _PendingNode:
                 concept_fields=self.concept_fields or None,
             ),
         )
+
+    def assign_status(self, config: ExtractionConfig) -> None:
+        assert self.breakdown is not None
+
+        threshold = config.confidence_threshold
+        if config.per_type_thresholds and self.concept_type in config.per_type_thresholds:
+            threshold = config.per_type_thresholds[self.concept_type]
+
+        # TODO: set approved_by to job submitter once user_id is threaded through ExtractionConfig
+        if config.auto_mode:
+            self._assign_for_auto_mode(threshold)
+        else:
+            self._assign_for_manual_mode(threshold)
+
+    def _assign_for_auto_mode(self, threshold: float) -> None:
+        assert self.breakdown is not None
+
+        # No human in the loop — nodes either pass the gate or are rejected entirely.
+        passes_verification = self.breakdown.verification_passed is None or self.breakdown.verification_passed
+        passes_threshold = self.breakdown.heuristics >= threshold
+        if passes_verification and passes_threshold:
+            self.status = NodeStatus.APPROVED
+            self.approval_method = ApprovalMethod.AUTO
+            self.approved_at = datetime.now(UTC)
+        else:
+            self.status = NodeStatus.REJECTED
+
+    def _assign_for_manual_mode(self, threshold: float) -> None:
+        assert self.breakdown is not None
+
+        # Human in the loop — nodes that pass the gate are approved, but still require manual review if they don't pass.
+        if self.breakdown.heuristics >= threshold:
+            self.status = NodeStatus.APPROVED
+            self.approval_method = ApprovalMethod.THRESHOLD
+            self.approved_at = datetime.now(UTC)
+        else:
+            self.status = NodeStatus.PENDING_REVIEW
+            self.pending_reason = f"heuristics {self.breakdown.heuristics:.2f} < threshold {threshold:.2f}"
 
 
 class PendingNodeBuilder:

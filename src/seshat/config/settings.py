@@ -1,5 +1,3 @@
-import math
-
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -69,36 +67,6 @@ class ResolutionLLMConfig(_LLMConfig):
     )
 
 
-class ConfidenceWeights(BaseConfig):
-    # Default weights are hand-tuned placeholders; calibrate against a labeled corpus before
-    # enabling verification in production. With verification=None the verification weight is
-    # redistributed to heuristics automatically, but the heuristics weight itself is also uncalibrated.
-    verification: float = Field(default=0.70, ge=0, lt=1)
-    heuristics: float = Field(default=0.30, gt=0, le=1)
-
-    @model_validator(mode="after")
-    def _weights_sum_to_one(self) -> "ConfidenceWeights":
-        total = self.verification + self.heuristics
-        if not math.isclose(total, 1.0, abs_tol=1e-6):
-            raise ValueError(f"ConfidenceWeights must sum to 1.0, got {total:.6f}")
-        return self
-
-    _DISABLEABLE_SIGNALS: frozenset[str] = frozenset({"verification"})
-
-    def redistribute(self, disabled_signals: set[str]) -> "ConfidenceWeights":
-        """Return new weights with disabled signals zeroed and remaining weights scaled to sum to 1.0."""
-        unknown = disabled_signals - self._DISABLEABLE_SIGNALS
-        if unknown:
-            disabled_signals_str = sorted(self._DISABLEABLE_SIGNALS)
-            raise ValueError(
-                f"Unknown or non-disableable signals: {sorted(unknown)}. Must be one of {disabled_signals_str}"
-            )
-        active = {k: v for k, v in self.model_dump().items() if k not in disabled_signals}
-        total = sum(active.values())
-        scaled = {k: v / total for k, v in active.items()} | dict.fromkeys(disabled_signals, 0.0)
-        return ConfidenceWeights.model_construct(**scaled)
-
-
 class ExtractionConfig(BaseConfig):
     identification: IdentificationLLMConfig = Field(
         default_factory=IdentificationLLMConfig, description="LLM settings used for the identification step."
@@ -112,7 +80,7 @@ class ExtractionConfig(BaseConfig):
     )
     # TODO: calibrate against a labeled corpus before use
     confidence_threshold: float = Field(
-        default=0.7, ge=0, le=1, description="Minimum composite confidence score required to retain an identified node."
+        default=0.7, ge=0, le=1, description="Minimum heuristics score required to retain an identified node."
     )
     per_type_thresholds: dict[ConceptType, float] | None = Field(
         default=None, description="Optional per-concept-type confidence thresholds that override the global threshold."
@@ -134,9 +102,6 @@ class ExtractionConfig(BaseConfig):
     )
     verification: VerificationLLMConfig | None = Field(
         default=None, description="Optional second LLM used to verify extraction results; None disables verification."
-    )
-    confidence_weights: ConfidenceWeights = Field(
-        default_factory=ConfidenceWeights, description="Weights used to compute the composite confidence score."
     )
     identification_timeout_seconds: float | None = Field(
         default=None, gt=0, description="Optional wall-clock timeout for a full extraction run; None means no limit."

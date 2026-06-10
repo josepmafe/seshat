@@ -14,18 +14,18 @@ from tests.unit.eval.identification.helpers import corpus_node
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 
-def _make_kb_node(ctype: ConceptType, title: str, final: float) -> KBNode:
-    """KBNode with no quote anchors and a calibrated final score; matching uses title similarity."""
+def _make_kb_node(ctype: ConceptType, title: str, heuristics: float) -> KBNode:
+    """KBNode with no quote anchors and a heuristics score; matching uses title similarity."""
     metadata = NodeMetadata(
         job_id="test",
         meeting_date=date(2026, 1, 1),
-        confidence_breakdown=ConfidenceBreakdown(heuristics=final, final=final),
+        confidence_breakdown=ConfidenceBreakdown(heuristics=heuristics),
     )
     return make_node(
         node_id=title,
         title=title,
         description=f"Description of {title}",
-        confidence=final,
+        confidence=heuristics,
         type=ctype,
         metadata=metadata,
         quote_anchors=[],
@@ -179,20 +179,20 @@ class TestSuggestedThreshold:
 
 
 def _make_kb_node_with_verification(
-    ctype: ConceptType, title: str, heuristics: float, verification: float, final: float
+    ctype: ConceptType, title: str, heuristics: float, verification_passed: bool
 ) -> KBNode:
     metadata = NodeMetadata(
         job_id="test",
         meeting_date=date(2026, 1, 1),
         confidence_breakdown=ConfidenceBreakdown(
-            verification_enabled=True, heuristics=heuristics, verification=verification, final=final
+            verification_enabled=True, heuristics=heuristics, verification_passed=verification_passed
         ),
     )
     return make_node(
         node_id=title,
         title=title,
         description=f"Description of {title}",
-        confidence=final,
+        confidence=heuristics,
         type=ctype,
         metadata=metadata,
         quote_anchors=[],
@@ -217,7 +217,7 @@ class TestFilterByThreshold:
 
     def test_verification_pass_and_heuristics_pass_approved(self) -> None:
         node = _make_kb_node_with_verification(
-            ConceptType.DECISION, "Use Kafka", heuristics=0.8, verification=1.0, final=0.8
+            ConceptType.DECISION, "Use Kafka", heuristics=0.8, verification_passed=True
         )
         result = _make_result_with_verification(CORPUS_ID, [node])
 
@@ -226,9 +226,9 @@ class TestFilterByThreshold:
         assert _filter_by_threshold(result, 0.7) == [node]
 
     def test_verification_fail_blocks_regardless_of_heuristics(self) -> None:
-        # verification=0 → blocked even with heuristics=0.99
+        # verification_passed=False → blocked even with heuristics=0.99
         node = _make_kb_node_with_verification(
-            ConceptType.DECISION, "Use Kafka", heuristics=0.99, verification=0.0, final=0.99
+            ConceptType.DECISION, "Use Kafka", heuristics=0.99, verification_passed=False
         )
         result = _make_result_with_verification(CORPUS_ID, [node])
 
@@ -238,7 +238,7 @@ class TestFilterByThreshold:
 
     def test_verification_pass_but_heuristics_below_threshold_blocked(self) -> None:
         node = _make_kb_node_with_verification(
-            ConceptType.DECISION, "Use Kafka", heuristics=0.3, verification=1.0, final=0.3
+            ConceptType.DECISION, "Use Kafka", heuristics=0.3, verification_passed=True
         )
         result = _make_result_with_verification(CORPUS_ID, [node])
 
