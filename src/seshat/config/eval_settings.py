@@ -64,12 +64,6 @@ class EvalConfig(BaseSettings):
             "check if the grouping agent correctly clusters extracted items into thematic groups."
         ),
     )
-    nli_scorer_enabled: bool = Field(
-        default=False,
-        description=(
-            "Enable NLI-based faithfulness scoring, i.e., check if the extracted information is faithful to the source."
-        ),
-    )
     max_concurrent_predictions: int = Field(
         default=10,
         gt=0,

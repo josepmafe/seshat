@@ -174,8 +174,3 @@ def _negative_check_feedback(
         rate = 1.0 if predicted_by_type[ctype] > 0 else 0.0
         feedbacks.append(Feedback(name=f"{ctype}.spurious_rate", value=rate))
     return feedbacks
-
-
-def _nli_faithfulness_feedback(result: MatchResult) -> list[Feedback]:
-    # TODO: implement using a local cross-encoder NLI model
-    return []
