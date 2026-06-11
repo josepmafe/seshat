@@ -14,6 +14,10 @@ class _ConcreteAgent(_BaseAgent):
     def __init__(self, llm, max_retries: int = 3) -> None:
         super().__init__(llm=llm, config=IdentificationLLMConfig(max_retries=max_retries))
 
+    @property
+    def _system_prompt(self) -> str:
+        return ""
+
 
 def _make_agent(side_effect=None, return_value=None, max_retries: int = 3) -> _ConcreteAgent:
     return _ConcreteAgent(
@@ -75,4 +79,4 @@ class TestRetryableStructuredAinvoke:
                 raise_on_exhaustion=exhaustion,
             )
 
-        assert mock_sleep.call_count == 3  # one sleep per attempt, including the final failed one
+        assert mock_sleep.call_count == 2  # no sleep after the final failed attempt
