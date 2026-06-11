@@ -15,6 +15,7 @@ from seshat.models.nodes import (
     KBRelationship,
     ResolutionResult,
 )
+from seshat.observability.usage_tracker import track_token_budget
 from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
 from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _deduplicate, _PendingNode, _quote_text
 from seshat.utils.log import get_logger
@@ -63,6 +64,11 @@ class ExtractionOrchestrator:
             return await asyncio.wait_for(coro, self._config.identification_timeout_seconds)
         return await coro
 
+    @track_token_budget(
+        max_input_fn=lambda self: self._config.max_total_input_tokens,
+        max_output_fn=lambda self: self._config.max_total_output_tokens,
+        label="identification",
+    )
     async def _run_identification(
         self,
         transcript: str,
@@ -70,16 +76,13 @@ class ExtractionOrchestrator:
         job_id: str,
         hints: dict[ConceptType, str] | None = None,
     ) -> IdentificationResult:
-        # TODO: implement token budget enforcement (max_total_input_tokens / max_total_output_tokens).
-        # Approach: LangChain callback handler or explicit tracker injection — warn at cap, abort at
-        # n*cap. Start with LLM calls only; embeddings and transcription can be added later
-        # (RAG context is already bounded by max_context_tokens).
         t0 = time.perf_counter()
         logger.info("Starting identification run for blob_key=%s", blob_key)
 
         if hints is None:
             hints = await self._fetch_kb_hints()
         pending, failed_concept_types = await self._identification_pass(transcript, blob_key, job_id, hints)
+
         nodes = await self._score_and_finalize(pending, transcript)
 
         elapsed_ms = round((time.perf_counter() - t0) * 1000)
@@ -136,6 +139,11 @@ class ExtractionOrchestrator:
             return await asyncio.wait_for(coro, self._config.resolution_timeout_seconds)
         return await coro
 
+    @track_token_budget(
+        max_input_fn=lambda self: self._config.max_total_input_tokens,
+        max_output_fn=lambda self: self._config.max_total_output_tokens,
+        label="resolution",
+    )
     async def _run_resolution(
         self,
         source_nodes: list[KBNode],

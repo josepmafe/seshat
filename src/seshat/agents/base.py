@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, TypeVar
 
 from pydantic import BaseModel
 
+from seshat.observability.usage_tracker import get_run_tracker
 from seshat.utils.hashing import fingerprint
 from seshat.utils.log import get_logger
 
@@ -51,6 +52,12 @@ class _BaseAgent(ABC):
         on_error_log_prefix: str | None = None,
     ) -> M:
         structured = self._llm.with_structured_output(response_model)
+
+        # add usage tracking callback if a tracker is available in context
+        tracker_callback = get_run_tracker()
+        if tracker_callback is not None:
+            structured = structured.with_config(callbacks=[tracker_callback])
+
         on_error_log_prefix = on_error_log_prefix or response_model.__name__
         attempts = max(1, self._max_retries)  # run at least once
         for attempt in range(attempts):
