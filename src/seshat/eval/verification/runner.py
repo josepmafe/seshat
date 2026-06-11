@@ -13,6 +13,7 @@ from seshat.eval.gate import upsert_gate
 from seshat.eval.mlflow_logging import configure_trace_processors, log_eval_run_metadata, make_input_redactor
 from seshat.eval.verification.corpus_loader import load_corpus
 from seshat.eval.verification.scorers import scorer
+from seshat.utils.log import set_task_num
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -91,9 +92,12 @@ class VerificationEvalRunner:
         sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
         agent_hash = self._agent.fingerprint()
 
-        async def _run_one(ex: VerificationCorpusExample, i: int) -> tuple[tuple[str, int], VerificationResult, Path]:
-            cache_fp = build_cache_fp(self._config.verification_cache_dir, ex, agent_hash=agent_hash, index=i)
-            node = ex.nodes[i]
+        async def _run_one(
+            task_idx: int, ex: VerificationCorpusExample, node_idx: int
+        ) -> tuple[tuple[str, int], VerificationResult, Path]:
+            set_task_num(task_idx)
+            cache_fp = build_cache_fp(self._config.verification_cache_dir, ex, agent_hash=agent_hash, index=node_idx)
+            node = ex.nodes[node_idx]
 
             async with sem:
                 result, used = await read_or_run(
@@ -106,9 +110,10 @@ class VerificationEvalRunner:
                         transcript=ex.transcript,
                     ),
                 )
-            return (ex.corpus_id, i), result, used
+            return (ex.corpus_id, node_idx), result, used
 
-        tasks = [_run_one(ex, i) for ex in examples for i in range(len(ex.nodes))]
+        flat = [(ex, node_idx) for ex in examples for node_idx in range(len(ex.nodes))]
+        tasks = [_run_one(task_idx, ex, node_idx) for task_idx, (ex, node_idx) in enumerate(flat)]
         triples = await asyncio.gather(*tasks)
         results = {key: result for key, result, _ in triples}
         touched = {used for _, _, used in triples}
