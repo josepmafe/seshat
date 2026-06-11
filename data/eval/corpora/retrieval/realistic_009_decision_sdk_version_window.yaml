@@ -1,0 +1,95 @@
+corpus_id: decision-sdk-version-window-mixed-pool
+description: >
+  Realistic mixed-pool positive: a decision to drop v1 SDK at the Q3 release and maintain
+  a two-version support window should surface the open question it resolved and the prior
+  decision it supersedes (the implicit "no policy" state captured as a decision to defer).
+  The pool mixes all four node types across SDK management, reporting, and unrelated
+  domains.
+
+tags:
+  tier: realistic
+  source_type: decision
+  polarity: positive
+  difficulty: hard
+
+query_node:
+  id: sdk-version-window-decision
+  type: decision
+  title: "Drop v1 SDK at Q3 release and maintain a two-version support window"
+  description: "The team decided to drop v1 SDK support at the Q3 release and maintain a rolling two-version support window (currently v2 and v3) going forward."
+  quote: "We will drop v1 SDK support at the Q3 release, and maintain a two-version support window from that point forward — so v2 and v3 going forward."
+
+candidate_nodes:
+  # --- Strong positive: open question this decision resolves ---
+  - id: sdk-version-oq
+    type: open_question
+    title: "How many SDK versions should we maintain simultaneously?"
+    description: "The question of how many SDK versions to support in parallel has not been settled; engineering wants to drop v1 but no formal policy exists."
+    quote: "The open question going into this meeting — do we commit to a two-version support window or something longer?"
+
+  # --- Weak positive: prior deferral decision this one supersedes ---
+  - id: sdk-policy-deferred-decision
+    type: decision
+    title: "Defer SDK version support policy pending v1 customer migration status"
+    description: "The team deferred the SDK support window decision until the status of enterprise customers still on v1 was known."
+    quote: "We don't need to decide on a permanent window count just yet."
+
+  # --- Hard negatives: same SDK/product domain, not addressed by this decision ---
+  - id: missing-index-risk
+    type: risk
+    title: "Missing composite indexes may cause further reporting dashboard outages before remediation"
+    description: "The composite index backfill on the events table is incomplete; further incidents blocking tenant reporting dashboards are possible before the fix lands."
+    quote: "The underlying risk is still open — we don't know the full extent of the missing indexes yet."
+
+  - id: scan-partitions-action
+    type: action_item
+    title: "Scan partitions for missing indexes and draft remediation plan"
+    description: "Lena will scan all events table partitions to identify missing composite index coverage and produce a remediation plan by Thursday."
+    quote: "Lena, can you run that scan and put together a remediation plan by Thursday?"
+
+  - id: enable-export-decision
+    type: decision
+    title: "Enable document export for Pro and Enterprise customers with 200 MB cap by end of month"
+    description: "The team decided to enable document export for all Pro and Enterprise customers by the 31st and raise the per-export size cap."
+    quote: "We enable document export for all Pro and Enterprise customers by end of month."
+
+  - id: update-flag-action
+    type: action_item
+    title: "Update feature flag config and worker cap for document export"
+    description: "Dmitri will update the feature flag configuration and worker cap by the 31st."
+    quote: "I'll update the flag config and the worker cap setting by the 31st."
+
+  - id: audit-trail-oq
+    type: open_question
+    title: "Must export job logs be included in the customer-facing audit trail?"
+    description: "Legal has not confirmed whether export job logs are required in the customer-facing audit trail."
+    quote: "We haven't confirmed whether export job logs need to be in the audit trail."
+
+  # --- Easy negatives: completely different domain ---
+  - id: flyway-adoption-decision
+    type: decision
+    title: "Adopt Flyway for all database migrations going forward"
+    description: "The team standardised on Flyway as the migration toolchain."
+    quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable."
+
+  - id: pagerduty-decision
+    type: decision
+    title: "PagerDuty is the single alerting and on-call management tool for all teams"
+    description: "The team standardised on PagerDuty as the sole alerting and on-call tool."
+    quote: "PagerDuty is it — one tool, all teams."
+
+  - id: office-lease-risk
+    type: risk
+    title: "Office lease expires before a replacement site is secured"
+    description: "The current office lease ends in seven months and no alternative site has been shortlisted."
+    quote: "The lease is up in seven months and we haven't started looking for a new place."
+
+  - id: logo-redesign-action
+    type: action_item
+    title: "Commission external agency for company logo redesign"
+    description: "The executive team approved an external brand agency commission for a full logo redesign."
+    quote: "Get an agency brief together for the rebrand by end of next week."
+
+expected_relevant_ids:
+  - sdk-version-oq
+  - sdk-policy-deferred-decision

@@ -67,12 +67,19 @@ jobs:
 
       - name: Run integration tests
         run: uv run pytest -m "not llm and not eval" --tb=short --cov-report=xml --cov-branch --cov-fail-under=80
+        env:
+          AWS_ACCESS_KEY_ID: dummy_id
+          AWS_SECRET_ACCESS_KEY: dummy_secret
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs --no-color
 
       - name: Stop Docker services
         run: docker compose down

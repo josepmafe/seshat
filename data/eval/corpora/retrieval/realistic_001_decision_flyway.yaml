@@ -1,0 +1,103 @@
+corpus_id: decision-flyway-adoption-mixed-pool
+description: >
+  Realistic mixed-pool positive: a decision to adopt Flyway for all database migrations
+  should surface a prior decision about ad-hoc scripts (supersedes), an open question
+  about toolchain choice (resolves), and a risk about schema drift from mixed tooling
+  (mitigates). The pool contains all four node types drawn from infrastructure, incident
+  response, and hiring domains to test that the model does not surface topically adjacent
+  but unrelated nodes.
+
+tags:
+  tier: realistic
+  source_type: decision
+  polarity: positive
+  difficulty: hard
+
+query_node:
+  id: adopt-flyway
+  type: decision
+  title: "Adopt Flyway for all database migrations going forward"
+  description: "The team decided to standardise on Flyway as the migration toolchain, replacing the ad-hoc SQL scripts currently maintained per service."
+  quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable. Agreed."
+
+candidate_nodes:
+  # --- Strong positives: directly addressed by this decision ---
+  - id: adhoc-scripts-decision
+    type: decision
+    title: "Each service maintains its own ad-hoc SQL migration scripts"
+    description: "Each service team manages schema migrations independently using plain SQL scripts checked into their service repository."
+    quote: "Each team owns their schema scripts — no shared tooling needed at this scale."
+
+  - id: toolchain-oq
+    type: open_question
+    title: "Should we use Flyway or Liquibase for database migrations?"
+    description: "The team has not yet chosen between Flyway and Liquibase; both were shortlisted after a prototype evaluation."
+    quote: "Flyway or Liquibase — we need to pick one before we can start onboarding services."
+
+  # --- Weak positive: mitigated by this decision ---
+  - id: schema-drift-risk
+    type: risk
+    title: "Mixed migration tooling across services may cause schema drift"
+    description: "If some services use the new toolchain while others continue with ad-hoc scripts, schema drift between services becomes harder to detect and resolve."
+    quote: "Half the services on a new tool and half on scripts means no single view of migration state."
+
+  # --- Hard negatives: same infrastructure domain, not addressed by this decision ---
+  - id: rollback-strategy-oq
+    type: open_question
+    title: "What is the rollback strategy if a Flyway migration fails mid-deployment?"
+    description: "The team has not defined a rollback procedure for failed Flyway migrations in production."
+    quote: "If a migration fails halfway, what do we do? We haven't defined that yet."
+
+  - id: provision-staging-action
+    type: action_item
+    title: "Provision a dedicated staging environment for Flyway onboarding tests"
+    description: "The platform team needs to provision a staging environment before any service can be onboarded to Flyway for testing."
+    quote: "Platform team, provision staging first — nothing can be onboarded until we have somewhere to test."
+
+  - id: connection-pool-risk
+    type: risk
+    title: "Blue-green deploy cutover may cause brief connection pool exhaustion"
+    description: "During blue-green deploy cutovers, the connection pool may momentarily be saturated if both old and new instances are draining simultaneously."
+    quote: "We've seen the pool spike during cutover — old and new instances both holding connections at the same time."
+
+  - id: update-runbook-action
+    type: action_item
+    title: "Update the on-call runbook for the payments service"
+    description: "The on-call rotation runbook for the payments service needs updating to reflect the new escalation path."
+    quote: "Someone update the payments runbook — the escalation path is out of date."
+
+  - id: postgres-decision
+    type: decision
+    title: "Use PostgreSQL as the primary relational database"
+    description: "PostgreSQL is selected as the sole relational persistence layer for all services."
+    quote: "We're standardising on PostgreSQL, no more mixed database landscape."
+
+  # --- Easy negatives: completely different domain ---
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling the two senior engineering roles required to deliver the roadmap on time."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: crm-migration-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team's legacy CRM will be migrated to Salesforce by end of Q2."
+    quote: "We're moving to Salesforce, the old CRM is being retired."
+
+  - id: office-lease-oq
+    type: open_question
+    title: "Should we renew the downtown office lease or relocate?"
+    description: "The current downtown office lease expires in eight months and no decision has been made about renewal versus relocation."
+    quote: "The lease is up soon — do we renew or start looking for a new space?"
+
+  - id: logo-redesign-action
+    type: action_item
+    title: "Commission external agency for company logo redesign"
+    description: "The executive team approved an external brand agency commission for a full logo and identity redesign."
+    quote: "Get an agency brief together for the rebrand by end of next week."
+
+expected_relevant_ids:
+  - adhoc-scripts-decision
+  - toolchain-oq
+  - schema-drift-risk

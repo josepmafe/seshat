@@ -5,7 +5,7 @@ import pytest
 
 from seshat.agents.identification.base import IdentificationRetryExhaustedError
 from seshat.agents.verification import VerificationRetryExhaustedError
-from seshat.config.settings import ConfidenceWeights, ExtractionConfig, VerificationLLMConfig
+from seshat.config.settings import ExtractionConfig, VerificationLLMConfig
 from seshat.models.api import NodeFilter
 from seshat.models.enums import ApprovalMethod, ConceptType, NodeStatus
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator, _assemble_kb_hint
@@ -25,7 +25,6 @@ def _make_orchestrator(
     verifier=None,
     auto_mode: bool = False,
     confidence_threshold: float = 0.5,
-    confidence_weights: ConfidenceWeights | None = None,
     extraction_registry=None,
     concept_types: list[ConceptType] | None = None,
     kb_approved_nodes: list | None = None,
@@ -36,7 +35,6 @@ def _make_orchestrator(
         concept_types=concept_types or [ConceptType.DECISION],
         auto_mode=auto_mode,
         confidence_threshold=confidence_threshold,
-        confidence_weights=confidence_weights or ConfidenceWeights(verification=0.0, heuristics=1.0),
         verification=VerificationLLMConfig() if verifier is not None else None,
         identification_timeout_seconds=identification_timeout_seconds,
         resolution_timeout_seconds=resolution_timeout_seconds,
@@ -147,7 +145,7 @@ class TestExtractionOrchestrator:
     @pytest.mark.asyncio
     async def test_auto_mode_assigns_auto_approved_status(self):
         concept = _make_concept("Use PostgreSQL")
-        orchestrator = _make_orchestrator(extraction_results=[concept], auto_mode=True)
+        orchestrator = _make_orchestrator(extraction_results=[concept], auto_mode=True, confidence_threshold=0.0)
 
         result = await orchestrator.run_identification(make_doc(), job_id="job-1")
 
@@ -234,21 +232,19 @@ class TestExtractionOrchestrator:
         orchestrator = _make_orchestrator(
             extraction_results=[concept],
             verifier=verifier,
-            confidence_weights=ConfidenceWeights(verification=0.5, heuristics=0.5),
         )
 
         result = await orchestrator.run_identification(make_doc(), job_id="job-1")
 
         assert len(result.nodes) == 1
-        assert result.nodes[0].metadata.confidence_breakdown.verification is None
+        assert result.nodes[0].metadata.confidence_breakdown.verification_passed is None
         assert result.nodes[0].metadata.confidence_breakdown.verification_enabled is True
 
     @pytest.mark.asyncio
-    async def test_verification_supported_raises_confidence_vs_unsupported(self):
+    async def test_verification_supported_node_approved_unsupported_rejected_in_auto_mode(self):
         from seshat.agents.verification import VerificationResult
 
         concept = _make_concept("Use PostgreSQL", quote="use PostgreSQL")
-        weights = ConfidenceWeights(verification=0.5, heuristics=0.5)
 
         supported_verifier = MagicMock()
         supported_verifier.verify = AsyncMock(return_value=VerificationResult(supported=True))
@@ -259,18 +255,19 @@ class TestExtractionOrchestrator:
         result_supported = await _make_orchestrator(
             extraction_results=[concept],
             verifier=supported_verifier,
-            confidence_threshold=0.99,
-            confidence_weights=weights,
+            auto_mode=True,
+            confidence_threshold=0.0,
         ).run_identification(make_doc(), job_id="job-1")
 
         result_unsupported = await _make_orchestrator(
             extraction_results=[concept],
             verifier=unsupported_verifier,
-            confidence_threshold=0.99,
-            confidence_weights=weights,
+            auto_mode=True,
+            confidence_threshold=0.0,
         ).run_identification(make_doc(), job_id="job-1")
 
-        assert result_supported.nodes[0].confidence > result_unsupported.nodes[0].confidence
+        assert result_supported.nodes[0].status == NodeStatus.APPROVED
+        assert result_unsupported.nodes[0].status == NodeStatus.REJECTED
 
     @pytest.mark.asyncio
     async def test_nodes_by_type_counts_per_type(self):

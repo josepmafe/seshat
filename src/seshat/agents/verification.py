@@ -70,6 +70,11 @@ class VerificationAgent(_BaseAgent):
         super().__init__(llm=llm, config=config)
         self._use_full_transcript = config.use_full_transcript
 
+    @property
+    def _system_prompt(self) -> str:
+        source: Literal["quote", "transcript"] = "transcript" if self._use_full_transcript else "quote"
+        return _system_prompt(source)
+
     async def verify(
         self, title: str, description: str, quote: str, transcript: str | None = None
     ) -> VerificationResult:

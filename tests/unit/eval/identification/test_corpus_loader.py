@@ -1,6 +1,6 @@
 import pytest
 
-from seshat.config.settings import EvalConfig
+from seshat.config.eval_settings import EvalConfig
 from seshat.eval.identification.corpus_loader import load_corpus
 from seshat.models.enums import ConceptType
 from tests.unit.eval.conftest import TagFilterContractTests

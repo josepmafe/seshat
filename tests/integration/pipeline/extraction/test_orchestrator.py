@@ -130,7 +130,7 @@ class TestExtractionOrchestrator:
             breakdown = node.metadata.confidence_breakdown
             assert breakdown is not None
             assert breakdown.verification_enabled is True
-            assert breakdown.verification is not None
+            assert breakdown.verification_passed is not None
 
     async def test_run_resolution_returns_relationships(self, orchestrator, kb_store, vector_store, blob_store):
         blob_key = await upload_transcript(blob_store, _TRANSCRIPT)

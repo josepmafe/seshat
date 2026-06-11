@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 
 from seshat.agents.resolution.cross_type.registry import CrossTypeResolutionRegistry
 from seshat.agents.resolution.same_type.registry import SameTypeResolutionRegistry
-from seshat.models.enums import RelationshipType
+from seshat.models.enums import ConceptType, RelationshipType
+from seshat.utils.hashing import fingerprint
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
@@ -37,12 +38,51 @@ class ResolutionRegistry:
         self._same_type = SameTypeResolutionRegistry(llm, config)
         self._cross_type = CrossTypeResolutionRegistry(llm, config)
 
+    def fingerprint(self) -> str:
+        """8-char hex digest of all same-type and cross-type agent prompts."""
+        prompts = [agent._system_prompt for agent in self._same_type._agents.values()]
+        prompts += [agent._system_prompt for agent in self._cross_type._agents_mapping.values()]
+        return fingerprint("".join(prompts))
+
+    def prompt_texts(self) -> dict[str, str]:
+        texts = {
+            f"same_type-{concept_type}": agent._system_prompt for concept_type, agent in self._same_type._agents.items()
+        }
+        texts.update(
+            {
+                f"cross_type-{src}-to-{tgt}": agent._system_prompt
+                for (src, tgt), agent in self._cross_type._agents_mapping.items()
+            }
+        )
+        return texts
+
+    def fingerprint_for_types(self, source_types: set[ConceptType], target_types: set[ConceptType]) -> str:
+        """8-char hex digest of only the agents that fire for the given source/target type sets.
+
+        Same-type agents fire when a type appears in both sets; cross-type agents fire for each
+        (src, tgt) pair where src is in source_types and tgt is in target_types.
+        """
+        prompts: list[str] = []
+        for ct in sorted(source_types & target_types, key=lambda c: c.value):
+            if ct in self._same_type._agents:
+                prompts.append(self._same_type._agents[ct]._system_prompt)
+        for (src, tgt), agent in self._cross_type._agents_mapping.items():
+            if src in source_types and tgt in target_types:
+                prompts.append(agent._system_prompt)
+        return fingerprint("".join(prompts))
+
     async def resolve_all(
         self,
         source_nodes: list[KBNode],
         per_source_targets: dict[UUID, list[KBNode]],
         semaphore: asyncio.Semaphore | None = None,
     ) -> tuple[list[ResolvedRelationship], list[FailedResolutionSource]]:
+        """Run same-type and cross-type resolution in parallel and merge results.
+
+        Same-type agents fire when a type appears in both sets; cross-type agents fire for each
+        (src, tgt) pair where src is in source_types and tgt is in target_types.
+        Relationships targeting superseded nodes are stripped before returning.
+        """
         (same_rels, same_failed), (cross_rels, cross_failed) = await asyncio.gather(
             self._same_type.resolve_all(source_nodes, per_source_targets, semaphore),
             self._cross_type.resolve_all(source_nodes, per_source_targets, semaphore),

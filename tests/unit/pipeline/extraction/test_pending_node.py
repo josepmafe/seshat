@@ -5,7 +5,7 @@ import pytest
 from seshat.agents.identification.base import AnchoredConcept
 from seshat.agents.identification.decision import Decision
 from seshat.agents.identification.grouping import ConceptGroup
-from seshat.config.settings import ConfidenceWeights, ExtractionConfig
+from seshat.config.settings import ExtractionConfig
 from seshat.models.enums import ApprovalMethod, ConceptType, IngestionSource, NodeStatus
 from seshat.models.nodes import ConfidenceBreakdown
 from seshat.models.quote_anchor import QuoteAnchor
@@ -58,10 +58,7 @@ def _make_pending(
 
 
 def _make_config(**kwargs) -> ExtractionConfig:
-    return ExtractionConfig(
-        confidence_weights=ConfidenceWeights(verification=0.0, heuristics=1.0),
-        **kwargs,
-    )
+    return ExtractionConfig(**kwargs)
 
 
 def _make_builder(scorer=None) -> PendingNodeBuilder:
@@ -129,17 +126,26 @@ class TestDeduplicate:
 
 
 class TestPendingNodeAssignStatus:
-    def _pending_with_breakdown(self, final: float, concept_type: ConceptType = ConceptType.DECISION) -> _PendingNode:
+    def _pending_with_breakdown(
+        self, heuristics: float, concept_type: ConceptType = ConceptType.DECISION
+    ) -> _PendingNode:
         node = _make_pending("Use PostgreSQL", concept_type)
-        node.breakdown = ConfidenceBreakdown(heuristics=final, final=final)
+        node.breakdown = ConfidenceBreakdown(heuristics=heuristics)
         return node
 
-    def test_auto_mode_sets_auto_approved(self):
-        node = self._pending_with_breakdown(0.5)
-        node.assign_status(_make_config(auto_mode=True))
+    def test_auto_mode_above_threshold_sets_auto_approved(self):
+        node = self._pending_with_breakdown(0.8)
+        node.assign_status(_make_config(auto_mode=True, confidence_threshold=0.5))
         assert node.status == NodeStatus.APPROVED
         assert node.approval_method == ApprovalMethod.AUTO
         assert node.approved_at is not None
+        assert node.pending_reason is None
+
+    def test_auto_mode_below_threshold_rejects_without_reason(self):
+        node = self._pending_with_breakdown(0.3)
+        node.assign_status(_make_config(auto_mode=True, confidence_threshold=0.7))
+        assert node.status == NodeStatus.REJECTED
+        assert node.approval_method is None
         assert node.pending_reason is None
 
     def test_above_threshold_sets_threshold_approval(self):
@@ -155,7 +161,7 @@ class TestPendingNodeAssignStatus:
         node.assign_status(_make_config(confidence_threshold=0.7))
         assert node.status == NodeStatus.PENDING_REVIEW
         assert node.approval_method is None
-        assert node.pending_reason == "confidence 0.30 < threshold 0.70"
+        assert node.pending_reason == "heuristics 0.30 < threshold 0.70"
 
     def test_per_type_threshold_overrides_global(self):
         node = self._pending_with_breakdown(0.6, ConceptType.DECISION)
@@ -175,11 +181,38 @@ class TestPendingNodeAssignStatus:
         node.assign_status(config)
         assert node.status == NodeStatus.PENDING_REVIEW
 
+    def _pending_with_verification(self, heuristics: float, verification_passed: bool | None) -> _PendingNode:
+        node = _make_pending("Use PostgreSQL")
+        node.breakdown = ConfidenceBreakdown(heuristics=heuristics, verification_passed=verification_passed)
+        return node
+
+    def test_manual_mode_verification_failed_above_threshold_sets_pending_review(self):
+        node = self._pending_with_verification(0.8, False)
+        node.assign_status(_make_config(auto_mode=False, confidence_threshold=0.5))
+        assert node.status == NodeStatus.PENDING_REVIEW
+        assert node.pending_reason == "verification failed"
+        assert node.approval_method is None
+
+    def test_manual_mode_verification_passed_above_threshold_approves(self):
+        node = self._pending_with_verification(0.8, True)
+        node.assign_status(_make_config(auto_mode=False, confidence_threshold=0.5))
+        assert node.status == NodeStatus.APPROVED
+
+    def test_manual_mode_verification_none_above_threshold_approves(self):
+        node = self._pending_with_verification(0.8, None)
+        node.assign_status(_make_config(auto_mode=False, confidence_threshold=0.5))
+        assert node.status == NodeStatus.APPROVED
+
+    def test_auto_mode_verification_failed_above_threshold_rejects(self):
+        node = self._pending_with_verification(0.8, False)
+        node.assign_status(_make_config(auto_mode=True, confidence_threshold=0.5))
+        assert node.status == NodeStatus.REJECTED
+
 
 class TestPendingNodeBuild:
-    def _built_node(self, concept_fields: dict | None = None, final: float = 0.7):
+    def _built_node(self, concept_fields: dict | None = None, heuristics: float = 0.7):
         node = _make_pending("Use PostgreSQL")
-        node.breakdown = ConfidenceBreakdown(heuristics=final, final=final)
+        node.breakdown = ConfidenceBreakdown(heuristics=heuristics)
         if concept_fields is not None:
             node.concept_fields = concept_fields
         return node.build()
@@ -192,14 +225,14 @@ class TestPendingNodeBuild:
         assert kb.metadata.job_id == "job-1"
         assert kb.metadata.ingestion_source == IngestionSource.JOB
 
-    def test_build_sets_confidence_from_breakdown_final(self):
-        kb = self._built_node(final=0.65)
+    def test_build_sets_confidence_from_heuristics(self):
+        kb = self._built_node(heuristics=0.65)
         assert kb.confidence == 0.65
 
     def test_build_embeds_confidence_breakdown_in_metadata(self):
-        kb = self._built_node(final=0.42)
+        kb = self._built_node(heuristics=0.42)
         assert kb.metadata.confidence_breakdown is not None
-        assert kb.metadata.confidence_breakdown.final == 0.42
+        assert kb.metadata.confidence_breakdown.heuristics == 0.42
 
     def test_build_sets_concept_fields_when_non_empty(self):
         kb = self._built_node(concept_fields={"rationale": "perf"})
@@ -211,7 +244,7 @@ class TestPendingNodeBuild:
 
     def test_build_propagates_status_and_approval(self):
         node = _make_pending("Use PostgreSQL")
-        node.breakdown = ConfidenceBreakdown(heuristics=0.8, final=0.8)
+        node.breakdown = ConfidenceBreakdown(heuristics=0.8)
         node.assign_status(_make_config(confidence_threshold=0.5))
         kb = node.build()
         assert kb.status == NodeStatus.APPROVED
@@ -221,7 +254,7 @@ class TestPendingNodeBuild:
         node = _make_pending("Use PostgreSQL")
         anchor = _make_anchor("use PostgreSQL")
         node.quote_anchors = [anchor]
-        node.breakdown = ConfidenceBreakdown(heuristics=0.5, final=0.5)
+        node.breakdown = ConfidenceBreakdown(heuristics=0.5)
         kb = node.build()
         assert kb.quote_anchors == [anchor]
 

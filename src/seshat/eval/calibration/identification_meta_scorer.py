@@ -6,19 +6,28 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from seshat.eval.calibration.models import IdentificationSweepResult, SweepPoint, TypeMetrics
+from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
+from seshat.eval.calibration.models import (
+    IdentificationSweepPoint,
+    IdentificationSweepResult,
+    TypePC,
+)
 from seshat.eval.identification.corpus_loader import load_corpus
 from seshat.eval.identification.matcher import match_nodes
 from seshat.models.enums import ConceptType
+from seshat.models.nodes import IdentificationResult
 
 if TYPE_CHECKING:
-    from seshat.config.settings import ConfidenceWeights, EvalConfig
+    from pathlib import Path
+
+    from seshat.config.eval_settings import EvalConfig
     from seshat.eval.models import IdentificationCorpusExample
-    from seshat.models.nodes import IdentificationResult
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 
 # corpus_id → (pipeline result, corpus example)
 type _Cache = dict[str, tuple[IdentificationResult, IdentificationCorpusExample]]
+
+_DEFAULT_P_TARGET = 0.95
 
 
 class IdentificationMetaScorer:
@@ -31,76 +40,158 @@ class IdentificationMetaScorer:
         self._orchestrator = orchestrator
         self._config = config
         self._step = step
-        self._cache: _Cache | None = None
 
-    async def build_cache(self) -> None:
-        """Run identification pipeline once per corpus example; cache IdentificationResult."""
+    async def sweep_threshold(
+        self, p_target: float = _DEFAULT_P_TARGET, ignore_verification: bool = False
+    ) -> IdentificationSweepResult:
+        """Load corpus results (file cache or pipeline), then sweep heuristics thresholds [0, 1].
+
+        Auto-approval gate:
+        - Verification enabled: node is approved iff verification == 1 AND heuristics >= threshold.
+        - Verification disabled: node is approved iff heuristics >= threshold.
+
+        suggested_threshold = argmax coverage subject to precision_approved >= p_target.
+        p_target is a business policy (minimum acceptable precision on auto-approved nodes).
+        Ties resolve to the lower threshold.
+        Falls back to argmax precision when no threshold meets p_target.
+
+        Pass ignore_verification=True to calibrate as if verification were disabled — useful for
+        comparing thresholds and avoiding verification costs during development.
+        """
+        cache = await self._build_cache()
+        return self._compute_sweep(cache, p_target=p_target, ignore_verification=ignore_verification)
+
+    async def precision_coverage_curve(self, ignore_verification: bool = False) -> list[IdentificationSweepPoint]:
+        """Return the full precision-vs-coverage curve across thresholds [0, 1].
+
+        Use this to inspect the precision/coverage tradeoff and choose an appropriate
+        p_target before calling sweep_threshold(p_target=...).
+
+        Pass ignore_verification=True to see the heuristics-only curve even when verification
+        scores are present in the cache.
+        """
+        cache = await self._build_cache()
+        return self._build_curve(cache, ignore_verification=ignore_verification)
+
+    def _build_curve(self, cache: _Cache, ignore_verification: bool = False) -> list[IdentificationSweepPoint]:
+        n_points = round(1 / self._step) + 1
+        thresholds = np.linspace(0.0, 1.0, n_points).tolist()
+        return [_compute_pc_point(cache, t, ignore_verification=ignore_verification) for t in thresholds]
+
+    def _compute_sweep(
+        self, cache: _Cache, p_target: float = _DEFAULT_P_TARGET, ignore_verification: bool = False
+    ) -> IdentificationSweepResult:
+        points = self._build_curve(cache, ignore_verification=ignore_verification)
+
+        # argmax coverage subject to precision_approved >= p_target; ties → lower threshold
+        eligible = [p for p in points if p.precision_approved >= p_target]
+        if eligible:
+            best = max(eligible, key=lambda p: (p.coverage, -p.threshold))
+        else:
+            # no threshold meets p_target — fall back to argmax precision
+            best = max(points, key=lambda p: (p.precision_approved, -p.threshold))
+
+        return IdentificationSweepResult(points=points, suggested_threshold=best.threshold)
+
+    async def _build_cache(self) -> _Cache:
+        """Run identification pipeline once per corpus example; use file cache when available."""
         examples = load_corpus(self._config.identification_corpus_dir)
         cache: _Cache = {}
         sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
+        agent_hash = self._orchestrator._identification_registry.fingerprint()
 
-        async def _run_one(ex: IdentificationCorpusExample) -> None:
+        async def _run_one(ex: IdentificationCorpusExample) -> tuple[IdentificationResult, Path]:
+            cache_fp = build_cache_fp(self._config.identification_cache_dir, ex, agent_hash=agent_hash)
             async with sem:
-                result = await self._orchestrator._run_identification(
-                    ex.transcript, ex.corpus_id, job_id=ex.corpus_id, hints={}
+                result, used = await read_or_run(
+                    cache_fp,
+                    IdentificationResult,
+                    self._orchestrator._run_identification(ex.transcript, ex.corpus_id, job_id=ex.corpus_id, hints={}),
                 )
             cache[ex.corpus_id] = (result, ex)
+            return result, used
 
-        await asyncio.gather(*(_run_one(ex) for ex in examples))
-        self._cache = cache
-
-    def sweep_threshold(self) -> IdentificationSweepResult:
-        """Replay confidence_breakdown.final threshold cutoffs [0, 1] at step intervals."""
-        if self._cache is None:
-            raise RuntimeError("build_cache() must be called before sweep_threshold()")
-
-        n_points = round(1 / self._step) + 1
-        thresholds = np.linspace(0.0, 1.0, n_points).tolist()
-        points: list[SweepPoint] = [_compute_metrics(self._cache, t) for t in thresholds]
-
-        # argmax macro_f1; ties → lower threshold (np.argmax returns first occurrence, grid is ascending)
-        best_idx = int(np.argmax([p.macro_f1 for p in points]))
-        return IdentificationSweepResult(points=points, suggested_threshold=points[best_idx].threshold)
-
-    def fit_weights(self) -> ConfidenceWeights:
-        raise NotImplementedError("fit_weights() requires the verification gate to pass first.")
+        pairs = await asyncio.gather(*(_run_one(ex) for ex in examples))
+        touched = {used for _, used in pairs}
+        sweep_stale_entries(
+            self._config.identification_cache_dir,
+            corpus_ids=[ex.corpus_id for ex in examples],
+            touched=touched,
+        )
+        return cache
 
 
-def _compute_metrics(cache: _Cache, threshold: float) -> SweepPoint:
-    """Return a SweepPoint with per-type P/R/F1 and macro_f1 for one threshold value."""
+def _compute_pc_point(cache: _Cache, threshold: float, ignore_verification: bool = False) -> IdentificationSweepPoint:
+    """Compute precision-of-approved and coverage at one threshold, globally and per type.
+
+    "Gold" = the expected_nodes from the corpus fixture (ground-truth annotations).
+    coverage = TP / gold_count (recall: what fraction of expected nodes were correctly approved).
+    precision_approved = TP / (TP + FP) (of the approved nodes, how many were correct).
+    """
     per_type_tp: defaultdict[ConceptType, int] = defaultdict(int)
     per_type_fp: defaultdict[ConceptType, int] = defaultdict(int)
-    per_type_fn: defaultdict[ConceptType, int] = defaultdict(int)
+    per_type_gold: defaultdict[ConceptType, int] = defaultdict(int)
 
     for _, (result, ex) in cache.items():
-        accepted = _filter_by_threshold(result, threshold)
+        accepted = _filter_by_threshold(result, threshold, ignore_verification=ignore_verification)
+
+        # gold count per type (denominator for coverage / recall)
+        for node in ex.expected_nodes:
+            per_type_gold[node.type] += 1
+
         match = match_nodes(ex.transcript, ex.expected_nodes, accepted)
+
         for ct in ConceptType:
             per_type_tp[ct] += sum(1 for m in match.matched if m.predicted.type == ct)
             per_type_fp[ct] += sum(1 for n in match.spurious if n.type == ct)
-            per_type_fn[ct] += sum(1 for n in match.missed if n.type == ct)
 
-    metrics: dict[ConceptType, TypeMetrics] = {}
-    f1s: list[float] = []
+    per_type: dict[ConceptType, TypePC] = {}
+    total_tp = total_fp = total_gold = 0
+
     for ct in ConceptType:
-        tp, fp, fn = per_type_tp[ct], per_type_fp[ct], per_type_fn[ct]
-        if tp + fp + fn == 0:
-            continue
-        p = tp / (tp + fp) if tp + fp > 0 else 0.0
-        r = tp / (tp + fn) if tp + fn > 0 else 0.0
-        f1 = 2 * p * r / (p + r) if p + r > 0 else 0.0
-        metrics[ct] = TypeMetrics(precision=p, recall=r, f1=f1)
-        f1s.append(f1)
+        tp = per_type_tp[ct]
+        fp = per_type_fp[ct]
+        gold = per_type_gold[ct]
+        approved = tp + fp
 
-    macro_f1 = sum(f1s) / len(f1s) if f1s else 0.0
-    return SweepPoint(threshold=round(threshold, 10), metrics=metrics, macro_f1=macro_f1)
+        precision = tp / approved if approved > 0 else 1.0
+        coverage = tp / gold if gold > 0 else 0.0
+        per_type[ct] = TypePC(precision_approved=precision, coverage=coverage)
+
+        total_tp += tp
+        total_fp += fp
+        total_gold += gold
+
+    total_approved = total_tp + total_fp
+    agg_precision = total_tp / total_approved if total_approved > 0 else 1.0
+    agg_coverage = total_tp / total_gold if total_gold > 0 else 0.0
+
+    return IdentificationSweepPoint(
+        threshold=round(threshold, 10),
+        precision_approved=agg_precision,
+        coverage=agg_coverage,
+        per_type=per_type,
+    )
 
 
-def _filter_by_threshold(result: IdentificationResult, threshold: float) -> list:
-    """Return nodes whose confidence_breakdown.final >= threshold."""
-    accepted = []
+def _filter_by_threshold(result: IdentificationResult, threshold: float, ignore_verification: bool = False) -> list:
+    """Return nodes that pass the auto-approval gate at the given heuristics threshold.
+
+    When verification scores are present (and ignore_verification is False), a node must pass both:
+      verification == 1 AND heuristics >= threshold.
+    Otherwise a node passes on heuristics alone:
+      heuristics >= threshold.
+    """
+    filtered = []
     for node in result.nodes:
-        bd = result.confidence_breakdowns.get(node.id)
-        if bd is not None and bd.final >= threshold:
-            accepted.append(node)
-    return accepted
+        breakdown = result.confidence_breakdowns.get(node.id)
+        if breakdown is None:
+            continue
+
+        if not ignore_verification and breakdown.verification_passed is False:
+            continue
+
+        if breakdown.heuristics >= threshold:
+            filtered.append(node)
+
+    return filtered

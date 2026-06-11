@@ -1,0 +1,120 @@
+corpus_id: risk-no-feature-flags-retrieves-related-decisions
+description: >
+  Cross-type (risk→decision): a risk about deploying without feature flags
+  should surface decisions about canary releases, feature-flag platform, and
+  blue-green deployments. rollback-window-decision is related but embeds close
+  to other deployment infrastructure decisions; kept as candidate but not
+  expected. 15 candidates, 3 expected relevant.
+
+tags:
+  tier: cross_type
+  source_type: risk
+  polarity: positive
+  difficulty: medium
+
+query_node:
+  id: no-feature-flag-risk
+  type: risk
+  title: "No feature-flag system means all changes go live to all users immediately"
+  description: "Without a feature-flagging layer, every deployment immediately exposes all changes to 100% of production users, making targeted rollouts and fast rollbacks impossible."
+  quote: "we have no feature flags, everything hits all users the moment we deploy"
+
+candidate_nodes:
+  # --- Strong positives (near-paraphrase / tightly linked to feature flags and rollback) ---
+  - id: canary-release-decision
+    type: decision
+    title: "Adopt canary releases for all production deployments"
+    description: "New versions will be rolled out to 5% of traffic first, with automated promotion to 100% only if error rates remain below threshold for 30 minutes."
+    quote: "we do canary deployments, 5% first, then auto-promote if healthy"
+
+  - id: feature-flag-platform-decision
+    type: decision
+    title: "Adopt LaunchDarkly as the feature-flag management platform"
+    description: "LaunchDarkly is selected as the company-wide feature-flag service; all new features requiring controlled rollout must use it."
+    quote: "we're using LaunchDarkly for feature flags across the board"
+
+  # --- Weak positives (genuinely relevant, loosely linked to release safety) ---
+  - id: blue-green-switch-decision
+    type: decision
+    title: "All production deploys go through a blue-green environment switch"
+    description: "Production releases must use a blue-green deployment model so that the previous version remains live and can be reactivated within minutes if the new version has issues."
+    quote: "every prod deploy uses blue-green, old version stays hot until we're confident"
+
+  - id: rollback-window-decision
+    type: decision
+    title: "Maintain a 30-day rollback window for all production releases"
+    description: "Deployment artefacts and database snapshots must be retained for at least 30 days to allow rollback to any previous release within that window."
+    quote: "keep artefacts for 30 days, we need to be able to roll back to any recent release"
+
+  # --- Hard negatives (deployment/infra decisions NOT about release safety or feature flags) ---
+  - id: kubernetes-orchestration-decision
+    type: decision
+    title: "Use Kubernetes for container orchestration across all environments"
+    description: "All containerised workloads will run on Kubernetes; no other orchestration platform will be adopted."
+    quote: "we're going Kubernetes for everything, no ECS, no Swarm"
+
+  - id: terraform-infra-as-code-decision
+    type: decision
+    title: "Adopt Terraform for all infrastructure-as-code provisioning"
+    description: "All cloud resources must be provisioned via Terraform; manual console changes are prohibited in production."
+    quote: "everything goes through Terraform, no manual console clicks in prod"
+
+  - id: dedicated-staging-environment-decision
+    type: decision
+    title: "Maintain a dedicated staging environment that mirrors production"
+    description: "A permanent staging environment is provisioned to match production configuration; all changes must pass staging before reaching production."
+    quote: "staging must mirror prod, no shortcuts through it"
+
+  - id: gitops-deployment-decision
+    type: decision
+    title: "Use GitOps for all deployment pipeline orchestration"
+    description: "Deployment state is declared in Git; the CD system automatically reconciles live environment state with the repository."
+    quote: "deployments are driven by Git state, ArgoCD reconciles continuously"
+
+  - id: migrate-ci-to-github-actions
+    type: decision
+    title: "Migrate CI pipelines from Jenkins to GitHub Actions"
+    description: "All continuous integration pipelines will be migrated to GitHub Actions to reduce Jenkins maintenance overhead."
+    quote: "we're moving off Jenkins, everything goes to GitHub Actions"
+
+  # --- Easy negatives (completely off-topic) ---
+  - id: use-postgresql
+    type: decision
+    title: "Use PostgreSQL as the primary relational database"
+    description: "PostgreSQL is selected as the sole relational persistence layer for all services."
+    quote: "we're standardising on PostgreSQL"
+
+  - id: adopt-react-frontend
+    type: decision
+    title: "Adopt React for the customer-facing frontend"
+    description: "The frontend team will use React as the component framework for all new customer-facing pages."
+    quote: "frontend goes React"
+
+  - id: keep-monorepo
+    type: decision
+    title: "Keep a monorepo structure for all service code"
+    description: "All microservice source code will remain in a single Git monorepo."
+    quote: "we keep the monorepo"
+
+  - id: api-versioning-strategy
+    type: decision
+    title: "Use URI path versioning for all public API endpoints"
+    description: "Public APIs will include the major version in the URI path."
+    quote: "put the version in the path"
+
+  - id: hire-head-of-design
+    type: decision
+    title: "Hire a Head of Design before Q4 to lead product design function"
+    description: "The product team has agreed to bring in a Head of Design to establish a design practice; the role will be open in Q3."
+    quote: "we're hiring a Head of Design, it's approved and the req opens next month"
+
+  - id: catering-vendor-decision
+    type: decision
+    title: "Select an office catering vendor for the new headquarters"
+    description: "Facilities management has decided to contract a catering vendor for the new headquarters rather than issuing meal allowances."
+    quote: "we're going with a catering contract for the new office, meal allowances are off the table"
+
+expected_relevant_ids:
+  - canary-release-decision
+  - feature-flag-platform-decision
+  - blue-green-switch-decision

@@ -121,7 +121,7 @@ Dequeues jobs from `AsyncioTaskQueue` and orchestrates the pipeline stages. Main
 
 5. **Pass 2 — RAG + Resolution** — uses the deduplicated node set as the working candidate list. Queries the existing KB and vector store to attach `KBRelationship` objects (`SUPERSEDES`, `AMENDS`, `CONFLICTS_WITH`, `DEPENDS_ON`) and resolve action item assignees against `TranscriptMetadata.participants`. RAG runs after extraction; extraction agents receive only a lightweight hint context.
 
-6. **Confidence Scoring** — combines verification agent output and spaCy heuristics via weighted normalised sum. When verification is disabled, heuristics carry the full weight.
+6. **Confidence Scoring** — heuristics signal (spaCy) is the sole continuous confidence signal. Verification is a hard binary gate: a failed verification rejects the node regardless of its heuristics score.
 
 7. **Review Gating / WRITING** — decides per-node whether to auto-approve (operator role + auto-mode, or high confidence + policy) or route to human review (`AWAITING_REVIEW`). Writes `curated/extraction.json` at the start of `WRITING` so the artifact exists even if all nodes are later rejected.
 
@@ -264,18 +264,16 @@ Default: TextTiling (NLTK), tuned for long-form transcripts. If the chunking san
 
 ### Confidence Scoring
 
-Two signals (verification agent, spaCy heuristics) combined via weighted normalised sum. When verification is disabled, its weight redistributes to heuristics. Result is a float in [0, 1]. Used for reviewer prioritisation and auto-approval threshold policies.
-
-Full formula, default weights, and signal availability are defined in [docs/superpowers/specs/2026-04-21-seshat-design.md](superpowers/specs/2026-04-21-seshat-design.md).
+Heuristics (spaCy) is the sole continuous signal; `KBNode.confidence` equals the heuristics score. Verification is a hard binary gate: when a `VerificationLLMConfig` is configured, nodes that fail verification are rejected outright regardless of heuristics score. Full heuristics formula is defined in [docs/superpowers/specs/2026-04-21-seshat-design.md](superpowers/specs/2026-04-21-seshat-design.md).
 
 ### Threshold Calibration
 
 `src/seshat/eval/calibration/` provides two meta-scorers for empirically tuning the parameters above:
 
-- **`IdentificationMetaScorer`** — sweeps `confidence_threshold` (the auto-approval cut-off) and `ConfidenceWeights` across the eval corpus, reporting F1 curves so the optimal values can be read off and committed to config.
+- **`IdentificationMetaScorer`** — sweeps `confidence_threshold` (the auto-approval cut-off) across the eval corpus via `sweep_threshold(p_target)`, reporting precision/coverage curves so the optimal threshold can be read off and committed to config.
 - **`RetrievalMetaScorer`** — sweeps the vector similarity threshold used by `NodeRetriever` to tune the precision/recall tradeoff for the retrieval step.
 
-Both emit `SweepResult` objects and log to MLflow. Recalibrate any time agent prompts, model provider/version, or scoring weights change.
+Both emit `SweepResult` objects and log to MLflow. Recalibrate any time agent prompts or model provider/version change.
 
 ---
 
@@ -325,7 +323,7 @@ The eval harness runs five independent passes, each with its own corpus under `d
 
 **Gate file** (`data/eval_gate.json`) — `GateResult` with five metric blocks (`identification_metrics`, `resolution_metrics`, `retrieval_metrics`, `verification_metrics`, `grouping_metrics`) plus a computed `passed` field. A `None` block means the pass was not run and is not a failure; `passed` is `false` if all blocks are `None`. The worker refuses to accept jobs at startup unless the gate file is present and `passed=true`.
 
-**Regression gate:** any change to agent system prompts, model provider/version, or confidence scoring weights or heuristics must be accompanied by a passing eval run (at minimum the affected passes) that updates `data/eval_gate.json`. Gate thresholds are centralised in `src/seshat/eval/thresholds.py`.
+**Regression gate:** any change to agent system prompts, model provider/version, or confidence scoring heuristics must be accompanied by a passing eval run (at minimum the affected passes) that updates `data/eval_gate.json`. Gate thresholds are centralised in `src/seshat/eval/thresholds.py`.
 
 ## Known Limitations
 

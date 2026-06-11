@@ -1,0 +1,122 @@
+corpus_id: action-item-ci-pipeline-retrieves-related-tasks
+description: >
+  Same-type (action_item→action_item): a new action item to fix the flaky CI
+  pipeline should surface KB action items about CI runner upgrades and test
+  parallelism (strong positives), plus pinning dependency versions and
+  configuring a coverage gate (weak positives), while not surfacing
+  deployment/monitoring/ops tasks that are CI-adjacent but not about the
+  pipeline itself (hard negatives), nor completely off-topic logistics tasks
+  (easy negatives). 15 candidates, 4 expected relevant.
+tags:
+  tier: same_type
+  source_type: action_item
+  polarity: positive
+  difficulty: medium
+
+query_node:
+  id: fix-ci-flakiness
+  type: action_item
+  title: "Fix the flaky CI pipeline causing intermittent build failures"
+  description: "Several integration tests fail non-deterministically in CI, blocking PR merges. The team needs to investigate root causes and stabilise the pipeline."
+  quote: "those flaky tests are blocking everyone, someone has to own fixing them"
+
+candidate_nodes:
+  # --- Strong positives (~2-3): near-paraphrase or very tightly semantically linked ---
+  - id: upgrade-ci-runner
+    type: action_item
+    title: "Upgrade CI runner images to latest LTS"
+    description: "The current CI runner base images are two major versions behind; upgrading is required to support newer build tooling and reduce environment drift."
+    quote: "we need to bump the runner images, they're way out of date"
+
+  - id: add-test-parallelism
+    type: action_item
+    title: "Enable parallel test execution in CI"
+    description: "Split the test suite across multiple runners to reduce overall CI run time from 40 minutes to under 15 minutes."
+    quote: "split the tests, 40 minutes per PR is killing velocity"
+
+  # --- Weak positives (~1-2): genuinely relevant but more loosely linked ---
+  - id: pin-dependency-versions
+    type: action_item
+    title: "Pin all CI dependency versions in lock files"
+    description: "Unpinned dependency installs in CI cause non-reproducible builds; all packages must be locked to exact versions."
+    quote: "pin everything, floating versions are causing builds to break randomly"
+
+  - id: configure-test-coverage-gate
+    type: action_item
+    title: "Configure minimum test coverage gate in CI"
+    description: "Add a coverage threshold check to CI that fails the build if unit test coverage drops below 80%."
+    quote: "add a coverage gate so nobody merges untested code"
+
+  # --- Hard negatives (~4-5): deployment/ops/monitoring work, CI-adjacent but not CI pipeline ---
+  - id: update-prod-deploy-script
+    type: action_item
+    title: "Update the production deployment script for zero-downtime rolling deploys"
+    description: "The current deployment script restarts all pods simultaneously; it must be updated to perform a rolling restart to eliminate downtime during releases."
+    quote: "the deploy script needs to go rolling, we can't afford downtime on every release"
+
+  - id: configure-staging-environment
+    type: action_item
+    title: "Configure a dedicated staging environment that mirrors production"
+    description: "The team is deploying directly from development to production; a staging environment with production-equivalent config must be set up to gate releases."
+    quote: "we need a proper staging env, dev-to-prod deploys are too risky"
+
+  - id: set-up-alert-channels
+    type: action_item
+    title: "Set up PagerDuty alert channels for production error thresholds"
+    description: "Production error-rate alerts currently go to a single email address; they must be routed through PagerDuty with proper escalation policies."
+    quote: "errors go to PagerDuty, not email, so on-call actually gets woken up"
+
+  - id: write-deployment-runbook
+    type: action_item
+    title: "Write a step-by-step deployment runbook for the on-call team"
+    description: "There is no documented runbook for deploying a hotfix under pressure; the on-call team needs a clear reference for production deployments."
+    quote: "write the deployment runbook before the next release, on-call is flying blind"
+
+  - id: update-api-docs
+    type: action_item
+    title: "Update public API documentation to reflect v2 endpoint changes"
+    description: "The public API documentation still describes v1 endpoints that were deprecated two sprints ago; it must be updated before the v2 launch."
+    quote: "the API docs are out of date, update them before we announce v2"
+
+  - id: rotate-secrets-in-vault
+    type: action_item
+    title: "Rotate all service credentials and secrets stored in Vault"
+    description: "Several service credentials have not been rotated in over a year; all secrets in Vault must be rotated and expiry policies configured before the next audit."
+    quote: "rotate the secrets in Vault, some of them are over a year old"
+
+  # --- Easy negatives (~4-5): completely different domain/topic ---
+  - id: schedule-team-offsite
+    type: action_item
+    title: "Schedule the Q3 team offsite and book travel"
+    description: "Book venue and travel for the Q3 team offsite, targeting the second week of August."
+    quote: "someone book the offsite for August, second week works for most people"
+
+  - id: update-privacy-policy
+    type: action_item
+    title: "Update the company privacy policy for new GDPR guidance"
+    description: "Legal has flagged that the privacy policy needs updating to reflect the latest GDPR guidance on data retention and third-party processors."
+    quote: "legal says the privacy policy is out of date, update it this sprint"
+
+  - id: order-office-supplies
+    type: action_item
+    title: "Order additional monitor stands and keyboard trays for the new desks"
+    description: "Ten new desks have been installed but the monitor stands and keyboard trays have not arrived; facilities must order them before the team moves in."
+    quote: "the new desks have no kit, someone order the monitor stands"
+
+  - id: arrange-team-lunch
+    type: action_item
+    title: "Arrange a team welcome lunch for the new joiners starting Monday"
+    description: "Three new engineers are starting on Monday; the team lead should arrange a welcome lunch to help them meet the rest of the team."
+    quote: "book a lunch for the new starters, make them feel welcome from day one"
+
+  - id: redesign-company-website
+    type: action_item
+    title: "Commission a redesign of the company marketing website"
+    description: "The marketing team has approved a budget for a full website redesign; a brief must be prepared and an agency shortlisted before the end of the month."
+    quote: "the website redesign is approved, get the agency brief out this week"
+
+expected_relevant_ids:
+  - upgrade-ci-runner
+  - add-test-parallelism
+  - pin-dependency-versions
+  - configure-test-coverage-gate

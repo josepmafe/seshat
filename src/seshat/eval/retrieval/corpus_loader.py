@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING, Any
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 import yaml
 
+from seshat.eval.corpus_tags import matches_tags
 from seshat.eval.models import RetrievalCorpusExample, RetrievalCorpusNode
 from seshat.models.enums import NodeState, NodeStatus
 from seshat.models.nodes import KBNode, NodeMetadata
@@ -14,14 +15,21 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def load_corpus(corpus_dir: Path) -> list[RetrievalCorpusExample]:
+def load_corpus(
+    corpus_dir: Path,
+    tag_filter: dict[str, str | list[str]] | None = None,
+) -> list[RetrievalCorpusExample]:
     examples = []
     for path in sorted(corpus_dir.glob("*.yaml")):
         with open(path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+            data: dict[str, Any] = yaml.safe_load(f)
         ex = RetrievalCorpusExample(**data)
         _validate_example(ex)
         examples.append(ex)
+
+    if tag_filter:
+        examples = [ex for ex in examples if matches_tags(ex.tags, tag_filter)]
+
     return examples
 
 
@@ -38,13 +46,13 @@ def build_kb_nodes(
     """Return (query_kb_node, candidate_kb_nodes, slug→UUID map)."""
     slug_map: dict[str, UUID] = {}
 
-    query_id = uuid4()
+    query_id = uuid5(NAMESPACE_URL, f"{example.corpus_id}/{example.query_node.id}")
     slug_map[example.query_node.id] = query_id
     query_kb_node = _to_kb_node(example.query_node, query_id)
 
     candidate_kb_nodes = []
     for cn in example.candidate_nodes:
-        node_id = uuid4()
+        node_id = uuid5(NAMESPACE_URL, f"{example.corpus_id}/{cn.id}")
         slug_map[cn.id] = node_id
         candidate_kb_nodes.append(_to_kb_node(cn, node_id))
 

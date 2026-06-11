@@ -3,33 +3,17 @@ import pytest
 from seshat.eval.resolution.scorers import scorer
 from seshat.models.enums import ConceptType
 
-SRC = "00000000-0000-0000-0000-000000000001"
-TGT = "00000000-0000-0000-0000-000000000002"
-
-# src node is action_item; tgt is decision
+# src node is action_item; tgt is decision — slug-based, matching how the runner serialises
 _SLUG_TO_TYPE = {"src": ConceptType.ACTION_ITEM, "tgt": ConceptType.DECISION}
 
 
-def _rel(source_id: str, target_id: str, rel_type: str) -> dict:
-    from datetime import UTC, datetime
-
-    return {
-        "source_id": source_id,
-        "target_id": target_id,
-        "rel_type": rel_type,
-        "job_id": "eval",
-        "created_at": datetime.now(UTC).isoformat(),
-    }
+def _rel(source: str, target: str, rel_type: str) -> dict:
+    return {"source": source, "target": target, "rel_type": rel_type}
 
 
-def _slug_to_uuid() -> dict[str, str]:
-    return {"src": SRC, "tgt": TGT}
-
-
-def _expectations(relations: list[dict], slug_to_uuid: dict | None = None) -> dict:
+def _expectations(relations: list[dict]) -> dict:
     return {
         "expected_relations": relations,
-        "slug_to_uuid": slug_to_uuid or _slug_to_uuid(),
         "slug_to_type": _SLUG_TO_TYPE,
     }
 
@@ -39,7 +23,7 @@ class TestResolutionScorer:
         # tp=fp=fn=0 for all types: no data to score
         feedbacks = scorer(
             inputs={},
-            outputs={"relationships": []},
+            outputs={"relations": []},
             expectations=_expectations([]),
         )
         assert feedbacks == []
@@ -47,7 +31,7 @@ class TestResolutionScorer:
     def test_perfect_precision_recall(self):
         feedbacks = scorer(
             inputs={},
-            outputs={"relationships": [_rel(SRC, TGT, "amends")]},
+            outputs={"relations": [_rel("src", "tgt", "amends")]},
             expectations=_expectations([{"source": "src", "target": "tgt", "rel_type": "amends"}]),
         )
         by_name: dict[str, float] = {f.name: float(f.value) for f in feedbacks}
@@ -57,7 +41,7 @@ class TestResolutionScorer:
     def test_missed_relation_zero_recall(self):
         feedbacks = scorer(
             inputs={},
-            outputs={"relationships": []},
+            outputs={"relations": []},
             expectations=_expectations([{"source": "src", "target": "tgt", "rel_type": "amends"}]),
         )
         by_name: dict[str, float] = {f.name: float(f.value) for f in feedbacks}
@@ -66,7 +50,7 @@ class TestResolutionScorer:
     def test_spurious_relation_zero_precision(self):
         feedbacks = scorer(
             inputs={},
-            outputs={"relationships": [_rel(SRC, TGT, "supersedes")]},
+            outputs={"relations": [_rel("src", "tgt", "supersedes")]},
             expectations=_expectations([]),
         )
         by_name: dict[str, float] = {f.name: float(f.value) for f in feedbacks}
@@ -75,7 +59,7 @@ class TestResolutionScorer:
     def test_wrong_rel_type_is_fp_and_fn(self):
         feedbacks = scorer(
             inputs={},
-            outputs={"relationships": [_rel(SRC, TGT, "supersedes")]},
+            outputs={"relations": [_rel("src", "tgt", "supersedes")]},
             expectations=_expectations([{"source": "src", "target": "tgt", "rel_type": "amends"}]),
         )
         by_name: dict[str, float] = {f.name: float(f.value) for f in feedbacks}

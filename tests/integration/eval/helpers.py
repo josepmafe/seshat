@@ -6,7 +6,8 @@ from seshat.agents.identification.grouping import GroupingAgent
 from seshat.agents.identification.registry import IdentificationAgentRegistry
 from seshat.agents.resolution.registry import ResolutionRegistry
 from seshat.agents.verification import VerificationAgent
-from seshat.config.settings import EvalConfig, ExtractionConfig, ObservabilityConfig
+from seshat.config.eval_settings import EvalConfig
+from seshat.config.settings import ExtractionConfig, ObservabilityConfig
 from seshat.eval.grouping.runner import GroupingEvalRunner
 from seshat.eval.identification.runner import IdentificationEvalRunner
 from seshat.eval.resolution.runner import ResolutionEvalRunner
@@ -19,7 +20,7 @@ from tests.integration.helpers import (
     make_cheap_llm,
 )
 
-CORPUS_BASE_DIR = Path(__file__).parent.parent.parent.parent / "data" / "eval" / "test_corpus"
+CORPUS_BASE_DIR = Path(__file__).parent.parent.parent.parent / "data" / "eval" / "test_corpora"
 
 
 class _NoopBlobStore:
