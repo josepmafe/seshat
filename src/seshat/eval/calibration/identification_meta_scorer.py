@@ -122,18 +122,22 @@ class IdentificationMetaScorer:
 
 
 def _compute_pc_point(cache: _Cache, threshold: float, ignore_verification: bool = False) -> IdentificationSweepPoint:
-    """Compute precision-of-approved and coverage at one threshold, globally and per type."""
+    """Compute precision-of-approved and coverage at one threshold, globally and per type.
+
+    "Gold" = the expected_nodes from the corpus fixture (ground-truth annotations).
+    coverage = TP / gold_count (recall: what fraction of expected nodes were correctly approved).
+    precision_approved = TP / (TP + FP) (of the approved nodes, how many were correct).
+    """
     per_type_tp: defaultdict[ConceptType, int] = defaultdict(int)
     per_type_fp: defaultdict[ConceptType, int] = defaultdict(int)
-    per_type_total: defaultdict[ConceptType, int] = defaultdict(int)
+    per_type_gold: defaultdict[ConceptType, int] = defaultdict(int)
 
     for _, (result, ex) in cache.items():
         accepted = _filter_by_threshold(result, threshold, ignore_verification=ignore_verification)
-        all_nodes = result.nodes
 
-        # total extracted per type (denominator for coverage)
-        for node in all_nodes:
-            per_type_total[node.type] += 1
+        # gold count per type (denominator for coverage / recall)
+        for node in ex.expected_nodes:
+            per_type_gold[node.type] += 1
 
         match = match_nodes(ex.transcript, ex.expected_nodes, accepted)
 
@@ -142,25 +146,25 @@ def _compute_pc_point(cache: _Cache, threshold: float, ignore_verification: bool
             per_type_fp[ct] += sum(1 for n in match.spurious if n.type == ct)
 
     per_type: dict[ConceptType, TypePC] = {}
-    total_tp = total_fp = total_extracted = 0
+    total_tp = total_fp = total_gold = 0
 
     for ct in ConceptType:
         tp = per_type_tp[ct]
         fp = per_type_fp[ct]
-        total = per_type_total[ct]
+        gold = per_type_gold[ct]
         approved = tp + fp
 
         precision = tp / approved if approved > 0 else 1.0
-        coverage = approved / total if total > 0 else 0.0
+        coverage = tp / gold if gold > 0 else 0.0
         per_type[ct] = TypePC(precision_approved=precision, coverage=coverage)
 
         total_tp += tp
         total_fp += fp
-        total_extracted += total
+        total_gold += gold
 
     total_approved = total_tp + total_fp
     agg_precision = total_tp / total_approved if total_approved > 0 else 1.0
-    agg_coverage = total_approved / total_extracted if total_extracted > 0 else 0.0
+    agg_coverage = total_tp / total_gold if total_gold > 0 else 0.0
 
     return IdentificationSweepPoint(
         threshold=round(threshold, 10),

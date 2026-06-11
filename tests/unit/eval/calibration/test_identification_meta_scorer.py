@@ -100,20 +100,20 @@ class TestSweepThreshold:
         assert pt.coverage == pytest.approx(0.5)
 
     def test_spurious_node_reduces_precision(self) -> None:
-        # Predicted node not in expected → FP=1, TP=0 → precision=0.0, coverage=1.0
+        # Predicted node not in expected → FP=1, TP=0, gold=0 → precision=0.0, coverage=0.0
         node = _make_kb_node(ConceptType.DECISION, "Use Kafka", 0.9)
         ex = _make_example(CORPUS_ID, TRANSCRIPT, [])
         scorer, cache = _make_scorer({CORPUS_ID: (_make_result(CORPUS_ID, [node]), ex)})
 
         pt = scorer._compute_sweep(cache).points[0]
         assert pt.precision_approved == pytest.approx(0.0)
-        assert pt.coverage == pytest.approx(1.0)
+        assert pt.coverage == pytest.approx(0.0)
 
     def test_multiple_examples_aggregated_globally(self) -> None:
         # ex1: DECISION TP=1; ex2: predicted RISK (not in expected DECISION) → RISK FP=1
-        # DECISION: TP=1, FP=0, total=1 → precision=1.0, coverage=1.0
-        # RISK: TP=0, FP=1, total=1 → precision=0.0, coverage=1.0
-        # aggregate: TP=1, FP=1, total=2 → precision=0.5, coverage=1.0
+        # DECISION: TP=1, FP=0, gold=2 → precision=1.0, coverage=0.5 (1 of 2 gold matched)
+        # RISK: TP=0, FP=1, gold=0 → precision=0.0, coverage=0.0
+        # aggregate: TP=1, FP=1, gold=2 → precision=0.5, coverage=0.5
         node_a = _make_kb_node(ConceptType.DECISION, "Use Kafka", 0.9)
         ex1 = _make_example("ex1", "use Kafka", [corpus_node("use Kafka", ConceptType.DECISION, title="Use Kafka")])
 
@@ -131,9 +131,11 @@ class TestSweepThreshold:
 
         pt = scorer._compute_sweep(cache).points[0]
         assert pt.per_type[ConceptType.DECISION].precision_approved == pytest.approx(1.0)
+        assert pt.per_type[ConceptType.DECISION].coverage == pytest.approx(0.5)
         assert pt.per_type[ConceptType.RISK].precision_approved == pytest.approx(0.0)
+        assert pt.per_type[ConceptType.RISK].coverage == pytest.approx(0.0)
         assert pt.precision_approved == pytest.approx(0.5)
-        assert pt.coverage == pytest.approx(1.0)
+        assert pt.coverage == pytest.approx(0.5)
 
 
 # ── suggested threshold ──────────────────────────────────────────────────────

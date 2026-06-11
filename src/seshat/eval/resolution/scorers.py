@@ -27,18 +27,18 @@ def scorer(inputs: dict, outputs: dict, expectations: dict) -> list[Feedback]:
 def _count_by_type(
     expected: set[tuple[str, str, str]],
     predicted: set[tuple[str, str, str]],
-    uuid_to_type: dict[str, str],
+    slug_to_type: dict[str, str],
 ) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
     tp: dict[str, int] = defaultdict(int)
     fp: dict[str, int] = defaultdict(int)
     fn: dict[str, int] = defaultdict(int)
 
     for triple in expected & predicted:
-        tp[uuid_to_type.get(triple[0], "")] += 1
+        tp[slug_to_type[triple[0]]] += 1
     for triple in predicted - expected:
-        fp[uuid_to_type.get(triple[0], "")] += 1
+        fp[slug_to_type[triple[0]]] += 1
     for triple in expected - predicted:
-        fn[uuid_to_type.get(triple[0], "")] += 1
+        fn[slug_to_type[triple[0]]] += 1
 
     return tp, fp, fn
 
