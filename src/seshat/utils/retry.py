@@ -25,7 +25,7 @@ def async_retry(
     def decorator(fn: Callable) -> Callable:
         @functools.wraps(fn)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            attempts = max(1, max_attempts)
+            attempts = max(1, max_attempts)  # run at least once
             for attempt in range(attempts):
                 try:
                     return await fn(*args, **kwargs)
