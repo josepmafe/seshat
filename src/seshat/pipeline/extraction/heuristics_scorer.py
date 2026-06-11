@@ -84,24 +84,20 @@ class HeuristicsScorer:
         children = set(root.children)
         child_lemmas = {t.lemma_.lower() for t in children}
 
-        # hedging scoped to main clause children only, not subordinates
-        if child_lemmas & self._HEDGING_TOKENS:
-            score *= 0.5
+        penalties: list[tuple[float, bool]] = [
+            # hedging scoped to main clause children only, not subordinates
+            (0.5, bool(child_lemmas & self._HEDGING_TOKENS)),
+            # passive voice — both OntoNotes (en_core_web_sm) and Universal Dependencies label styles
+            (0.75, any(t.dep_ in ("nsubjpass", "nsubj:pass", "auxpass", "aux:pass") for t in doc)),
+            # future tense: planned, not yet decided
+            (0.75, any(t.lemma_.lower() in self._FUTURE_AUX and t.dep_ == "aux" for t in children)),
+            # no object/complement: vague assertion ("we agreed" vs "we agreed on Redis")
+            (0.75, not any(t.dep_ in ("dobj", "obj", "attr") or (t.dep_ == "prep" and t.head == root) for t in doc)),
+        ]
 
-        # passive voice: decision was made, not actively asserted
-        # both label styles: OntoNotes (en_core_web_sm) vs Universal Dependencies
-        if any(t.dep_ in ("nsubjpass", "nsubj:pass", "auxpass", "aux:pass") for t in doc):
-            score *= 0.75
-
-        # future tense: planned, not yet decided
-        if any(t.lemma_.lower() in self._FUTURE_AUX and t.dep_ == "aux" for t in children):
-            score *= 0.75
-
-        # no object/complement: vague assertion ("we agreed" vs "we agreed on Redis")
-        has_complement = any(t.dep_ in ("dobj", "obj", "attr") or (t.dep_ == "prep" and t.head == root) for t in doc)
-        if not has_complement:
-            score *= 0.75
-
+        for multiplier, applies in penalties:
+            if applies:
+                score *= multiplier
         return score
 
     def _has_named_entity(self, doc: spacy.tokens.Doc) -> bool:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections import defaultdict
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
@@ -91,7 +90,7 @@ class ExtractionOrchestrator:
             elapsed_ms,
             extra={"elapsed_ms": elapsed_ms},
         )
-        nodes_by_type: dict[ConceptType, int] = defaultdict(int, dict.fromkeys(self.concept_types, 0))
+        nodes_by_type: dict[ConceptType, int] = dict.fromkeys(self.concept_types, 0)
         for node in nodes:
             nodes_by_type[node.type] += 1
 
@@ -100,7 +99,7 @@ class ExtractionOrchestrator:
             nodes=nodes,
             confidence_breakdowns={node.id: node.metadata.confidence_breakdown for node in nodes},  # type: ignore[misc]
             failed_concept_types=failed_concept_types,
-            nodes_by_type=dict(nodes_by_type),
+            nodes_by_type=nodes_by_type,
         )
 
     async def run_resolution(self, doc: TranscriptDocument, job_id: str) -> ResolutionResult:
@@ -326,7 +325,7 @@ def _assemble_kb_hint(nodes: list[KBNode], max_hint_tokens: int) -> str:
     for node in nodes:
         date_tag = node.metadata.meeting_date.isoformat() if node.metadata.meeting_date else "unknown"
         snippet = f"{node.title} (date {date_tag}): {node.description[:80]}"
-        cost = len(snippet) // 4
+        cost = len(snippet) // 4  # ~4 chars per token
         if used + cost > max_hint_tokens:
             break
         lines.append(snippet)

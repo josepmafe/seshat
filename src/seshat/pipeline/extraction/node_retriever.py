@@ -58,7 +58,7 @@ class NodeRetriever:
         )
         logger.debug("Vector search returned %d results for node id=%s", len(results), node.id)
 
-        cap = self._config.top_k * 2
+        cap = self._config.top_k * 2  # doubled to leave room for neighbour-expansion below
         token_budget = self._config.max_context_tokens
         node_id = str(node.id)
         seen: dict[str, KBNode] = {}
@@ -77,7 +77,7 @@ class NodeRetriever:
             kb_node = await self._get_node(result.node_id)
             if kb_node is not None:
                 seen[result.node_id] = kb_node
-                tokens_used += (len(kb_node.title) + len(kb_node.description)) // 4
+                tokens_used += (len(kb_node.title) + len(kb_node.description)) // 4  # ~4 chars per token
 
         # if we have fewer than top_k results, traverse neighbours of retrieved nodes to fill up targets (up to cap)
         for result in results:
