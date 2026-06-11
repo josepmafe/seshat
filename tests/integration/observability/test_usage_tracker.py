@@ -12,13 +12,14 @@ from seshat.agents.base import RetryExhaustedError, _BaseAgent
 from seshat.observability.usage_tracker import (
     TokenBudgetCallback,
     TokenBudgetExceededError,
+    TrackingEmbeddings,
     UsageTracker,
     set_run_tracker,
     track_token_budget,
 )
-from tests.integration.conftest import SKIP_IF_NO_LLM_API
+from tests.integration.conftest import SKIP_IF_NO_EMBEDDINGS_API, SKIP_IF_NO_LLM_API
 
-pytestmark = [pytest.mark.integration, pytest.mark.llm, SKIP_IF_NO_LLM_API]
+pytestmark = pytest.mark.integration
 
 
 class _YesNo(BaseModel):
@@ -65,6 +66,8 @@ class _AgentRunner:
 
 class TestUsageTrackerIntegration:
     @pytest.mark.asyncio
+    @pytest.mark.agents
+    @SKIP_IF_NO_LLM_API
     async def test_tokens_captured_via_callback(self, cheap_llm, identification_config):
         tracker = UsageTracker(max_input_tokens=10_000, max_output_tokens=1_000)
         set_run_tracker(TokenBudgetCallback(tracker))
@@ -77,6 +80,8 @@ class TestUsageTrackerIntegration:
         assert tracker.output_tokens > 0
 
     @pytest.mark.asyncio
+    @pytest.mark.agents
+    @SKIP_IF_NO_LLM_API
     async def test_decorator_captures_tokens(self, cheap_llm, identification_config):
         runner = _AgentRunner(cheap_llm, identification_config)
         await runner.run("Is the sky blue?")
@@ -85,6 +90,8 @@ class TestUsageTrackerIntegration:
         assert runner.job_tracker.output_tokens > 0
 
     @pytest.mark.asyncio
+    @pytest.mark.agents
+    @SKIP_IF_NO_LLM_API
     async def test_cap_exceeded_raises_after_real_call(self, cheap_llm, identification_config):
         runner = _AgentRunner(cheap_llm, identification_config, max_input=1, max_output=1)
 
@@ -92,6 +99,8 @@ class TestUsageTrackerIntegration:
             await runner.run("Is water wet?")
 
     @pytest.mark.asyncio
+    @pytest.mark.agents
+    @SKIP_IF_NO_LLM_API
     async def test_accumulate_to_fn_rolls_up_stage_totals(self, cheap_llm, identification_config):
         runner = _AgentRunner(cheap_llm, identification_config)
 
@@ -102,11 +111,14 @@ class TestUsageTrackerIntegration:
         await runner.run("Is the Earth round?")
         assert runner.job_tracker.input_tokens > after_first
 
-    @pytest.mark.xfail(reason="embedding token tracking not yet implemented", strict=True)
     @pytest.mark.asyncio
-    async def test_embedding_tokens_captured(self):
+    @pytest.mark.embedding
+    @SKIP_IF_NO_EMBEDDINGS_API
+    async def test_embedding_tokens_captured(self, azure_embeddings: TrackingEmbeddings):
         tracker = UsageTracker(max_input_tokens=10_000, max_output_tokens=1_000)
         set_run_tracker(TokenBudgetCallback(tracker))
 
-        # TODO: call embed_query / embed_documents and assert tracker.input_tokens > 0
-        raise NotImplementedError
+        await azure_embeddings.aembed_query("The team agreed to use PostgreSQL.")
+
+        assert tracker.input_tokens > 0
+        assert tracker.output_tokens == 0  # embeddings produce no output tokens

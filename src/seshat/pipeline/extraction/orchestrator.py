@@ -20,6 +20,7 @@ from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
 from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _deduplicate, _PendingNode, _quote_text
 from seshat.utils.log import get_logger
 from seshat.utils.retry import async_retry
+from seshat.utils.tokens import count_tokens
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -340,7 +341,7 @@ def _assemble_kb_hint(nodes: list[KBNode], max_hint_tokens: int) -> str:
     for node in nodes:
         date_tag = node.metadata.meeting_date.isoformat() if node.metadata.meeting_date else "unknown"
         snippet = f"{node.title} (date {date_tag}): {node.description[:80]}"
-        cost = len(snippet) // 4  # ~4 chars per token
+        cost = count_tokens(snippet)
         if used + cost > max_hint_tokens:
             break
         lines.append(snippet)

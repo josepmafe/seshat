@@ -6,10 +6,12 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.callbacks import AsyncCallbackHandler
+from langchain_core.embeddings import Embeddings
 from langchain_core.outputs import ChatGeneration, LLMResult
 
 from seshat.observability.usage_logger import log_token_metrics
 from seshat.utils.log import get_logger
+from seshat.utils.tokens import count_tokens
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -123,6 +125,43 @@ class TokenBudgetCallback(AsyncCallbackHandler):
                         cache_read_tokens=details.get("cache_read", 0),
                         cache_creation_tokens=details.get("cache_creation", 0),
                     )
+
+
+class TrackingEmbeddings(Embeddings):
+    """Wraps any LangChain Embeddings, counting input tokens via tiktoken and pushing
+    them into the active UsageTracker (if one is set in the current async context).
+
+    Only the async paths (aembed_query / aembed_documents) are tracked — the sync
+    methods satisfy the Embeddings ABC but are never called by the pipeline.
+    """
+
+    def __init__(self, embeddings: Embeddings) -> None:
+        self._embeddings = embeddings
+        self._model: str | None = getattr(embeddings, "model", None)
+
+    def _token_count(self, texts: list[str]) -> int:
+        return sum(count_tokens(t, self._model) for t in texts)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self._embeddings.embed_documents(texts)
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embeddings.embed_query(text)
+
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        result = await self._embeddings.aembed_documents(texts)
+        await self._record_embedding_cost(texts)
+        return result
+
+    async def aembed_query(self, text: str) -> list[float]:
+        result = await self._embeddings.aembed_query(text)
+        await self._record_embedding_cost([text])
+        return result
+
+    async def _record_embedding_cost(self, texts: list[str]) -> None:
+        usage_tracker = _run_tracker_var.get()
+        if usage_tracker is not None:
+            await usage_tracker._tracker.add(input_tokens=self._token_count(texts), output_tokens=0)
 
 
 def set_run_tracker(callback: TokenBudgetCallback) -> None:

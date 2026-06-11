@@ -7,6 +7,7 @@ from seshat.models.enums import GraphDirection
 from seshat.pipeline.extraction.pending_node import _quote_text
 from seshat.utils.log import get_logger
 from seshat.utils.retry import async_retry
+from seshat.utils.tokens import count_tokens
 
 if TYPE_CHECKING:
     from seshat.config.settings import RAGConfig
@@ -77,7 +78,7 @@ class NodeRetriever:
             kb_node = await self._get_node(result.node_id)
             if kb_node is not None:
                 seen[result.node_id] = kb_node
-                tokens_used += (len(kb_node.title) + len(kb_node.description)) // 4  # ~4 chars per token
+                tokens_used += count_tokens(kb_node.title + " " + kb_node.description)
 
         # if we have fewer than top_k results, traverse neighbours of retrieved nodes to fill up targets (up to cap)
         for result in results:
