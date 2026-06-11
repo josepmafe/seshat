@@ -2,17 +2,19 @@
 # All variables are injected from .env via docker-compose at runtime.
 set -e
 
-POSTGRES_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+_upsert_secret() {
+  local name="$1" value="$2"
+  awslocal secretsmanager create-secret \
+    --name "${name}" --secret-string "${value}" 2>/dev/null || \
+  awslocal secretsmanager put-secret-value \
+    --secret-id "${name}" --secret-string "${value}"
+}
 
-awslocal secretsmanager create-secret \
-  --name "${POSTGRES_SECRET_NAME}" \
-  --secret-string "${POSTGRES_URL}" \
-  --region "${DEFAULT_REGION}" 2>/dev/null || \
-awslocal secretsmanager put-secret-value \
-  --secret-id "${POSTGRES_SECRET_NAME}" \
-  --secret-string "${POSTGRES_URL}" \
-  --region "${DEFAULT_REGION}"
+_upsert_secret "seshat/postgres_url" "${DATABASE_URL}"
 
-awslocal s3 mb "s3://${S3_BUCKET}" --region "${DEFAULT_REGION}" 2>/dev/null || true
+[ -n "${OPENAI_API_KEY}" ]    && _upsert_secret "seshat/openai_api_key"     "${OPENAI_API_KEY}"
+[ -n "${ANTHROPIC_API_KEY}" ] && _upsert_secret "seshat/anthropic_api_key"  "${ANTHROPIC_API_KEY}"
+
+awslocal s3 mb "s3://${S3_BUCKET}" 2>/dev/null || true
 
 echo "LocalStack init complete"

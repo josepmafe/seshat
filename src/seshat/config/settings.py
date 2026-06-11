@@ -1,8 +1,4 @@
-import math
-from pathlib import Path
-from typing import ClassVar
-
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from seshat.models.enums import (
@@ -71,36 +67,6 @@ class ResolutionLLMConfig(_LLMConfig):
     )
 
 
-class ConfidenceWeights(BaseConfig):
-    # Default weights are hand-tuned placeholders; calibrate against a labeled corpus before
-    # enabling verification in production. With verification=None the verification weight is
-    # redistributed to heuristics automatically, but the heuristics weight itself is also uncalibrated.
-    verification: float = Field(default=0.70, ge=0, lt=1)
-    heuristics: float = Field(default=0.30, gt=0, le=1)
-
-    @model_validator(mode="after")
-    def _weights_sum_to_one(self) -> "ConfidenceWeights":
-        total = self.verification + self.heuristics
-        if not math.isclose(total, 1.0, abs_tol=1e-6):
-            raise ValueError(f"ConfidenceWeights must sum to 1.0, got {total:.6f}")
-        return self
-
-    _DISABLEABLE_SIGNALS: frozenset[str] = frozenset({"verification"})
-
-    def redistribute(self, disabled_signals: set[str]) -> "ConfidenceWeights":
-        """Return new weights with disabled signals zeroed and remaining weights scaled to sum to 1.0."""
-        unknown = disabled_signals - self._DISABLEABLE_SIGNALS
-        if unknown:
-            disabled_signals_str = sorted(self._DISABLEABLE_SIGNALS)
-            raise ValueError(
-                f"Unknown or non-disableable signals: {sorted(unknown)}. Must be one of {disabled_signals_str}"
-            )
-        active = {k: v for k, v in self.model_dump().items() if k not in disabled_signals}
-        total = sum(active.values())
-        scaled = {k: v / total for k, v in active.items()} | dict.fromkeys(disabled_signals, 0.0)
-        return ConfidenceWeights.model_construct(**scaled)
-
-
 class ExtractionConfig(BaseConfig):
     identification: IdentificationLLMConfig = Field(
         default_factory=IdentificationLLMConfig, description="LLM settings used for the identification step."
@@ -114,7 +80,7 @@ class ExtractionConfig(BaseConfig):
     )
     # TODO: calibrate against a labeled corpus before use
     confidence_threshold: float = Field(
-        default=0.7, ge=0, le=1, description="Minimum composite confidence score required to retain an identified node."
+        default=0.7, ge=0, le=1, description="Minimum heuristics score required to retain an identified node."
     )
     per_type_thresholds: dict[ConceptType, float] | None = Field(
         default=None, description="Optional per-concept-type confidence thresholds that override the global threshold."
@@ -137,9 +103,6 @@ class ExtractionConfig(BaseConfig):
     verification: VerificationLLMConfig | None = Field(
         default=None, description="Optional second LLM used to verify extraction results; None disables verification."
     )
-    confidence_weights: ConfidenceWeights = Field(
-        default_factory=ConfidenceWeights, description="Weights used to compute the composite confidence score."
-    )
     identification_timeout_seconds: float | None = Field(
         default=None, gt=0, description="Optional wall-clock timeout for a full extraction run; None means no limit."
     )
@@ -158,9 +121,6 @@ class ExtractionConfig(BaseConfig):
                 "`verification.provider` must differ from `identification.provider`"
                 f" (both are '{self.identification.provider}')"
             )
-
-        if self.verification is None:
-            logger.warning("verification=None: heuristics-only confidence scoring.")
 
         return self
 
@@ -190,7 +150,7 @@ class RAGConfig(BaseConfig):
     enabled: bool = True
     top_k: int = Field(default=5, gt=0)
     # TODO: calibrate against labeled retrieval corpus; 0.5 is a placeholder for text-embedding-3-small cosine scores
-    min_score: float = Field(
+    min_similarity_score: float = Field(
         default=0.5, ge=0, le=1, description="Minimum similarity score [0, 1] to retain a retrieved result."
     )
     max_context_tokens: int = Field(
@@ -249,161 +209,6 @@ class ObservabilityConfig(BaseConfig):
     mlflow_experiment_name: str = "seshat"
 
 
-class EvalConfig(BaseConfig):
-    corpus_base_dir: Path = Field(
-        description=("Root directory for eval corpora. Expected subdirs: identification/, resolution/, retrieval/.")
-    )
-    gate_path: Path = Field(description="Full path (including filename) for the GateResult JSON output.")
-    observability: ObservabilityConfig = Field(
-        default_factory=lambda: ObservabilityConfig(mlflow_experiment_name="seshat-eval")
-    )
-    run_identification: bool = Field(
-        default=True,
-        description=(
-            "Run the identification eval pass, i.e., "
-            "check if the pipeline extracted the right nodes from the transcript."
-        ),
-    )
-    run_resolution: bool = Field(
-        default=True,
-        description=(
-            "Run the resolution eval pass, i.e., "
-            "check if the pipeline inferred the correct relationships between nodes."
-        ),
-    )
-    run_retrieval: bool = Field(
-        default=True,
-        description=(
-            "Run the retrieval eval pass, i.e., "
-            "check if vector search surfaces the right nodes (similar and related neighbors)."
-        ),
-    )
-    run_verification: bool = Field(
-        default=True,
-        description=(
-            "Run the verification eval pass, i.e., "
-            "check if the verification agent correctly identifies grounded vs. hallucinated descriptions."
-        ),
-    )
-    run_grouping: bool = Field(
-        default=True,
-        description=(
-            "Run the grouping eval pass, i.e., "
-            "check if the grouping agent correctly clusters extracted items into thematic groups."
-        ),
-    )
-    nli_scorer_enabled: bool = Field(
-        default=False,
-        description=(
-            "Enable NLI-based faithfulness scoring, i.e., check if the extracted information is faithful to the source."
-        ),
-    )
-    max_concurrent_predictions: int = Field(
-        default=10,
-        gt=0,
-        description="Maximum number of prediction coroutines that may run in parallel during eval.",
-    )
-    # 0.0 disables score filtering so all candidates rank — calibrate before tightening.
-    retrieval_score_threshold: float = Field(
-        default=0.0,
-        ge=0,
-        le=1,
-        description="Minimum similarity score [0, 1] forwarded to the vector store during retrieval eval.",
-    )
-
-    _identification_subdir: ClassVar[str] = "identification"
-    _resolution_subdir: ClassVar[str] = "resolution"
-    _retrieval_subdir: ClassVar[str] = "retrieval"
-    _verification_subdir: ClassVar[str] = "verification"
-    _grouping_subdir: ClassVar[str] = "grouping"
-    # a hidden folder in the project root for caching intermediate results during eval runs; not intended for manual use
-    _cache_dir: ClassVar[Path] = Path(__file__).resolve().parent.parent.parent.parent / ".seshat" / "eval_cache"
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def identification_corpus_dir(self) -> Path:
-        return self.corpus_base_dir / self._identification_subdir
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def resolution_corpus_dir(self) -> Path:
-        return self.corpus_base_dir / self._resolution_subdir
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def retrieval_corpus_dir(self) -> Path:
-        return self.corpus_base_dir / self._retrieval_subdir
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def verification_corpus_dir(self) -> Path:
-        return self.corpus_base_dir / self._verification_subdir
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def identification_cache_dir(self) -> Path:
-        return self._cache_dir / self._identification_subdir
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def resolution_cache_dir(self) -> Path:
-        return self._cache_dir / self._resolution_subdir
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def retrieval_cache_dir(self) -> Path:
-        return self._cache_dir / self._retrieval_subdir
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def verification_cache_dir(self) -> Path:
-        return self._cache_dir / self._verification_subdir
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def grouping_corpus_dir(self) -> Path:
-        return self.corpus_base_dir / self._grouping_subdir
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def grouping_cache_dir(self) -> Path:
-        return self._cache_dir / self._grouping_subdir
-
-    @field_validator("gate_path")
-    @classmethod
-    def _validate_gate_path(cls, v: Path) -> Path:
-        if v.suffix != ".json":
-            raise ValueError(f"gate_path must be a .json file, got: {v}")
-        v.parent.mkdir(parents=True, exist_ok=True)
-        return v
-
-    @model_validator(mode="after")
-    def _validate_corpus_dirs(self) -> "EvalConfig":
-        checks = [
-            (self.run_identification, self.identification_corpus_dir),
-            (self.run_resolution, self.resolution_corpus_dir),
-            (self.run_retrieval, self.retrieval_corpus_dir),
-            (self.run_verification, self.verification_corpus_dir),
-            (self.run_grouping, self.grouping_corpus_dir),
-        ]
-        for enabled, path in checks:
-            if enabled and not path.is_dir():
-                raise ValueError(f"corpus dir does not exist: {path}")
-        return self
-
-    @model_validator(mode="after")
-    def _create_cache_dirs(self) -> "EvalConfig":
-        for path in (
-            self.identification_cache_dir,
-            self.resolution_cache_dir,
-            self.retrieval_cache_dir,
-            self.verification_cache_dir,
-            self.grouping_cache_dir,
-        ):
-            path.mkdir(parents=True, exist_ok=True)
-        return self
-
-
 class SecretsConfig(BaseConfig):
     provider: SecretsProvider = SecretsProvider.AWS
     region: str = "eu-west-1"
@@ -439,6 +244,12 @@ class SeshatConfig(BaseSettings):
     max_jobs_per_user_per_hour: int = Field(default=10, gt=0)
     max_concurrent_jobs: int = Field(default=1, gt=0)
     max_concurrent_init_runs: int = Field(default=1, gt=0)
+
+    @model_validator(mode="after")
+    def _warn_verification_disabled(self) -> "SeshatConfig":
+        if self.extraction.verification is None:
+            logger.warning("verification=None: heuristics-only confidence scoring.")
+        return self
 
 
 class SeshatConfigOverride(BaseConfig):

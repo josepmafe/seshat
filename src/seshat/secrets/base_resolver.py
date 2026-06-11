@@ -20,10 +20,10 @@ class AbstractSecretsResolver(ABC):
 
     def get_secret(self, key: str) -> str:
         if key not in self._cache:
-            logger.info("Fetching secret for key: %s", key)
+            logger.info("Fetching secret for %r key", key)
             self._cache[key] = self._fetch_secret(key)
         else:
-            logger.debug("Using cached secret for key: %s", key)
+            logger.debug("Using cached secret for %r key", key)
         return self._cache[key]
 
     @abstractmethod

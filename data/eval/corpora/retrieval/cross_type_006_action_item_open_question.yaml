@@ -1,0 +1,120 @@
+corpus_id: action-item-slo-targets-retrieves-open-questions
+description: >
+  Cross-type (action_item→open_question): an action item to define SLO targets
+  should surface open questions about availability requirements, latency SLO
+  percentile, and SLO breach communication. error-budget-policy is related but
+  embeds close to ops/monitoring questions; kept as candidate but not expected.
+  15 candidates, 3 expected relevant.
+
+tags:
+  tier: cross_type
+  source_type: action_item
+  polarity: positive
+  difficulty: medium
+
+query_node:
+  id: define-slo-targets
+  type: action_item
+  title: "Define and document SLO targets for the public API"
+  description: "The engineering lead must produce and sign off a set of SLO targets covering availability, latency (p50/p99), and error rate for the public API before the next board review."
+  quote: "we need SLO targets written up and signed off before the board review"
+
+candidate_nodes:
+  # --- Strong positives (near-paraphrase / tightly linked to SLO targets) ---
+  - id: required-availability
+    type: open_question
+    title: "What availability level is required for the public API?"
+    description: "No agreement exists on whether the public API should target 99.9% or 99.95% monthly availability, which drives infrastructure redundancy decisions."
+    quote: "do we need three nines or three-and-a-half? Nobody has committed to a number"
+
+  - id: error-budget-policy
+    type: open_question
+    title: "What should the error-budget burn policy be when we exceed threshold?"
+    description: "There is no defined policy for what actions to take when the monthly error budget is more than 50% consumed before the month ends."
+    quote: "if we burn half the error budget in week two, what do we actually do? No-one knows"
+
+  # --- Weak positives ---
+  - id: latency-slo-percentile
+    type: open_question
+    title: "Should the latency SLO be measured at p99 or p95?"
+    description: "The team is divided on whether to set the latency target at the 99th or 95th percentile; the choice significantly affects the infrastructure cost estimate."
+    quote: "p99 or p95 for the latency SLO? Different teams want different things"
+
+  - id: slo-breach-customer-communication
+    type: open_question
+    title: "How do we communicate SLO breaches to customers?"
+    description: "Once SLO targets are defined and a breach occurs, there is no agreed process for notifying affected customers or publishing an incident summary."
+    quote: "when we breach an SLO, do we tell customers immediately or only after the post-mortem?"
+
+  # --- Hard negatives (monitoring/ops questions, adjacent but NOT about SLOs) ---
+  - id: alerting-tool-adoption
+    type: open_question
+    title: "Which alerting tool should we adopt for on-call notifications?"
+    description: "The team is evaluating PagerDuty, OpsGenie, and Alertmanager for routing on-call alerts; no decision has been reached."
+    quote: "PagerDuty, OpsGenie, or Alertmanager? We need to pick one before the next sprint"
+
+  - id: on-call-rotation-structure
+    type: open_question
+    title: "How should we structure on-call rotations across the engineering team?"
+    description: "As the team grows it is unclear whether to keep a single engineering-wide rotation or split rotations by service domain."
+    quote: "one big rotation or per-domain rotations? The current setup doesn't scale"
+
+  - id: log-retention-policy
+    type: open_question
+    title: "What log retention policy should we set for production services?"
+    description: "No policy exists for how long application logs are retained in the production environment; cost and compliance requirements are both unresolved."
+    quote: "how long do we keep production logs? Nobody has set a number"
+
+  - id: runbook-structure
+    type: open_question
+    title: "How should we structure runbooks for production incidents?"
+    description: "The team has ad-hoc runbooks in a shared doc but no agreed format or ownership model; incident response is inconsistent as a result."
+    quote: "runbooks are all over the place, what format should we standardise on?"
+
+  - id: metrics-platform-scale
+    type: open_question
+    title: "Which metrics platform fits our scale and budget constraints?"
+    description: "As data volume grows the current in-house metrics store is becoming a bottleneck; the team needs to evaluate managed alternatives."
+    quote: "our homegrown metrics store won't survive another 10x, what do we migrate to?"
+
+  # --- Easy negatives (completely off-topic) ---
+  - id: office-move-timing
+    type: open_question
+    title: "When should the team move to the new office?"
+    description: "The new office space is ready but the move date has not been set; it depends on completing current-office lease arrangements."
+    quote: "the new office is ready, when do we actually move?"
+
+  - id: vendor-selection-crm
+    type: open_question
+    title: "Which CRM vendor should we adopt for the sales team?"
+    description: "The sales team has requested a new CRM but no evaluation has been done; the question of which vendor to use remains open."
+    quote: "sales wants a CRM, which one are we going with?"
+
+  - id: team-naming
+    type: open_question
+    title: "What should the new platform team be called?"
+    description: "A new cross-functional team is forming to own platform infrastructure, but the team name has not been agreed."
+    quote: "the platform team needs a name, what are we calling it?"
+
+  - id: q4-hiring-plan
+    type: open_question
+    title: "How many engineers should we hire in Q4?"
+    description: "Headcount targets for Q4 have not been agreed between engineering leadership and the finance team."
+    quote: "finance and eng need to align on Q4 headcount before we open reqs"
+
+  - id: office-catering-policy
+    type: open_question
+    title: "Should the company provide daily catering or a meal allowance?"
+    description: "Following the return-to-office mandate, the facilities team has not resolved whether to contract a catering company or issue meal allowances."
+    quote: "catering contract or meal allowance? Facilities need a decision by end of month"
+
+  - id: conference-speaking-slot
+    type: open_question
+    title: "Should the company submit a speaking proposal for the industry conference?"
+    description: "The marketing team has raised whether engineering leadership should submit a talk proposal for the main stage at the annual industry conference."
+    quote: "do we put in a speaker proposal this year or skip the conference circuit?"
+
+expected_relevant_ids:
+  - required-availability
+  - latency-slo-percentile
+  - slo-breach-customer-communication

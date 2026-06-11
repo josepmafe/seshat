@@ -1,0 +1,115 @@
+corpus_id: open-question-caching-retrieves-related-decisions
+description: >
+  Cross-type (open_question→decision): an open question about the caching
+  strategy for a read-heavy API should surface existing KB decisions about
+  cache invalidation policy, cache-aside pattern, TTL settings, and the
+  Redis technology choice, while ignoring API/infrastructure decisions
+  unrelated to caching and completely off-topic decisions.
+
+tags:
+  tier: cross_type
+  source_type: open_question
+  polarity: positive
+  difficulty: medium
+
+query_node:
+  id: which-caching-layer
+  type: open_question
+  title: "What caching strategy should we use for the read-heavy API?"
+  description: "The team has not agreed on which in-memory caching technology or eviction strategy to adopt. Redis offers richer data structures and persistence; Memcached is simpler and marginally faster for plain key-value workloads. The API serves far more reads than writes and latency is critical."
+  quote: "we haven't decided on the caching strategy yet — Redis, Memcached, TTL, write-through, nobody's aligned"
+
+candidate_nodes:
+  # --- Strong positives (near-paraphrase / tightly linked) ---
+  - id: cache-invalidation-policy
+    type: decision
+    title: "Use time-based TTL cache invalidation, not event-driven invalidation"
+    description: "Cache entries will expire after a fixed TTL determined per data type; event-driven invalidation is deferred because it requires an event bus not yet in the architecture."
+    quote: "we do TTL-based cache expiry, event-driven is too complex for now"
+
+  - id: cache-aside-pattern
+    type: decision
+    title: "Adopt cache-aside pattern as the standard caching integration model"
+    description: "All services must read from cache first and fall through to the database on a miss, then populate the cache. Write-through and read-through patterns are not permitted."
+    quote: "cache-aside only, services own their cache population logic"
+
+  # --- Weak positives (genuinely relevant but loosely linked) ---
+  - id: catalogue-ttl-five-minutes
+    type: decision
+    title: "Set TTL to 5 minutes for catalogue data cache entries"
+    description: "Catalogue data is updated infrequently and read at high volume; a 5-minute TTL balances freshness against cache hit rate for the read-heavy API."
+    quote: "catalogue cache TTL is 5 minutes, that's the right balance for read-heavy traffic"
+
+  - id: redis-shared-cache-layer
+    type: decision
+    title: "Use Redis as the shared cache layer for all services"
+    description: "Redis is selected over Memcached as the shared caching tier because it supports richer data structures, Lua scripting, and optional persistence needed for session storage."
+    quote: "we go with Redis for the shared cache, Memcached can't do what we need"
+
+  # --- Hard negatives (API/infrastructure decisions NOT about caching) ---
+  - id: use-postgresql
+    type: decision
+    title: "Use PostgreSQL as the primary relational database"
+    description: "PostgreSQL is selected as the sole relational persistence layer for all services."
+    quote: "we're standardising on PostgreSQL, no more mixed database landscape"
+
+  - id: adopt-react-frontend
+    type: decision
+    title: "Adopt React for the customer-facing frontend"
+    description: "The frontend team will use React as the component framework for all new customer-facing pages."
+    quote: "frontend goes React, we need a modern component model"
+
+  - id: keep-monorepo
+    type: decision
+    title: "Keep a monorepo structure for all service code"
+    description: "All microservice source code will remain in a single Git monorepo to simplify cross-service changes and dependency management."
+    quote: "we keep the monorepo, splitting repos would cause more pain than it solves"
+
+  - id: api-versioning-strategy
+    type: decision
+    title: "Use URI path versioning for all public API endpoints"
+    description: "Public APIs will include the major version in the URI path (e.g., /v1/search) to allow breaking changes without disrupting existing integrations."
+    quote: "put the version in the path, header versioning causes too many client bugs"
+
+  - id: circuit-breakers-downstream
+    type: decision
+    title: "Introduce circuit breakers for all downstream service calls"
+    description: "All inter-service HTTP calls must be wrapped in a circuit breaker using the Resilience4j library to prevent cascading failures when downstream services become unavailable."
+    quote: "every downstream call needs a circuit breaker, we can't have one slow service take everything down"
+
+  # --- Easy negatives (completely off-topic decisions) ---
+  - id: hire-head-of-design
+    type: decision
+    title: "Hire a Head of Design to lead the UX practice"
+    description: "The company will create a Head of Design role to establish a consistent design system and own the product UX direction."
+    quote: "we need a Head of Design, the UX is inconsistent across products and nobody owns it"
+
+  - id: switch-to-four-day-week
+    type: decision
+    title: "Pilot a four-day working week for the engineering team"
+    description: "A three-month pilot of a four-day week will be run for the engineering team, with output measured against the current baseline."
+    quote: "we're trialling four-day weeks for engineers starting next quarter"
+
+  - id: office-catering-policy
+    type: decision
+    title: "Introduce a daily catering allowance for in-office staff"
+    description: "Employees working in the office will receive a daily meal allowance via the corporate card to encourage office attendance."
+    quote: "we're giving people a lunch allowance to get them back into the office"
+
+  - id: rebrand-product-name
+    type: decision
+    title: "Rebrand the product under a new name before the public launch"
+    description: "The product will launch under a new name following a brand agency engagement; the internal codename will be retired."
+    quote: "we're rebranding before launch, the codename isn't going to stick"
+
+  - id: outsource-it-support
+    type: decision
+    title: "Outsource first-line IT support to a managed service provider"
+    description: "Day-to-day IT helpdesk support will be handled by an external managed service provider to reduce internal operational overhead."
+    quote: "IT support goes to the MSP, we don't have the headcount to run it internally"
+
+expected_relevant_ids:
+  - cache-invalidation-policy
+  - cache-aside-pattern
+  - catalogue-ttl-five-minutes
+  - redis-shared-cache-layer

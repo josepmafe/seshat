@@ -1,0 +1,94 @@
+corpus_id: action-item-audit-trail-compliance-mixed-pool
+description: >
+  Realistic mixed-pool positive: an action item to resolve whether export job logs must
+  appear in the customer-facing audit trail should surface the open question it directly
+  answers and the compliance risk that motivated the question. The pool mixes all four
+  node types across compliance, migration, and unrelated domains.
+
+tags:
+  tier: realistic
+  source_type: action_item
+  polarity: positive
+  difficulty: hard
+
+query_node:
+  id: resolve-audit-trail-oq
+  type: action_item
+  title: "Get legal sign-off on whether export job logs must be in the customer audit trail"
+  description: "Legal must confirm whether export job logs are required in the customer-facing audit trail before the document export feature can be declared fully compliant."
+  quote: "Someone needs to get legal to confirm the audit trail requirement — we can't ship the export feature until that's resolved."
+
+candidate_nodes:
+  # --- Strong positive: the open question this action item directly resolves ---
+  - id: audit-trail-oq
+    type: open_question
+    title: "Must export job logs be included in the customer-facing audit trail?"
+    description: "Legal has not yet reviewed whether export job logs are required in the customer-facing audit trail; without this answer the document export feature cannot be declared fully compliant."
+    quote: "We still haven't confirmed whether the export job logs need to be included in the customer-facing audit trail. Legal hasn't reviewed that yet."
+
+  # --- Weak positive: compliance risk that motivated the open question ---
+  - id: export-compliance-risk
+    type: risk
+    title: "Document export feature cannot be declared compliant until audit trail question is resolved"
+    description: "Without legal confirmation on audit trail requirements, the export feature ships with an unresolved compliance gap that could cause regulatory exposure."
+    quote: "That needs resolving before we can say the feature is fully compliant."
+
+  # --- Hard negatives: same compliance/export domain, not about the audit trail question ---
+  - id: enable-export-decision
+    type: decision
+    title: "Enable document export for Pro and Enterprise customers with 200 MB cap by end of month"
+    description: "The team decided to enable the document export feature for all Pro and Enterprise customers by the 31st and raise the per-export size limit from 50 MB to 200 MB."
+    quote: "We enable document export for all Pro and Enterprise customers by end of month, and we raise the cap from 50 MB to 200 MB."
+
+  - id: update-flag-action
+    type: action_item
+    title: "Update feature flag config and worker cap for document export"
+    description: "Dmitri will update the feature flag configuration to enable document export for Pro and Enterprise customers and set the per-export worker cap to 200 MB."
+    quote: "I'll update the flag config and the worker cap setting by the 31st."
+
+  - id: dpia-update-action
+    type: action_item
+    title: "Update DPIA to include the consent service"
+    description: "Marcus will update the Data Protection Impact Assessment to cover the consent service before go-live sign-off."
+    quote: "Someone needs to update the DPIA to include the consent service."
+
+  - id: dpia-risk
+    type: risk
+    title: "Consent service omitted from DPIA blocks go-live compliance"
+    description: "The consent service was not included in the DPIA submitted to the DPO, flagged as a blocker."
+    quote: "If the DPIA isn't updated before we go live, we're non-compliant on day one."
+
+  - id: schema-version-risk
+    type: risk
+    title: "Missing consent schema version field will cause compliance gaps on policy updates"
+    description: "Without a version field on consent records, the service cannot determine which wording version a user accepted."
+    quote: "If we update the consent wording, we won't know which version a user accepted."
+
+  # --- Easy negatives: completely different domain ---
+  - id: flyway-adoption-decision
+    type: decision
+    title: "Adopt Flyway for all database migrations going forward"
+    description: "The team standardised on Flyway as the migration toolchain, replacing ad-hoc SQL scripts."
+    quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable."
+
+  - id: provision-staging-action
+    type: action_item
+    title: "Provision a dedicated staging environment for Flyway onboarding tests"
+    description: "The platform team needs to provision a staging environment before any service can be onboarded to Flyway."
+    quote: "Platform team, provision staging first."
+
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: crm-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team's legacy CRM will be migrated to Salesforce by end of Q2."
+    quote: "We're moving to Salesforce, the old CRM is being retired."
+
+expected_relevant_ids:
+  - audit-trail-oq
+  - export-compliance-risk

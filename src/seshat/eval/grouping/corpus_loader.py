@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 from pydantic import BaseModel, Field
 
-from seshat.eval.common import matches_tags
+from seshat.eval.corpus_tags import matches_tags
 
 if TYPE_CHECKING:
     from pathlib import Path

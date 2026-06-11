@@ -22,7 +22,7 @@ seshat/
 │   └── seshat/
 │       ├── agents/          # LLM agents: identification (extraction) and resolution families
 │       ├── blob_store/      # S3 blob store abstraction (aioboto3)
-│       ├── config/          # Pydantic settings (EvalConfig, LLMConfig, ConfidenceWeights, …)
+│       ├── config/          # Pydantic settings (EvalConfig, LLMConfig, ExtractionConfig, …)
 │       ├── eval/            # MLflow-backed eval harnesses and calibration meta-scorers
 │       ├── knowledge_store/ # Postgres-backed KB node persistence
 │       ├── models/          # Pydantic domain models (KBNode, enums, …)

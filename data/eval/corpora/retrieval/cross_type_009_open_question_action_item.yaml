@@ -1,0 +1,121 @@
+corpus_id: open-question-observability-tooling-retrieves-setup-tasks
+description: >
+  Cross-type (open_question→action_item): an open question about which
+  observability tooling to adopt should surface action items about evaluating
+  candidates, instrumenting services, and defining log retention policy, while
+  ignoring monitoring/ops tasks that are not about tooling selection or initial
+  setup, and entirely off-topic tasks.
+
+tags:
+  tier: cross_type
+  source_type: open_question
+  polarity: positive
+  difficulty: hard
+
+query_node:
+  id: which-observability-tool
+  type: open_question
+  title: "Which observability platform should we adopt: Datadog, Grafana Stack, or something else?"
+  description: "The team has not agreed on a long-term observability platform. Three options are on the table: Datadog (managed, expensive), Grafana+Prometheus+Loki (self-hosted, complex), and a lightweight cloud-native solution."
+  quote: "Datadog, Grafana stack, or something else? We need to actually decide"
+
+candidate_nodes:
+  # --- Strong positives (near-paraphrase / tightly linked to tooling evaluation/setup) ---
+  - id: run-observability-poc
+    type: action_item
+    title: "Run a two-week PoC comparing Datadog and Grafana Stack"
+    description: "Stand up both options in the staging environment, instrument two representative services, and produce a cost/complexity comparison before the next architecture review."
+    quote: "run a two-week PoC on both options in staging and bring the numbers to the arch review"
+
+  - id: instrument-services-metrics
+    type: action_item
+    title: "Instrument all services to emit Prometheus-compatible metrics"
+    description: "Regardless of the final platform choice, all services must emit standard Prometheus metrics so they can be scraped by any compatible backend."
+    quote: "emit Prometheus metrics from everything, that way we're not locked to a platform"
+
+  # --- Weak positives (genuinely relevant but loosely linked) ---
+  - id: define-log-retention-policy
+    type: action_item
+    title: "Define and implement a log retention policy"
+    description: "Agree on retention windows per log level and environment and configure the chosen log backend to enforce them."
+    quote: "agree on retention windows and configure the log backend to enforce them"
+
+  - id: setup-distributed-tracing
+    type: action_item
+    title: "Set up distributed tracing with OpenTelemetry across all services"
+    description: "Instrument all services with the OpenTelemetry SDK to emit trace spans; configure an OTLP-compatible collector so traces can be ingested by whichever backend is chosen."
+    quote: "instrument everything with OpenTelemetry, that way traces work regardless of the backend decision"
+
+  # --- Hard negatives (monitoring/ops action items NOT about tooling selection or initial setup) ---
+  - id: write-db-incident-runbook
+    type: action_item
+    title: "Write an incident runbook for database outage scenarios"
+    description: "The on-call team lacks documented steps for common database failure modes; a runbook covering primary failover, connection pool exhaustion, and storage alerts must be written."
+    quote: "we need a DB outage runbook, on-call is winging it every time"
+
+  - id: configure-pagerduty-escalation
+    type: action_item
+    title: "Configure PagerDuty escalation policy for P1 incidents"
+    description: "The PagerDuty escalation chain for P1 incidents is out of date; it must be updated to reflect current team structure and responder contacts."
+    quote: "update the PagerDuty escalation chain, it still pages people who left the team"
+
+  - id: rotate-oncall-schedule
+    type: action_item
+    title: "Rotate on-call schedule to include junior engineers"
+    description: "Junior engineers are not currently included in the production on-call rotation; they should be added with a shadow week before taking primary shifts."
+    quote: "add the juniors to on-call with a shadow week first, we need more coverage"
+
+  - id: archive-stale-dashboards
+    type: action_item
+    title: "Archive stale monitoring dashboards that are no longer maintained"
+    description: "Grafana contains dozens of dashboards created for features that no longer exist; they create confusion during incidents and should be archived or deleted."
+    quote: "there are too many dead dashboards in Grafana, someone needs to clean them up"
+
+  - id: update-status-page-slas
+    type: action_item
+    title: "Update public status page with current service SLA commitments"
+    description: "The public status page still reflects SLA commitments from the previous contract cycle; it must be updated to match the current agreements before the next customer audit."
+    quote: "the status page SLAs are stale, update them before the customer audit"
+
+  # --- Easy negatives (completely off-topic) ---
+  - id: schedule-offsite
+    type: action_item
+    title: "Schedule the Q3 team offsite"
+    description: "Book venue and travel for the Q3 team offsite, targeting the second week of August."
+    quote: "someone book the offsite for August, second week works for most people"
+
+  - id: update-privacy-policy
+    type: action_item
+    title: "Update the privacy policy page to reflect new data processing"
+    description: "The website privacy policy must be updated to document the new third-party analytics integration before it goes live."
+    quote: "legal says update the privacy policy before we turn on the new analytics"
+
+  - id: organise-team-lunch
+    type: action_item
+    title: "Organise a team lunch to welcome new joiners"
+    description: "Book a restaurant for a welcome lunch for the three new engineers joining next month."
+    quote: "let's do a lunch for the new people, somewhere near the office"
+
+  - id: hire-junior-developer
+    type: action_item
+    title: "Open a job requisition for a junior backend developer"
+    description: "The backend team is under-resourced; a junior developer role should be opened and posted to the main job boards by end of week."
+    quote: "open the junior backend req, post it to the job boards this week"
+
+  - id: refresh-company-website
+    type: action_item
+    title: "Refresh the company website with updated product screenshots"
+    description: "The marketing website still shows screenshots from the previous product version; it must be updated before the upcoming conference."
+    quote: "update the website screenshots, they're two versions out of date"
+
+  - id: order-office-supplies
+    type: action_item
+    title: "Order office supplies and stationery for Q3"
+    description: "The office supplies budget has been approved for Q3; the office manager must submit the stationery order to the preferred supplier before the end of the month."
+    quote: "submit the stationery order before month end, the budget is approved"
+
+expected_relevant_ids:
+  - run-observability-poc
+  - instrument-services-metrics
+  - define-log-retention-policy
+  - setup-distributed-tracing

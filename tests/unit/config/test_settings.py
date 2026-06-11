@@ -2,7 +2,6 @@ import pytest
 from pydantic import ValidationError
 
 from seshat.config.settings import (
-    ConfidenceWeights,
     ExtractionConfig,
     IdentificationLLMConfig,
     SecretsConfig,
@@ -13,22 +12,6 @@ from seshat.config.settings import (
     get_request_settings,
 )
 from seshat.models.enums import LLMProvider, SecretsProvider
-
-
-class TestConfidenceWeightsRedistribute:
-    def test_verification_disabled_redistributes_to_heuristics(self):
-        weights = ConfidenceWeights()
-        result = weights.redistribute({"verification"})
-        assert result.verification == 0.0
-        assert result.heuristics == pytest.approx(1.0)
-
-    def test_heuristics_disabled_raises(self):
-        with pytest.raises(ValueError, match="non-disableable"):
-            ConfidenceWeights().redistribute({"heuristics"})
-
-    def test_unknown_signal_raises(self):
-        with pytest.raises(ValueError, match="non-disableable"):
-            ConfidenceWeights().redistribute({"typo_signal"})
 
 
 class TestVerificationModelValidator:

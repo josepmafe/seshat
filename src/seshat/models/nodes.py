@@ -29,14 +29,13 @@ class ConfidenceBreakdown(SeshatModel):
         default=False,
         description="Whether the verification step was configured for this run; False means heuristics-only scoring.",
     )
-    verification: float | None = Field(
-        default=None, ge=0, le=1, description="Score from the verification LLM call; None means disabled or exhausted."
+    verification_passed: bool | None = Field(
+        default=None,
+        description="Result of the verification gate; None when verification is disabled or retries exhausted.",
     )
-    # heuristics is always active — never None; guards against divide-by-zero in the scorer.
     heuristics: float = Field(
-        ge=0, le=1, description="Heuristic signal (always present); used as fallback when other signals are absent."
+        ge=0, le=1, description="Heuristic signal (always present); the sole continuous confidence signal."
     )
-    final: float = Field(ge=0, le=1, description="Weighted composite score in [0, 1].")
 
 
 class NodeMetadata(SeshatModel):

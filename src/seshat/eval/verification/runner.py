@@ -8,72 +8,96 @@ import mlflow.genai
 import pandas as pd
 
 from seshat.agents.verification import VerificationResult
-from seshat.eval.cache import clear_cache_dir, read_or_run
-from seshat.eval.common import log_breakdown_artifact
+from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.gate import upsert_gate
+from seshat.eval.mlflow_logging import configure_trace_processors, log_eval_run_metadata, make_input_redactor
 from seshat.eval.verification.corpus_loader import load_corpus
 from seshat.eval.verification.scorers import scorer
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from mlflow.genai.evaluation.entities import EvaluationResult
 
     from seshat.agents.verification import VerificationAgent
-    from seshat.config.settings import EvalConfig
+    from seshat.config.eval_settings import EvalConfig
+    from seshat.eval.corpus_tags import CorpusTagFilter
     from seshat.eval.models import GateResult
     from seshat.eval.verification.corpus_loader import VerificationCorpusExample
 
 
 class VerificationEvalRunner:
-    def __init__(self, agent: VerificationAgent, config: EvalConfig, model_id: str | None = None) -> None:
+    def __init__(self, agent: VerificationAgent, config: EvalConfig) -> None:
         self._agent = agent
         self._config = config
-        self._model_id = model_id
 
-    async def run(self, tag_filter: dict[str, str | list[str]] | None = None) -> GateResult:
-        mlflow.set_tracking_uri(self._config.observability.mlflow_tracking_uri)
-        mlflow.set_experiment(self._config.observability.mlflow_experiment_name)
-
+    async def run(self, tag_filter: CorpusTagFilter | None = None, model_id: str | None = None) -> GateResult:
         examples = load_corpus(self._config.verification_corpus_dir, tag_filter=tag_filter)
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="verification-no-corpus")
 
-        result_cache = await self._run_all_predictions(examples)
+        result_cache, touched = await self._run_all_predictions(examples)
 
-        def _predict(corpus_id: str, node_index: int) -> dict:
+        expected_by_key: dict[tuple[str, int], bool] = {
+            (ex.corpus_id, i): node.expected_supported for ex in examples for i, node in enumerate(ex.nodes)
+        }
+
+        def _predict(corpus_id: str, node_index: int, _title: str, _description: str, _quote: str) -> dict:
             key = (corpus_id, node_index)
             if key not in result_cache:
                 raise KeyError(f"key {key!r} not in result cache — mlflow unpacking mismatch")
-            return {"supported": result_cache[key].supported}
+
+            return {
+                # used by the scorer
+                "supported": result_cache[key].supported,
+                # used for debugging in the MLflow UI (shown in traces output); not part of the scorer input
+                "expected_supported": expected_by_key[key],
+            }
+
+        configure_trace_processors(make_input_redactor(fields_to_exclude={"node_index"}))
 
         df = _build_dataframe(examples)
-        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=self._model_id)
+        eval_result = mlflow.genai.evaluate(data=df, predict_fn=_predict, scorers=[scorer], model_id=model_id)
 
         run_id = eval_result.run_id
         verification_metrics = _aggregate_metrics(eval_result)
-        self._log_breakdown(eval_result, examples, result_cache, run_id)
 
         gate = upsert_gate(
             self._config.gate_path,
             run_id=run_id,
             verification_metrics=verification_metrics,
         )
-        mlflow.log_metrics({**verification_metrics, "gate.passed": float(gate.passed)}, run_id=run_id)
-        if tag_filter:
-            mlflow.log_params({f"tag_filter.{k}": str(v) for k, v in tag_filter.items()}, run_id=run_id)
-        clear_cache_dir(self._config.verification_cache_dir)
+        log_eval_run_metadata(
+            run_id=run_id,
+            harness="verification",
+            gate_passed=gate.passed,
+            corpus_dir=self._config.verification_corpus_dir,
+            corpus_examples=examples,
+            breakdown_artifact=_build_breakdown(examples, result_cache),
+            tag_filter=tag_filter,
+        )
+
+        sweep_stale_entries(
+            self._config.verification_cache_dir,
+            corpus_ids=[ex.corpus_id for ex in examples],
+            touched=touched,
+        )
         return gate
 
     async def _run_all_predictions(
         self, examples: list[VerificationCorpusExample]
-    ) -> dict[tuple[str, int], VerificationResult]:
+    ) -> tuple[dict[tuple[str, int], VerificationResult], set[Path]]:
         # Pre-populate before mlflow.genai.evaluate (sync) to avoid event-loop boundary issues.
         sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
+        agent_hash = self._agent.fingerprint()
 
-        async def _run_one(ex: VerificationCorpusExample, i: int) -> tuple[tuple[str, int], VerificationResult]:
+        async def _run_one(ex: VerificationCorpusExample, i: int) -> tuple[tuple[str, int], VerificationResult, Path]:
+            cache_fp = build_cache_fp(self._config.verification_cache_dir, ex, agent_hash=agent_hash, index=i)
             node = ex.nodes[i]
+
             async with sem:
-                result = await read_or_run(
-                    self._config.verification_cache_dir / f"{ex.corpus_id}_{i}.json",
+                result, used = await read_or_run(
+                    cache_fp,
                     VerificationResult,
                     self._agent.verify(
                         title=node.title,
@@ -82,20 +106,13 @@ class VerificationEvalRunner:
                         transcript=ex.transcript,
                     ),
                 )
-            return (ex.corpus_id, i), result
+            return (ex.corpus_id, i), result, used
 
         tasks = [_run_one(ex, i) for ex in examples for i in range(len(ex.nodes))]
-        pairs = await asyncio.gather(*tasks)
-        return dict(pairs)
-
-    def _log_breakdown(
-        self,
-        eval_result: EvaluationResult,
-        examples: list[VerificationCorpusExample],
-        result_cache: dict[tuple[str, int], VerificationResult],
-        run_id: str,
-    ) -> None:
-        log_breakdown_artifact(_build_breakdown(examples, result_cache), run_id)
+        triples = await asyncio.gather(*tasks)
+        results = {key: result for key, result, _ in triples}
+        touched = {used for _, _, used in triples}
+        return results, touched
 
 
 def _build_dataframe(examples: list[VerificationCorpusExample]) -> pd.DataFrame:
@@ -104,8 +121,15 @@ def _build_dataframe(examples: list[VerificationCorpusExample]) -> pd.DataFrame:
         for i, node in enumerate(ex.nodes):
             rows.append(
                 {
-                    "inputs": {"corpus_id": ex.corpus_id, "node_index": i},
+                    "inputs": {
+                        "corpus_id": ex.corpus_id,
+                        "node_index": i,
+                        "_title": node.title,
+                        "_description": node.description,
+                        "_quote": node.quote,
+                    },
                     "expectations": {"expected_supported": node.expected_supported},
+                    "tags": {f"corpus.{k}": str(v) for k, v in ex.tags.items()},
                 }
             )
     return pd.DataFrame(rows)

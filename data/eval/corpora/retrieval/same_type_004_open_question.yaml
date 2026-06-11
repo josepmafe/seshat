@@ -1,0 +1,120 @@
+corpus_id: open-question-auth-strategy-retrieves-related-questions
+description: >
+  Same-type (open_question→open_question): an open question about which
+  authentication protocol to adopt should surface KB questions about token
+  lifecycle, authorization scope model, and SSO federation. token-revocation-at-scale
+  is genuinely relevant but embeds too close to API architecture questions for
+  the model to reliably distinguish; kept as candidate but not expected.
+  15 candidates, 3 expected relevant.
+tags:
+  tier: same_type
+  source_type: open_question
+  polarity: positive
+  difficulty: medium
+
+query_node:
+  id: which-auth-protocol
+  type: open_question
+  title: "Which authentication protocol should we adopt for the new API?"
+  description: "The team is undecided between OAuth 2.0 with PKCE and a custom JWT-based scheme for the new public API. A decision is needed before the security review."
+  quote: "do we go OAuth PKCE or roll our own JWT flow? We need to pick before the security review"
+
+candidate_nodes:
+  # --- Strong positives (~2-3): near-paraphrase or very tightly semantically linked ---
+  - id: token-expiry-policy
+    type: open_question
+    title: "What should the token expiry and refresh policy be?"
+    description: "There is no agreed policy on how long access tokens remain valid or how refresh tokens are rotated, which will depend on the chosen auth protocol."
+    quote: "how long do tokens live and how do we refresh them? Nobody has decided"
+
+  - id: scope-model
+    type: open_question
+    title: "How granular should the permission scope model be?"
+    description: "It is unclear whether the API should use coarse resource-level scopes or fine-grained action-level scopes, which has implications for the token design."
+    quote: "do we do read/write scopes or something more granular per endpoint?"
+
+  # --- Weak positives (relevant but loosely linked; sso-federation expected, token-revocation not) ---
+  - id: sso-federation
+    type: open_question
+    title: "Should we support SSO federation with enterprise identity providers?"
+    description: "Several enterprise prospects have requested SAML or OIDC federation with their corporate identity providers; it is unclear whether this should be in scope for the initial auth implementation."
+    quote: "enterprise customers want SSO with their IdP, do we build that now or later?"
+
+  - id: token-revocation-at-scale
+    type: open_question
+    title: "How do we handle token revocation at scale without a centralised blocklist?"
+    description: "Revoking individual access tokens requires either short expiry windows or a centralised token blocklist; neither approach has been evaluated for the expected request volume."
+    quote: "if we need to revoke a token fast, how do we do that without a global blocklist that becomes a bottleneck?"
+
+  # --- Hard negatives (~4-5): architecture questions, same type but not auth ---
+  - id: api-versioning-scheme
+    type: open_question
+    title: "Which API versioning scheme should we use?"
+    description: "The team has not decided between URL path versioning, header-based versioning, and content negotiation for managing breaking API changes."
+    quote: "do we version in the URL or in a header? Nobody agrees"
+
+  - id: schema-migration-strategy
+    type: open_question
+    title: "How should we handle schema migrations across microservices?"
+    description: "There is no agreed strategy for coordinating database schema migrations when multiple services share or depend on the same schema."
+    quote: "who owns schema migrations when two services touch the same table?"
+
+  - id: public-api-rate-limiting
+    type: open_question
+    title: "What rate-limiting strategy should we apply to the public API?"
+    description: "The team has not settled on whether to apply per-user, per-IP, or per-client-credential rate limits, or what the appropriate thresholds are."
+    quote: "do we limit by user, by IP, or by key? We need to decide before launch"
+
+  - id: microservice-boundary-design
+    type: open_question
+    title: "How should we structure microservice boundaries for the new platform?"
+    description: "It is unclear whether to split services by business domain, by team ownership, or by data access patterns; the decision affects how many services to build."
+    quote: "should boundaries follow domains or teams? This will shape the whole architecture"
+
+  - id: caching-strategy
+    type: open_question
+    title: "What is our caching strategy for expensive read queries?"
+    description: "The team has not decided whether to use an in-process cache, a shared Redis cluster, or CDN-level caching for read-heavy endpoints."
+    quote: "expensive reads need caching but nobody has picked an approach"
+
+  - id: observability-tooling-choice
+    type: open_question
+    title: "Which observability stack should we standardise on?"
+    description: "The team has not decided whether to adopt a managed observability platform or self-host a stack built on OpenTelemetry, Prometheus, and Grafana."
+    quote: "do we buy observability or build it with OTel and Grafana? No decision yet"
+
+  # --- Easy negatives (~4-5): completely different domain/topic ---
+  - id: office-relocation-timing
+    type: open_question
+    title: "When should the team relocate to the new office building?"
+    description: "The new office is ready but the move date has not been decided; different teams want different timelines depending on their project schedules."
+    quote: "the office is ready, when are we actually moving?"
+
+  - id: q4-hiring-plan
+    type: open_question
+    title: "How many engineers should we hire in Q4?"
+    description: "The hiring plan for Q4 has not been agreed; it depends on budget approval and which roadmap tracks are prioritised for next year."
+    quote: "how many people do we hire in Q4? Budget isn't confirmed yet"
+
+  - id: annual-team-offsite-date
+    type: open_question
+    title: "What dates should we pick for the annual team offsite?"
+    description: "The annual team offsite has not been scheduled; there is disagreement about whether it should happen before or after the year-end release."
+    quote: "do the offsite before or after year-end? Everyone has a different opinion"
+
+  - id: crm-vendor-choice
+    type: open_question
+    title: "Which CRM vendor should we select for the sales team?"
+    description: "The sales team's legacy CRM is being retired; the selection between Salesforce, HubSpot, and an internal build has not been resolved."
+    quote: "Salesforce or HubSpot or build our own? Sales needs a decision"
+
+  - id: rebranding-timeline
+    type: open_question
+    title: "What is the timeline for the company rebrand and new visual identity?"
+    description: "The rebranding project has been approved but no timeline has been set for when the new logo and brand guidelines will be released internally and externally."
+    quote: "the rebrand is approved but nobody knows when it actually ships"
+
+expected_relevant_ids:
+  - token-expiry-policy
+  - scope-model
+  - sso-federation

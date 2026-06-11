@@ -1,0 +1,111 @@
+corpus_id: negative-decision-postgres-different-concern
+description: >
+  Negative case: a decision to encrypt all Postgres data at rest using AWS KMS shares the
+  technology name "Postgres" with several candidate pool nodes, but the concern is
+  entirely different (security/encryption vs. schema management, query performance, and
+  connection pooling). None of the KB nodes address encryption, KMS, or data-at-rest
+  security. The confusability pattern is same technology name in the title and
+  description, orthogonal concerns. A correct retrieval system must return nothing
+  above threshold.
+
+tags:
+  tier: negative
+  source_type: decision
+  polarity: negative
+  difficulty: hard
+
+query_node:
+  id: postgres-encrypt-at-rest
+  type: decision
+  title: "Encrypt all Postgres data at rest using AWS KMS-managed keys"
+  description: "All Postgres databases must use AWS KMS customer-managed keys for at-rest encryption. Existing unencrypted volumes will be migrated during the next maintenance window."
+  quote: "All Postgres data at rest must be KMS-encrypted — we'll migrate existing volumes in the next maintenance window."
+
+candidate_nodes:
+  # --- Hard negatives: all mention Postgres or same DB domain but address schema/perf/pooling ---
+  - id: postgres-decision
+    type: decision
+    title: "Use PostgreSQL as the primary relational database"
+    description: "PostgreSQL is selected as the sole relational persistence layer for all services."
+    quote: "We're standardising on PostgreSQL, no more mixed database landscape."
+
+  - id: missing-index-risk
+    type: risk
+    title: "Missing composite indexes may cause further reporting dashboard outages"
+    description: "The composite index backfill on the events table is incomplete; further incidents blocking the reporting dashboard are possible."
+    quote: "The underlying risk is still open — more incidents are possible before the fix lands."
+
+  - id: scan-partitions-action
+    type: action_item
+    title: "Scan partitions for missing indexes and draft remediation plan"
+    description: "Lena will scan all events table partitions to identify missing composite index coverage and produce a remediation plan."
+    quote: "Lena, can you run that scan and put together a remediation plan by Thursday?"
+
+  - id: connection-pool-risk
+    type: risk
+    title: "Blue-green deploy cutover may cause brief connection pool exhaustion"
+    description: "During blue-green cutovers, the connection pool may momentarily be saturated if both old and new instances are draining simultaneously."
+    quote: "We've seen the pool spike during cutover — old and new instances both holding connections."
+
+  - id: flyway-adoption-decision
+    type: decision
+    title: "Adopt Flyway for all database migrations going forward"
+    description: "The team standardised on Flyway as the migration toolchain, replacing ad-hoc SQL scripts."
+    quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable."
+
+  - id: schema-drift-risk
+    type: risk
+    title: "Mixed migration tooling across services may cause schema drift"
+    description: "If some services use Flyway while others continue with ad-hoc scripts, schema drift becomes harder to detect."
+    quote: "Half the services on a new tool and half on scripts means no single view of migration state."
+
+  - id: schema-freeze-decision
+    type: decision
+    title: "Freeze all schema changes until the Flyway rollout is complete"
+    description: "No service may apply schema changes until all services have been onboarded to Flyway."
+    quote: "Nothing touches the schema until every service is on Flyway."
+
+  - id: rollback-strategy-oq
+    type: open_question
+    title: "What is the rollback strategy if a Flyway migration fails mid-deployment?"
+    description: "The team has not defined a rollback procedure for failed Flyway migrations in production."
+    quote: "If a migration fails halfway, what do we do? We haven't defined that yet."
+
+  - id: consent-storage-decision
+    type: decision
+    title: "Use Postgres for consent record storage until data platform migration"
+    description: "The team chose Postgres over a document store as the consent record store."
+    quote: "Let's go with Postgres for now, until we move to the centralised data platform."
+
+  - id: schema-version-risk
+    type: risk
+    title: "Missing consent schema version field will cause compliance gaps on policy updates"
+    description: "Without a version field on consent records, the service cannot determine which wording version a user accepted."
+    quote: "If we update the consent wording, we won't know which version a user accepted."
+
+  # --- Easy negatives: completely different domain ---
+  - id: pagerduty-decision
+    type: decision
+    title: "PagerDuty is the single alerting and on-call management tool for all teams"
+    description: "The team standardised on PagerDuty as the sole alerting and on-call tool."
+    quote: "PagerDuty is it — one tool, all teams."
+
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: office-lease-oq
+    type: open_question
+    title: "Should we renew the downtown office lease or relocate?"
+    description: "The current downtown office lease expires in eight months."
+    quote: "The lease is up soon — do we renew or start looking for a new space?"
+
+  - id: logo-redesign-action
+    type: action_item
+    title: "Commission external agency for company logo redesign"
+    description: "The executive team approved an external brand agency commission for a full logo redesign."
+    quote: "Get an agency brief together for the rebrand by end of next week."
+
+expected_relevant_ids: []

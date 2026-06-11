@@ -44,6 +44,10 @@ class SameTypeResolutionRegistry:
         per_source_targets: dict[UUID, list[KBNode]],
         global_sem: asyncio.Semaphore | None = None,
     ) -> tuple[list[ResolvedRelationship], list[FailedResolutionSource]]:
+        """Run one agent per active concept type concurrently.
+
+        return_exceptions=True gives partial results: one type failing doesn't abort the others.
+        """
         sources_by_type: dict[ConceptType, list[KBNode]] = {}
         for node in source_nodes:
             sources_by_type.setdefault(node.type, []).append(node)
@@ -75,6 +79,9 @@ class SameTypeResolutionRegistry:
         sources_by_type: dict[ConceptType, list[KBNode]],
         per_source_targets: dict[UUID, list[KBNode]],
     ) -> Iterator[tuple[ConceptType, list[KBNode], dict[UUID, list[KBNode]]]]:
+        """Skip input types with no registered agent —
+        defensive guard against nodes whose type predates or outlives a registered agent.
+        """
         for ct, sources in sources_by_type.items():
             if ct not in self._agents:
                 continue
@@ -86,6 +93,12 @@ def _scope_targets(
     per_source_targets: dict[UUID, list[KBNode]],
     target_type: ConceptType,
 ) -> dict[UUID, list[KBNode]]:
+    """Filter per_source_targets down to the single type this agent handles.
+
+    per_source_targets is built from the full KB and contains all target types mixed together;
+    each agent only reasons about one type at a time, so passing the unfiltered map would expose
+    it to nodes it has no prompt for.
+    """
     targets = {}
     for src in sources:
         scoped = [t for t in per_source_targets.get(src.id, []) if t.type == target_type]

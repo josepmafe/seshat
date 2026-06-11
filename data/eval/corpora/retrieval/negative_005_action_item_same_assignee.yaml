@@ -1,0 +1,112 @@
+corpus_id: negative-action-item-same-assignee
+description: >
+  Negative case: an action item assigned to Omar to investigate query performance on the
+  reporting service appears to share an assignee with other Omar-assigned tasks in the
+  pool, and sits in the same database/performance domain as several candidates. However,
+  none of the KB nodes are causally linked to this investigation — there is no prior
+  action item it depends_on, no risk it mitigates, and no open question it resolves.
+  The confusability pattern is same assignee + same domain. A correct retrieval system
+  must return nothing above threshold.
+
+tags:
+  tier: negative
+  source_type: action_item
+  polarity: negative
+  difficulty: hard
+
+query_node:
+  id: investigate-query-perf-action
+  type: action_item
+  title: "Investigate slow query performance on the reporting service"
+  description: "Omar will profile the reporting service queries and identify the top-3 slow queries by execution time, producing a findings report by end of sprint."
+  quote: "Omar, can you look into the slow queries on reporting and get us a findings doc by end of sprint?"
+
+candidate_nodes:
+  # --- Hard negatives: same database/performance domain but no causal link ---
+  - id: postgres-decision
+    type: decision
+    title: "Use PostgreSQL as the primary relational database"
+    description: "PostgreSQL is selected as the sole relational persistence layer for all services."
+    quote: "We're standardising on PostgreSQL, no more mixed database landscape."
+
+  - id: missing-index-risk
+    type: risk
+    title: "Missing composite indexes may cause further reporting dashboard outages"
+    description: "The composite index backfill on the events table is incomplete; further incidents blocking the reporting dashboard are possible."
+    quote: "The underlying risk is still open — more incidents are possible before the fix lands."
+
+  - id: scan-partitions-action
+    type: action_item
+    title: "Scan partitions for missing indexes and draft remediation plan"
+    description: "Lena will scan all events table partitions to identify missing composite index coverage by Thursday."
+    quote: "Lena, can you run that scan and put together a remediation plan by Thursday?"
+
+  - id: dashboard-staleness-risk
+    type: risk
+    title: "Operational dashboards show stale metrics after scale-out events"
+    description: "After horizontal scaling events, some dashboard panels continue to show pre-scale metrics for up to 10 minutes."
+    quote: "Dashboards lie after we scale out, the numbers don't update for ages."
+
+  - id: metrics-schema-risk
+    type: risk
+    title: "Metrics pipeline has no schema validation, allowing silent data corruption"
+    description: "The metrics ingestion pipeline accepts any payload without validation; malformed events are silently dropped or stored with wrong types."
+    quote: "The metrics pipeline will accept anything, bad payloads corrupt the data with no warning."
+
+  - id: no-slo-risk
+    type: risk
+    title: "No SLOs defined for the public API"
+    description: "Without agreed service-level objectives, there is no objective basis for measuring whether the service meets expectations."
+    quote: "We don't have SLOs, so we don't know if we're actually meeting customer expectations."
+
+  - id: deploy-strategy-oq
+    type: open_question
+    title: "Should we adopt blue-green or canary deploys for stateful services?"
+    description: "The team has not chosen between blue-green and canary deployment strategies for stateful services."
+    quote: "Blue-green or canary for stateful services? We need a call on this."
+
+  # --- Same assignee, different workstream (confusability: Omar is mentioned in both) ---
+  - id: onboard-payments-action
+    type: action_item
+    title: "Onboard the payments service to Flyway"
+    description: "Omar will migrate the payments service from its ad-hoc SQL scripts to Flyway-managed migrations."
+    quote: "Omar, payments service first — get it onto Flyway and prove out the process."
+
+  - id: schema-drift-risk
+    type: risk
+    title: "Mixed migration tooling across services may cause schema drift"
+    description: "If some services use Flyway while others continue with ad-hoc scripts, schema drift becomes harder to detect."
+    quote: "Half the services on a new tool and half on scripts means no single view of migration state."
+
+  - id: flyway-adoption-decision
+    type: decision
+    title: "Adopt Flyway for all database migrations going forward"
+    description: "The team standardised on Flyway as the migration toolchain."
+    quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable."
+
+  # --- Easy negatives: completely different domain ---
+  - id: pagerduty-decision
+    type: decision
+    title: "PagerDuty is the single alerting and on-call management tool for all teams"
+    description: "The team standardised on PagerDuty as the sole alerting and on-call tool."
+    quote: "PagerDuty is it — one tool, all teams."
+
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: office-lease-oq
+    type: open_question
+    title: "Should we renew the downtown office lease or relocate?"
+    description: "The current downtown office lease expires in eight months."
+    quote: "The lease is up soon — do we renew or start looking for a new space?"
+
+  - id: logo-redesign-action
+    type: action_item
+    title: "Commission external agency for company logo redesign"
+    description: "The executive team approved an external brand agency commission for a full logo redesign."
+    quote: "Get an agency brief together for the rebrand by end of next week."
+
+expected_relevant_ids: []

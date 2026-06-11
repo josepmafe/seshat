@@ -1,0 +1,115 @@
+corpus_id: action-item-migrate-auth-retrieves-related-risks
+description: >
+  Cross-type (action_item→risk): an action item to migrate to a new auth
+  service should surface existing KB risks about the migration window,
+  session continuity, rollback complexity, and token format incompatibility,
+  while ignoring auth/security risks unrelated to the migration and
+  completely off-topic risks.
+
+tags:
+  tier: cross_type
+  source_type: action_item
+  polarity: positive
+  difficulty: hard
+
+query_node:
+  id: migrate-to-auth-service
+  type: action_item
+  title: "Migrate all services to the centralised auth service by end of sprint"
+  description: "Each service team must update their auth middleware to call the new centralised auth service instead of the legacy per-service token validator."
+  quote: "every service team needs to switch to the new auth service before the sprint ends"
+
+candidate_nodes:
+  # --- Strong positives (near-paraphrase / tightly linked) ---
+  - id: migration-downtime-risk
+    type: risk
+    title: "Auth service migration may cause user session invalidation"
+    description: "Cutting over to the new token format mid-session will invalidate all active sessions, forcing users to re-authenticate and potentially causing a noticeable outage window."
+    quote: "if we cut over while sessions are live, everyone gets logged out at once"
+
+  - id: partial-migration-risk
+    type: risk
+    title: "Partial migration leaves services in an inconsistent auth state"
+    description: "If not all services complete the migration in the same sprint, mixed token formats will coexist, making cross-service calls fail unpredictably."
+    quote: "if half the services migrate and half don't, cross-service calls will break"
+
+  # --- Weak positives (genuinely relevant but loosely linked) ---
+  - id: rollback-complexity
+    type: risk
+    title: "No rollback path if the new auth service has critical bugs post-migration"
+    description: "The legacy per-service validators have already been scheduled for decommission, meaning a rollback after migration requires re-deploying deprecated code."
+    quote: "once we're over there's no easy way back if something breaks"
+
+  - id: token-format-incompatibility
+    type: risk
+    title: "Token format incompatibility between old and new auth service may break API clients"
+    description: "The new centralised auth service issues JWTs with a different claim structure than the legacy tokens; API clients that inspect token internals will break silently until updated."
+    quote: "the new tokens have different claims, any client reading them directly will break"
+
+  # --- Hard negatives (auth/security risks NOT about the migration) ---
+  - id: jwt-secret-not-rotated
+    type: risk
+    title: "JWT signing secret has not been rotated in 12 months"
+    description: "The symmetric key used to sign JWTs has remained unchanged for over a year, violating the key-rotation policy and increasing exposure if the secret is compromised."
+    quote: "the JWT secret hasn't been rotated in over a year, that's a compliance violation"
+
+  - id: no-rate-limiting-auth
+    type: risk
+    title: "Auth service has no rate limiting on the login endpoint"
+    description: "The login endpoint accepts unlimited requests per IP, making it vulnerable to credential-stuffing and brute-force attacks without any throttling or lockout mechanism."
+    quote: "the login endpoint has no rate limiting, it's wide open to brute force"
+
+  - id: no-mfa-admin
+    type: risk
+    title: "No MFA enforced for admin users"
+    description: "Admin-level accounts can authenticate with password alone; if an admin credential is phished or leaked, there is no second factor to prevent takeover."
+    quote: "admin accounts don't require MFA, one leaked password and we're done"
+
+  - id: oauth-scopes-broad
+    type: risk
+    title: "OAuth scopes are overly broad, granting excessive permissions"
+    description: "Several third-party integrations are issued OAuth tokens with full read-write scopes when they only require read access, violating the principle of least privilege."
+    quote: "those integrations don't need write access, our OAuth scopes are way too permissive"
+
+  - id: session-tokens-localstorage
+    type: risk
+    title: "Session tokens stored in localStorage are vulnerable to XSS theft"
+    description: "Client-side code stores the session token in localStorage, making it accessible to any injected script and trivially stealable via an XSS vulnerability."
+    quote: "storing the session token in localStorage means any XSS can steal it"
+
+  # --- Easy negatives (completely off-topic risks) ---
+  - id: cloud-cost-risk
+    type: risk
+    title: "Cloud spending may exceed approved budget"
+    description: "Current growth in egress and compute consumption puts the annual cloud budget at risk of overrun by Q3."
+    quote: "at this rate we'll blow the cloud budget before autumn"
+
+  - id: office-lease-risk
+    type: risk
+    title: "Office lease expires before a new location is secured"
+    description: "The current office lease ends in eight months and a replacement site has not been identified, risking operational disruption."
+    quote: "our lease is up in eight months and we haven't found a new place"
+
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Hiring freeze may delay key engineering positions"
+    description: "An anticipated company-wide hiring freeze could prevent filling two senior engineering roles needed for the Q3 roadmap."
+    quote: "if the freeze hits we can't fill those two roles in time"
+
+  - id: team-offsite-weather-risk
+    type: risk
+    title: "Outdoor team offsite activities at risk from adverse weather"
+    description: "The planned team-building activities for the Q3 offsite are fully outdoors with no fallback venue booked; bad weather would disrupt the entire event."
+    quote: "if it rains the whole offsite is ruined, we haven't booked a backup venue"
+
+  - id: vendor-price-increase-risk
+    type: risk
+    title: "Key SaaS vendor announced a 30% price increase at renewal"
+    description: "The project management tool vendor has notified customers of a significant price increase effective at the next contract renewal, creating a budget gap."
+    quote: "the vendor is hiking prices 30% at renewal, that's not in the budget"
+
+expected_relevant_ids:
+  - migration-downtime-risk
+  - partial-migration-risk
+  - rollback-complexity
+  - token-format-incompatibility

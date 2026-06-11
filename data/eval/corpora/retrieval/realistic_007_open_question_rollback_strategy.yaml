@@ -1,0 +1,96 @@
+corpus_id: oq-rollback-strategy-mixed-pool
+description: >
+  Realistic mixed-pool positive: an open question about the Flyway migration rollback
+  strategy should surface the Flyway adoption decision that makes rollback planning
+  necessary, and the partial-rollout risk that shares the same failure scenario. The
+  pool includes all four node types across migration, compliance, and unrelated domains
+  to test that same-domain infrastructure nodes without a direct logical link are not
+  surfaced.
+
+tags:
+  tier: realistic
+  source_type: open_question
+  polarity: positive
+  difficulty: hard
+
+query_node:
+  id: rollback-strategy-oq
+  type: open_question
+  title: "What is the rollback strategy if a Flyway migration fails mid-deployment?"
+  description: "The team has not defined a rollback procedure for failed Flyway migrations in production; without this, a failed migration could leave the schema in an inconsistent state with no recovery path."
+  quote: "If a migration fails halfway, what do we do? We haven't defined that yet."
+
+candidate_nodes:
+  # --- Strong positive: decision that makes rollback planning necessary ---
+  - id: flyway-adoption-decision
+    type: decision
+    title: "Adopt Flyway for all database migrations going forward"
+    description: "The team standardised on Flyway as the migration toolchain, replacing ad-hoc SQL scripts currently maintained per service."
+    quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable. Agreed."
+
+  # --- Weak positive: risk describing the same failure mode (inconsistent state mid-rollout) ---
+  - id: partial-rollout-risk
+    type: risk
+    title: "Services not yet on Flyway may apply conflicting schema changes during the freeze"
+    description: "If any service team bypasses the schema freeze, ad-hoc changes during rollout could corrupt migration state in already-onboarded services."
+    quote: "The real risk is a team that hasn't heard about the freeze applying a script manually — that breaks Flyway's state tracking."
+
+  # --- Hard negatives: same migration domain, not related to rollback ---
+  - id: schema-freeze-decision
+    type: decision
+    title: "Freeze all schema changes until the Flyway rollout is complete"
+    description: "No service may apply schema changes until all services have been onboarded to Flyway."
+    quote: "Nothing touches the schema until every service is on Flyway."
+
+  - id: provision-staging-action
+    type: action_item
+    title: "Provision a dedicated staging environment for Flyway onboarding tests"
+    description: "The platform team needs to provision a staging environment before any service can be onboarded."
+    quote: "Platform team, provision staging first — nothing can be onboarded until we have somewhere to test."
+
+  - id: onboard-payments-action
+    type: action_item
+    title: "Onboard the payments service to Flyway"
+    description: "Omar will migrate the payments service from its ad-hoc SQL scripts to Flyway-managed migrations."
+    quote: "Omar, payments service first — get it onto Flyway and prove out the process."
+
+  - id: toolchain-oq
+    type: open_question
+    title: "Should we use Flyway or Liquibase for database migrations?"
+    description: "The team had not yet chosen between Flyway and Liquibase before adopting Flyway."
+    quote: "Flyway or Liquibase — we need to pick one before we can start onboarding services."
+
+  - id: schema-drift-risk
+    type: risk
+    title: "Mixed migration tooling across services may cause schema drift"
+    description: "If some services use Flyway while others continue with ad-hoc scripts, schema drift becomes harder to detect."
+    quote: "Half the services on a new tool and half on scripts means no single view of migration state."
+
+  # --- Easy negatives: completely different domain ---
+  - id: dpia-risk
+    type: risk
+    title: "Consent service omitted from DPIA blocks go-live compliance"
+    description: "The consent service was not included in the DPIA submitted to the DPO, flagged as a blocker."
+    quote: "If the DPIA isn't updated before we go live, we're non-compliant on day one."
+
+  - id: consent-audit-decision
+    type: decision
+    title: "Store consent audit log as append-only writes to a dedicated table"
+    description: "Consent audit records use append-only writes to a dedicated audit table; deletions are not permitted."
+    quote: "Let's just do append-only writes to a dedicated audit table. No deletes, ever."
+
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: logo-redesign-action
+    type: action_item
+    title: "Commission external agency for company logo redesign"
+    description: "The executive team approved an external brand agency commission for a full logo redesign."
+    quote: "Get an agency brief together for the rebrand by end of next week."
+
+expected_relevant_ids:
+  - flyway-adoption-decision
+  - partial-rollout-risk

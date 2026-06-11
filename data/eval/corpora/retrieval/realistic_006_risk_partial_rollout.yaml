@@ -1,0 +1,94 @@
+corpus_id: risk-partial-rollout-mixed-pool
+description: >
+  Realistic mixed-pool positive: a risk about services bypassing the schema freeze during
+  Flyway rollout should surface the prior risk it amends (mixed migration tooling drift)
+  and the decision that created the freeze condition it describes. The pool mixes all four
+  node types across migration, alerting, and unrelated domains.
+
+tags:
+  tier: realistic
+  source_type: risk
+  polarity: positive
+  difficulty: hard
+
+query_node:
+  id: partial-rollout-risk
+  type: risk
+  title: "Services not yet on Flyway may apply conflicting schema changes during the freeze"
+  description: "If any service team is unaware of the schema freeze or bypasses it, ad-hoc schema changes during the Flyway rollout could corrupt migration state in services already onboarded."
+  quote: "The real risk is a team that hasn't heard about the freeze applying a script manually — that breaks Flyway's state tracking for the whole cluster."
+
+candidate_nodes:
+  # --- Strong positive: prior risk that this one amends ---
+  - id: schema-drift-risk
+    type: risk
+    title: "Mixed migration tooling across services may cause schema drift"
+    description: "If some services use Flyway while others continue with ad-hoc scripts, schema drift between services becomes harder to detect and resolve."
+    quote: "Half the services on a new tool and half on scripts means no single view of migration state."
+
+  # --- Weak positive: decision that created the freeze condition described in this risk ---
+  - id: schema-freeze-decision
+    type: decision
+    title: "Freeze all schema changes until the Flyway rollout is complete"
+    description: "No service may apply schema changes until all services have been onboarded to Flyway, to prevent migration-state conflicts during rollout."
+    quote: "Nothing touches the schema until every service is on Flyway — we can't have mixed migration state mid-rollout."
+
+  # --- Hard negatives: same migration domain, not directly linked to this risk ---
+  - id: flyway-adoption-decision
+    type: decision
+    title: "Adopt Flyway for all database migrations going forward"
+    description: "The team standardised on Flyway as the migration toolchain, replacing ad-hoc SQL scripts."
+    quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable."
+
+  - id: rollback-strategy-oq
+    type: open_question
+    title: "What is the rollback strategy if a Flyway migration fails mid-deployment?"
+    description: "The team has not defined a rollback procedure for failed Flyway migrations in production."
+    quote: "If a migration fails halfway, what do we do? We haven't defined that yet."
+
+  - id: onboard-payments-action
+    type: action_item
+    title: "Onboard the payments service to Flyway"
+    description: "Omar will migrate the payments service from its ad-hoc SQL scripts to Flyway-managed migrations."
+    quote: "Omar, payments service first — get it onto Flyway and prove out the process."
+
+  - id: provision-staging-action
+    type: action_item
+    title: "Provision a dedicated staging environment for Flyway onboarding tests"
+    description: "The platform team needs to provision a staging environment before any service can be onboarded to Flyway."
+    quote: "Platform team, provision staging first — nothing can be onboarded until we have somewhere to test."
+
+  - id: toolchain-oq
+    type: open_question
+    title: "Should we use Flyway or Liquibase for database migrations?"
+    description: "The team had not yet chosen between Flyway and Liquibase; both were shortlisted after a prototype evaluation."
+    quote: "Flyway or Liquibase — we need to pick one before we can start onboarding services."
+
+  # --- Easy negatives: completely different domain ---
+  - id: pagerduty-decision
+    type: decision
+    title: "PagerDuty is the single alerting and on-call management tool for all teams"
+    description: "The team standardised on PagerDuty as the sole alerting and on-call rotation management tool."
+    quote: "PagerDuty is it — one tool, all teams. OpsGenie is out."
+
+  - id: alert-fatigue-risk
+    type: risk
+    title: "Alert fatigue from low-fidelity alerts reduces on-call responsiveness"
+    description: "A high volume of low-priority alerts desensitises on-call engineers, increasing the risk critical alerts are missed."
+    quote: "Too many noisy alerts and on-call starts ignoring them."
+
+  - id: office-lease-risk
+    type: risk
+    title: "Office lease expires before a replacement site is secured"
+    description: "The current office lease ends in seven months and no alternative site has been shortlisted."
+    quote: "The lease is up in seven months and we haven't started looking for a new place."
+
+  - id: crm-migration-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team's legacy CRM will be migrated to Salesforce by end of Q2."
+    quote: "We're moving to Salesforce, the old CRM is being retired."
+
+expected_relevant_ids:
+  - schema-drift-risk
+  - schema-freeze-decision

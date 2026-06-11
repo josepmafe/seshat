@@ -1,21 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, computed_field
 
-from seshat.eval.thresholds import (
-    GROUPING_GROUP_HIT_RATE,
-    IDENTIFICATION_PRECISION,
-    IDENTIFICATION_RECALL,
-    IDENTIFICATION_SPURIOUS_RATE,
-    RESOLUTION_PRECISION,
-    RESOLUTION_RECALL,
-    RETRIEVAL_RECALL_AT_5,
-    VERIFICATION_PRECISION,
-    VERIFICATION_RECALL,
-)
 from seshat.models.enums import ConceptType, RelationshipType
 
 # ── Identification corpus ────────────────────────────────────────────────────
@@ -79,6 +70,7 @@ class RetrievalCorpusNode(BaseModel):
 class RetrievalCorpusExample(BaseModel):
     corpus_id: str
     description: str
+    tags: dict[str, Any] = Field(default_factory=dict)
     query_node: RetrievalCorpusNode
     candidate_nodes: list[RetrievalCorpusNode]
     expected_relevant_ids: list[str]  # slugs from candidate_nodes
@@ -87,28 +79,36 @@ class RetrievalCorpusExample(BaseModel):
 # ── Retrieval result ─────────────────────────────────────────────────────────
 
 
-class RetrievalResult(BaseModel):
-    retrieved_ids: list[str]
+class RetrievalScoredResult(BaseModel):
+    """Slug-keyed search results with scores."""
+
+    results: list[tuple[str, float]]  # (slug, score) pairs, sorted desc by score
 
 
 # ── Gate result ──────────────────────────────────────────────────────────────
 
 
+class MetricEntry(BaseModel):
+    value: float
+    passed: bool
+
+
 class GateResult(BaseModel):
     run_id: str
     timestamp: str = ""
-    # dotted keys: "{ctype}.precision", "{ctype}.recall", "{ctype}.f1"
-    identification_metrics: dict[str, float] | None = None
+    # dotted keys: "{ctype}.precision", "{ctype}.recall", "{ctype}.spurious_rate"
+    identification_metrics: dict[str, MetricEntry] | None = None
     # dotted keys: "{ctype}.precision", "{ctype}.recall"
-    resolution_metrics: dict[str, float] | None = None
+    resolution_metrics: dict[str, MetricEntry] | None = None
     # keys: "recall_at_5", "precision_at_5"
-    retrieval_metrics: dict[str, float] | None = None
+    retrieval_metrics: dict[str, MetricEntry] | None = None
     # keys: "precision", "recall"
-    verification_metrics: dict[str, float] | None = None
+    verification_metrics: dict[str, MetricEntry] | None = None
     # keys: "group_hit_rate" (gated), "exact_match" (logged, not gated)
-    grouping_metrics: dict[str, float] | None = None
+    grouping_metrics: dict[str, MetricEntry] | None = None
+    validation_hash: str = ""
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def passed(self) -> bool:
         if self._all_metrics_are_none():
@@ -124,6 +124,12 @@ class GateResult(BaseModel):
     def model_post_init(self, __context: object) -> None:
         if not self.timestamp:
             self.timestamp = datetime.now(UTC).isoformat()
+        self.validation_hash = self._compute_hash()
+
+    def _compute_hash(self) -> str:
+        payload = self.model_dump(exclude={"passed", "validation_hash"})
+        serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(serialized.encode()).hexdigest()[:16]
 
     def _all_metrics_are_none(self) -> bool:
         return (
@@ -136,37 +142,25 @@ class GateResult(BaseModel):
 
     def _identification_passes(self) -> bool:
         if self.identification_metrics is None:
-            return True  # identification not evaluated, skip to other metrics
-        return all(
-            self.identification_metrics.get(f"{ctype}.precision", 0.0) >= IDENTIFICATION_PRECISION[ctype]
-            and self.identification_metrics.get(f"{ctype}.recall", 0.0) >= IDENTIFICATION_RECALL[ctype]
-            and self.identification_metrics.get(f"{ctype}.spurious_rate", 0.0) <= IDENTIFICATION_SPURIOUS_RATE[ctype]
-            for ctype in ConceptType
-        )
+            return True
+        return all(e.passed for e in self.identification_metrics.values())
 
     def _resolution_passes(self) -> bool:
         if self.resolution_metrics is None:
             return True
-        return all(
-            self.resolution_metrics.get(f"{ctype}.precision", 0.0) >= RESOLUTION_PRECISION[ctype]
-            and self.resolution_metrics.get(f"{ctype}.recall", 0.0) >= RESOLUTION_RECALL[ctype]
-            for ctype in ConceptType
-        )
+        return all(e.passed for e in self.resolution_metrics.values())
 
     def _retrieval_passes(self) -> bool:
         if self.retrieval_metrics is None:
             return True
-        return self.retrieval_metrics.get("recall_at_5", 0.0) >= RETRIEVAL_RECALL_AT_5
+        return all(e.passed for e in self.retrieval_metrics.values())
 
     def _grouping_passes(self) -> bool:
         if self.grouping_metrics is None:
             return True
-        return self.grouping_metrics.get("group_hit_rate", 0.0) >= GROUPING_GROUP_HIT_RATE
+        return all(e.passed for e in self.grouping_metrics.values())
 
     def _verification_passes(self) -> bool:
         if self.verification_metrics is None:
             return True
-        return (
-            self.verification_metrics.get("precision", 0.0) >= VERIFICATION_PRECISION
-            and self.verification_metrics.get("recall", 0.0) >= VERIFICATION_RECALL
-        )
+        return all(e.passed for e in self.verification_metrics.values())

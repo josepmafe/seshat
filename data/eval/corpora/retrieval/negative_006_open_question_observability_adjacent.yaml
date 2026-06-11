@@ -1,0 +1,111 @@
+corpus_id: negative-oq-observability-adjacent
+description: >
+  Negative case: an open question about whether to adopt OpenTelemetry as the
+  observability standard is thematically adjacent to an observability-heavy candidate
+  pool (tracing, alerting, SLOs, dashboards, metrics pipelines) but none of the KB
+  nodes directly address the OpenTelemetry adoption decision or are logically linked to
+  this specific question. The confusability pattern is same technical domain
+  (observability) with overlapping vocabulary but orthogonal concerns. A correct
+  retrieval system must return nothing above threshold.
+
+tags:
+  tier: negative
+  source_type: open_question
+  polarity: negative
+  difficulty: hard
+
+query_node:
+  id: opentelemetry-oq
+  type: open_question
+  title: "Should we adopt OpenTelemetry as the standard observability instrumentation library?"
+  description: "The team has not decided whether to standardise on OpenTelemetry for traces, metrics, and logs, or to continue using provider-specific SDKs. No evaluation has been started."
+  quote: "Should we go OpenTelemetry across the board or keep using vendor SDKs? Nobody has looked into this yet."
+
+candidate_nodes:
+  # --- Hard negatives: same observability domain, not about OpenTelemetry adoption ---
+  - id: missing-tracing-risk
+    type: risk
+    title: "Lack of distributed tracing makes cross-service debugging slow"
+    description: "Without distributed tracing, diagnosing latency issues that cross multiple services requires manually correlating logs."
+    quote: "We have no tracing, debugging cross-service latency is a nightmare."
+
+  - id: no-alerting-risk
+    type: risk
+    title: "No automated alerting on error rate spikes"
+    description: "The team relies on manual checks of dashboards to detect elevated error rates; there is no automated alert."
+    quote: "Nobody gets paged when errors spike, we rely on someone noticing."
+
+  - id: dashboard-staleness-risk
+    type: risk
+    title: "Operational dashboards show stale metrics after scale-out events"
+    description: "After horizontal scaling events, some dashboard panels continue to show pre-scale metrics for up to 10 minutes."
+    quote: "Dashboards lie after we scale out, the numbers don't update for ages."
+
+  - id: no-slo-risk
+    type: risk
+    title: "No SLOs defined for the public API"
+    description: "Without agreed service-level objectives, there is no objective basis for measuring whether the service meets user expectations."
+    quote: "We don't have SLOs, so we don't know if we're actually meeting customer expectations."
+
+  - id: metrics-schema-risk
+    type: risk
+    title: "Metrics pipeline has no schema validation, allowing silent data corruption"
+    description: "The metrics ingestion pipeline accepts any payload without validation; malformed events are silently dropped."
+    quote: "The metrics pipeline will accept anything, bad payloads corrupt the data with no warning."
+
+  - id: tracing-sampling-risk
+    type: risk
+    title: "Distributed tracing not sampled correctly, missing high-latency requests"
+    description: "The current head-based sampling configuration drops a fixed percentage of traces regardless of latency; slow requests are no more likely to be captured than fast ones."
+    quote: "Our sampler doesn't bias towards slow requests, so the traces we keep are basically random."
+
+  - id: alert-fatigue-risk
+    type: risk
+    title: "Alert fatigue from low-fidelity alerts reduces on-call responsiveness"
+    description: "A high volume of low-priority alerts desensitises on-call engineers."
+    quote: "Too many noisy alerts and on-call starts ignoring them."
+
+  - id: pagerduty-decision
+    type: decision
+    title: "PagerDuty is the single alerting and on-call management tool for all teams"
+    description: "The team standardised on PagerDuty as the sole alerting and on-call tool."
+    quote: "PagerDuty is it — one tool, all teams."
+
+  - id: audit-alert-rules-action
+    type: action_item
+    title: "Audit and prune low-fidelity alert rules"
+    description: "Many alert rules fire too frequently on transient conditions; an audit is needed."
+    quote: "Audit the alert rules and kill the noisy ones."
+
+  - id: json-logging-decision
+    type: decision
+    title: "Adopt structured JSON logging across all services"
+    description: "All services must emit logs as structured JSON objects with standard fields."
+    quote: "Everyone switches to structured JSON logs, no more freeform text."
+
+  - id: log-retention-risk
+    type: risk
+    title: "Log storage costs growing faster than budget allows"
+    description: "Log volume growth is outpacing the approved storage budget; without retention policies, costs will exceed the annual allocation."
+    quote: "Logs are eating the budget, we need retention policies."
+
+  # --- Easy negatives: completely different domain ---
+  - id: flyway-adoption-decision
+    type: decision
+    title: "Adopt Flyway for all database migrations going forward"
+    description: "The team standardised on Flyway as the migration toolchain."
+    quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable."
+
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: office-lease-oq
+    type: open_question
+    title: "Should we renew the downtown office lease or relocate?"
+    description: "The current downtown office lease expires in eight months."
+    quote: "The lease is up soon — do we renew or start looking for a new space?"
+
+expected_relevant_ids: []

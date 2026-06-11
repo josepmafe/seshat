@@ -11,38 +11,34 @@ from seshat.models.enums import ConceptType
 @mlflow.genai.scorer
 def scorer(inputs: dict, outputs: dict, expectations: dict) -> list[Feedback]:
     """Precision/recall scorer for resolution quality, broken down by source node ConceptType."""
-    slug_to_uuid: dict[str, str] = expectations["slug_to_uuid"]
     slug_to_type: dict[str, str] = expectations["slug_to_type"]
 
     expected_triples: set[tuple[str, str, str]] = {
-        (slug_to_uuid[r["source"]], slug_to_uuid[r["target"]], r["rel_type"])
-        for r in expectations["expected_relations"]
-        if r["source"] in slug_to_uuid and r["target"] in slug_to_uuid
+        (r["source"], r["target"], r["rel_type"]) for r in expectations["expected_relations"]
     }
     predicted_triples: set[tuple[str, str, str]] = {
-        (str(r["source_id"]), str(r["target_id"]), r["rel_type"]) for r in outputs["relationships"]
+        (r["source"], r["target"], r["rel_type"]) for r in outputs["relations"]
     }
 
-    uuid_to_type: dict[str, str] = {str(v): slug_to_type[k] for k, v in slug_to_uuid.items() if k in slug_to_type}
-    tp, fp, fn = _count_by_type(expected_triples, predicted_triples, uuid_to_type)
+    tp, fp, fn = _count_by_type(expected_triples, predicted_triples, slug_to_type)
     return _precision_recall_feedbacks(tp, fp, fn)
 
 
 def _count_by_type(
     expected: set[tuple[str, str, str]],
     predicted: set[tuple[str, str, str]],
-    uuid_to_type: dict[str, str],
+    slug_to_type: dict[str, str],
 ) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
     tp: dict[str, int] = defaultdict(int)
     fp: dict[str, int] = defaultdict(int)
     fn: dict[str, int] = defaultdict(int)
 
     for triple in expected & predicted:
-        tp[uuid_to_type.get(triple[0], "")] += 1
+        tp[slug_to_type[triple[0]]] += 1
     for triple in predicted - expected:
-        fp[uuid_to_type.get(triple[0], "")] += 1
+        fp[slug_to_type[triple[0]]] += 1
     for triple in expected - predicted:
-        fn[uuid_to_type.get(triple[0], "")] += 1
+        fn[slug_to_type[triple[0]]] += 1
 
     return tp, fp, fn
 

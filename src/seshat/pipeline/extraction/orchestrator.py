@@ -10,6 +10,7 @@ from seshat.agents.verification import VerificationRetryExhaustedError
 from seshat.models.api import NodeFilter
 from seshat.models.enums import ConceptType, NodeStatus
 from seshat.models.nodes import (
+    ConfidenceBreakdown,
     IdentificationResult,
     KBNode,
     KBRelationship,
@@ -17,7 +18,6 @@ from seshat.models.nodes import (
 )
 from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
 from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _deduplicate, _PendingNode, _quote_text
-from seshat.pipeline.extraction.weighted_scorer import compute_confidence
 from seshat.utils.log import get_logger
 from seshat.utils.retry import async_retry
 
@@ -119,7 +119,12 @@ class ExtractionOrchestrator:
         async def _retrieve(node: KBNode) -> list[KBNode]:
             async with rag_sem:
                 return await self._retriever.retrieve(
-                    node, transcript, node_filter=NodeFilter(node_type=None), exclude_job_id=job_id
+                    # node_type=None: resolution needs candidates of all types so cross-type
+                    # agents (e.g. DECISION→RISK MITIGATES) can find their targets.
+                    node,
+                    transcript,
+                    node_filter=NodeFilter(node_type=None),
+                    exclude_job_id=job_id,
                 )
 
         retrieval_results = await asyncio.gather(*[_retrieve(node) for node in approved])
@@ -255,8 +260,13 @@ class ExtractionOrchestrator:
         return pending
 
     async def _score_and_finalize(self, pending: list[_PendingNode], transcript: str) -> list[KBNode]:
-        """Score pending nodes (heuristics + optional verification), assign confidence and status, build KBNodes."""
+        """Score pending nodes (heuristics + optional verification gate), assign status, build KBNodes."""
         verification_enabled = self._verifier is not None
+
+        if self._config.verification is not None and not verification_enabled:
+            logger.warning(
+                "verification is configured but no verification_agent was provided — running heuristics-only"
+            )
 
         t0 = time.perf_counter()
         logger.debug("Scoring %d nodes (verifier=%s)", len(pending), "enabled" if verification_enabled else "disabled")
@@ -274,21 +284,17 @@ class ExtractionOrchestrator:
                         )
                     except VerificationRetryExhaustedError:
                         logger.warning(
-                            "Verification exhausted retries for %r — skipping (verification=None)", pnode.title
+                            "Verification exhausted retries for %r — skipping (verification_passed=None)", pnode.title
                         )
                     else:
-                        pnode.verification = 1.0 if verification_result.supported else 0.0
+                        pnode.verification = verification_result.supported
 
             await asyncio.gather(*[_verify(pnode) for pnode in pending])
 
-        disabled = set() if verification_enabled else {"verification"}
-        active_weights = self._config.confidence_weights.redistribute(disabled)
-
         for pnode in pending:
-            pnode.breakdown = compute_confidence(
-                verification=pnode.verification,
+            pnode.breakdown = ConfidenceBreakdown(
                 heuristics=pnode.heuristics,
-                weights=active_weights,
+                verification_passed=pnode.verification,
                 verification_enabled=verification_enabled,
             )
             pnode.assign_status(self._config)
