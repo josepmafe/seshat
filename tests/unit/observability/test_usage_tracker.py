@@ -27,8 +27,7 @@ def _result(
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
-            "cache_read_input_tokens": cache_read,
-            "cache_creation_input_tokens": cache_creation,
+            "input_token_details": {"cache_read": cache_read, "cache_creation": cache_creation},
         },
     )
     return LLMResult(generations=[[ChatGeneration(message=message)]])

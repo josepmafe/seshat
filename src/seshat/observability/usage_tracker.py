@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.outputs import ChatGeneration, LLMResult
 
-from seshat.observability.usage_logger import log_cache_metrics, log_usage
+from seshat.observability.usage_logger import log_token_metrics
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
@@ -30,6 +30,8 @@ class TokenBudgetExceededError(Exception):
 
 
 class UsageTracker:
+    _UNCAPPED = 2**63 - 1  # sentinel for job-level trackers that never raise
+
     def __init__(self, max_input_tokens: int, max_output_tokens: int) -> None:
         self._max_input = max_input_tokens
         self._max_output = max_output_tokens
@@ -38,6 +40,10 @@ class UsageTracker:
         self._cache_read_tokens = 0
         self._cache_creation_tokens = 0
         self._lock = asyncio.Lock()
+
+    @classmethod
+    def uncapped(cls) -> UsageTracker:
+        return cls(max_input_tokens=cls._UNCAPPED, max_output_tokens=cls._UNCAPPED)
 
     @property
     def input_tokens(self) -> int:
@@ -110,11 +116,12 @@ class TokenBudgetCallback(AsyncCallbackHandler):
             for gen in generations:
                 if isinstance(gen, ChatGeneration) and gen.message.usage_metadata:
                     usage = gen.message.usage_metadata
+                    details = usage.get("input_token_details", {})
                     await self._tracker.add(
-                        input_tokens=usage.get("input_tokens", 0),
-                        output_tokens=usage.get("output_tokens", 0),
-                        cache_read_tokens=usage.get("cache_read_input_tokens", 0),
-                        cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
+                        input_tokens=usage["input_tokens"],
+                        output_tokens=usage["output_tokens"],
+                        cache_read_tokens=details.get("cache_read", 0),
+                        cache_creation_tokens=details.get("cache_creation", 0),
                     )
 
 
@@ -133,11 +140,15 @@ def track_token_budget(
     max_input_fn: Callable[[Any], int],
     max_output_fn: Callable[[Any], int],
     label: str,
+    accumulate_to_fn: Callable[[Any], UsageTracker] | None = None,
 ) -> Callable:
     """Decorator for async instance methods: creates a per-call UsageTracker, sets it on the
     ContextVar so all LLM calls within the method accumulate into it, checks caps on completion,
     and logs totals. Caps are read from the instance at call time via max_input_fn(self) /
-    max_output_fn(self) so config changes are always respected."""
+    max_output_fn(self) so config changes are always respected.
+
+    If accumulate_to_fn is provided, stage totals are rolled up into that tracker (typically a
+    job-level uncapped tracker on self) so callers can surface per-job usage without re-running."""
 
     def decorator(fn: Callable) -> Callable:
         @functools.wraps(fn)
@@ -150,12 +161,21 @@ def track_token_budget(
                 return result
             finally:
                 tracker.log_totals(label)
-                log_usage(label, tracker.input_tokens, tracker.output_tokens)
-                log_cache_metrics(
+                log_token_metrics(
                     label,
+                    input_tokens=tracker.input_tokens,
+                    output_tokens=tracker.output_tokens,
                     cache_read_tokens=tracker.cache_read_tokens,
-                    cache_write_tokens=tracker.cache_creation_tokens,
+                    cache_creation_tokens=tracker.cache_creation_tokens,
                 )
+
+                if accumulate_to_fn is not None:
+                    await accumulate_to_fn(self).add(
+                        input_tokens=tracker.input_tokens,
+                        output_tokens=tracker.output_tokens,
+                        cache_read_tokens=tracker.cache_read_tokens,
+                        cache_creation_tokens=tracker.cache_creation_tokens,
+                    )
 
         return wrapper
 

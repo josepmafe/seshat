@@ -15,7 +15,7 @@ from seshat.models.nodes import (
     KBRelationship,
     ResolutionResult,
 )
-from seshat.observability.usage_tracker import track_token_budget
+from seshat.observability.usage_tracker import UsageTracker, track_token_budget
 from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
 from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _deduplicate, _PendingNode, _quote_text
 from seshat.utils.log import get_logger
@@ -56,6 +56,11 @@ class ExtractionOrchestrator:
         self._blob = blob_store
         self._verifier = verification_agent
         self._heuristics_scorer = HeuristicsScorer()
+        self._job_tracker = UsageTracker.uncapped()
+
+    @property
+    def usage(self) -> UsageTracker:
+        return self._job_tracker
 
     async def run_identification(self, doc: TranscriptDocument, job_id: str) -> IdentificationResult:
         transcript = await self._fetch_transcript(doc.blob_key)
@@ -68,6 +73,7 @@ class ExtractionOrchestrator:
         max_input_fn=lambda self: self._config.max_total_input_tokens,
         max_output_fn=lambda self: self._config.max_total_output_tokens,
         label="identification",
+        accumulate_to_fn=lambda self: self._job_tracker,
     )
     async def _run_identification(
         self,
@@ -143,6 +149,7 @@ class ExtractionOrchestrator:
         max_input_fn=lambda self: self._config.max_total_input_tokens,
         max_output_fn=lambda self: self._config.max_total_output_tokens,
         label="resolution",
+        accumulate_to_fn=lambda self: self._job_tracker,
     )
     async def _run_resolution(
         self,
