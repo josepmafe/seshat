@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-async def run(eval_config: EvalConfig, seshat_config: SeshatConfig, tag_filter: CorpusTagFilter | None = None):
+async def run(eval_config: EvalConfig, seshat_config: SeshatConfig, tag_filter: CorpusTagFilter | None = None) -> None:
     llm = get_identification_llm(seshat_config)
     llm_cfg = seshat_config.extraction.identification
     agent = GroupingAgent(llm=llm, config=llm_cfg)

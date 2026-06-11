@@ -108,7 +108,7 @@ class GateResult(BaseModel):
     grouping_metrics: dict[str, MetricEntry] | None = None
     validation_hash: str = ""
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def passed(self) -> bool:
         if self._all_metrics_are_none():

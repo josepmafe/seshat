@@ -72,7 +72,7 @@ class VerificationAgent(_BaseAgent):
 
     @property
     def _system_prompt(self) -> str:
-        source = "transcript" if self._use_full_transcript else "quote"
+        source: Literal["quote", "transcript"] = "transcript" if self._use_full_transcript else "quote"
         return _system_prompt(source)
 
     async def verify(
