@@ -95,14 +95,21 @@ class _PendingNode:
     def _assign_for_manual_mode(self, threshold: float) -> None:
         assert self.breakdown is not None
 
-        # Human in the loop — nodes that pass the gate are approved, but still require manual review if they don't pass.
-        if self.breakdown.heuristics >= threshold:
+        # Human in the loop — nodes that pass both gates are auto-approved; anything else goes to PENDING_REVIEW
+        # so a human can inspect it. Verification failures must not be silently auto-approved even in manual mode.
+        passes_verification = self.breakdown.verification_passed is None or self.breakdown.verification_passed
+        passes_threshold = self.breakdown.heuristics >= threshold
+
+        if passes_verification and passes_threshold:
             self.status = NodeStatus.APPROVED
             self.approval_method = ApprovalMethod.THRESHOLD
             self.approved_at = datetime.now(UTC)
-        else:
+        elif not passes_threshold:
             self.status = NodeStatus.PENDING_REVIEW
             self.pending_reason = f"heuristics {self.breakdown.heuristics:.2f} < threshold {threshold:.2f}"
+        else:
+            self.status = NodeStatus.PENDING_REVIEW
+            self.pending_reason = "verification failed"
 
 
 class PendingNodeBuilder:
