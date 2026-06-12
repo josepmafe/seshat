@@ -264,25 +264,7 @@ class ExtractionOrchestrator:
         t0 = time.perf_counter()
         logger.debug("Scoring %d nodes (verifier %s)", len(pending), "enabled" if verification_enabled else "disabled")
         if verification_enabled:
-            assert self._config.verification is not None
-            sem = asyncio.Semaphore(self._config.verification.max_concurrent_calls)
-
-            async def _verify(pnode: _PendingNode) -> None:
-                assert self._verifier is not None
-                async with sem:
-                    quote_text = _quote_text(pnode.quote_anchors, transcript)
-                    try:
-                        verification_result = await self._verifier.verify(
-                            pnode.title, pnode.description, quote_text, transcript=transcript
-                        )
-                    except VerificationRetryExhaustedError:
-                        logger.warning(
-                            "Verification exhausted retries for %r — skipping (verification_passed=None)", pnode.title
-                        )
-                    else:
-                        pnode.verification = verification_result.supported
-
-            await asyncio.gather(*[_verify(pnode) for pnode in pending])
+            await self._run_verification(pending, transcript)
 
         for pnode in pending:
             pnode.breakdown = ConfidenceBreakdown(
@@ -301,6 +283,27 @@ class ExtractionOrchestrator:
             extra={"elapsed_ms": elapsed_ms},
         )
         return nodes
+
+    async def _run_verification(self, pending: list[_PendingNode], transcript: str) -> None:
+        assert self._config.verification is not None
+        sem = asyncio.Semaphore(self._config.verification.max_concurrent_calls)
+
+        async def _verify(pnode: _PendingNode) -> None:
+            assert self._verifier is not None
+            async with sem:
+                quote_text = _quote_text(pnode.quote_anchors, transcript)
+                try:
+                    verification_result = await self._verifier.verify(
+                        pnode.title, pnode.description, quote_text, transcript=transcript
+                    )
+                except VerificationRetryExhaustedError:
+                    logger.warning(
+                        "Verification exhausted retries for %r — skipping (verification_passed=None)", pnode.title
+                    )
+                else:
+                    pnode.verification = verification_result.supported
+
+        await asyncio.gather(*[_verify(pnode) for pnode in pending])
 
 
 def _build_relationship(rel: ResolvedRelationship, job_id: str) -> KBRelationship:
