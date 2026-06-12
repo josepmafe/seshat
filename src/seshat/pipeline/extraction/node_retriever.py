@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 from seshat.models.api import NodeFilter
 from seshat.models.enums import GraphDirection
-from seshat.pipeline.extraction.pending_node import _quote_text
 from seshat.utils.log import get_logger
 from seshat.utils.retry import async_retry
 from seshat.utils.tokens import count_tokens
@@ -37,7 +36,6 @@ class NodeRetriever:
     async def retrieve(
         self,
         node: KBNode,
-        transcript: str,
         *,
         node_filter: NodeFilter | None = None,
         exclude_job_id: str | None = None,
@@ -48,10 +46,7 @@ class NodeRetriever:
         if node_filter is not None:
             filter_kwargs.update(node_filter.model_dump(exclude_unset=True))
 
-        source_quote = _quote_text(node.quote_anchors, transcript)
-        # Truncate source_quote to avoid it dominating the embedding centroid: title+description
-        # carry the semantic signal; the quote adds speaker context but must not outweigh them.
-        query = f"{node.title} {node.description} {source_quote[:80]}".strip()
+        query = f"{node.title} {node.description}"
         logger.debug("Retrieving targets for node id=%s type=%s", node.id, node.type.value)
 
         results = await self._vector_search(

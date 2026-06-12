@@ -113,7 +113,6 @@ class ExtractionOrchestrator:
         )
 
     async def run_resolution(self, doc: TranscriptDocument, job_id: str) -> ResolutionResult:
-        transcript = await self._fetch_transcript(doc.blob_key)
         approved = await self._query(NodeFilter(job_id=job_id, status=NodeStatus.APPROVED))
         logger.info("Resolution run: %d approved nodes retrieved", len(approved))
         # TODO: resolution should run exactly once, after the job is fully settled:
@@ -131,7 +130,6 @@ class ExtractionOrchestrator:
                     # node_type=None: resolution needs candidates of all types so cross-type
                     # agents (e.g. DECISION→RISK MITIGATES) can find their targets.
                     node,
-                    transcript,
                     node_filter=NodeFilter(node_type=None),
                     exclude_job_id=job_id,
                 )

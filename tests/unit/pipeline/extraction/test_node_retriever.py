@@ -30,7 +30,7 @@ class TestNodeRetriever:
         service = _make_service(search_results=search_results, kb_nodes=[candidate])
 
         source = make_node("n1")
-        result = await service.retrieve(source, "")
+        result = await service.retrieve(source)
         assert any(n.id == candidate.id for n in result)
 
     @pytest.mark.asyncio
@@ -39,7 +39,7 @@ class TestNodeRetriever:
         search_results = [SearchResult(node_id=str(source.id), score=0.99)]
         service = _make_service(search_results=search_results, kb_nodes=[source])
 
-        result = await service.retrieve(source, "")
+        result = await service.retrieve(source)
         assert not any(n.id == source.id for n in result)
 
     @pytest.mark.asyncio
@@ -54,7 +54,7 @@ class TestNodeRetriever:
         )
 
         source = make_node("n1")
-        result = await service.retrieve(source, "")
+        result = await service.retrieve(source)
         assert any(n.id == neighbour.id for n in result)
 
     @pytest.mark.asyncio
@@ -63,7 +63,7 @@ class TestNodeRetriever:
         source = make_node("n1")
         override = NodeFilter(status=NodeStatus.PENDING_REVIEW)
 
-        await service.retrieve(source, "", node_filter=override)
+        await service.retrieve(source, node_filter=override)
 
         call_kwargs = service._vs.search.call_args.kwargs
         node_filter: NodeFilter = call_kwargs["node_filter"]
@@ -77,7 +77,7 @@ class TestNodeRetriever:
         service = _make_service(search_results=search_results, kb_nodes=[])
 
         source = make_node("n1")
-        result = await service.retrieve(source, "")
+        result = await service.retrieve(source)
 
         assert result == []
 
@@ -86,7 +86,7 @@ class TestNodeRetriever:
         service = _make_service()
         source = make_node("n1")
 
-        await service.retrieve(source, "", exclude_job_id="job-42")
+        await service.retrieve(source, exclude_job_id="job-42")
 
         call_kwargs = service._vs.search.call_args.kwargs
         assert call_kwargs["exclude_job_id"] == "job-42"
@@ -98,7 +98,7 @@ class TestNodeRetriever:
         search_results = [SearchResult(node_id=str(c.id), score=0.9) for c in candidates]
         service = _make_service(search_results=search_results, kb_nodes=candidates, top_k=1)
 
-        await service.retrieve(make_node("n1"), "")
+        await service.retrieve(make_node("n1"))
 
         assert service._kb.get_node.call_count == 2
 
@@ -118,7 +118,7 @@ class TestNodeRetriever:
             vector_store=MagicMock(search=AsyncMock(return_value=search_results)),
         )
 
-        result = await service.retrieve(make_node("n1"), "")
+        result = await service.retrieve(make_node("n1"))
 
         assert len(result) == 2
         assert kb_store.get_node.call_count == 2
@@ -137,7 +137,7 @@ class TestNodeRetriever:
         )
 
         source = make_node("n1")
-        result = await service.retrieve(source, "")
+        result = await service.retrieve(source)
 
         assert len(result) <= 2  # cap = top_k * 2
 
@@ -154,28 +154,11 @@ class TestNodeRetriever:
         service = _make_service()
         source = make_node("n1", type=ConceptType.DECISION)
 
-        await service.retrieve(source, "", node_filter=override_filter)
+        await service.retrieve(source, node_filter=override_filter)
 
         call_kwargs = service._vs.search.call_args.kwargs
         node_filter = call_kwargs["node_filter"]
         assert node_filter.node_type == expected_type
-
-    @pytest.mark.asyncio
-    async def test_long_source_quote_is_truncated_in_query(self):
-        from seshat.models.quote_anchor import QuoteAnchor
-
-        long_transcript = "x" * 500
-        anchor = QuoteAnchor(transcript_file="t.txt", char_start=0, char_end=500)
-        source = make_node("n1")
-        source = source.model_copy(update={"quote_anchors": [anchor]})
-
-        service = _make_service()
-        await service.retrieve(source, long_transcript)
-
-        query_arg = service._vs.search.call_args.args[0]
-        # source_quote portion must be capped at 80 chars
-        assert long_transcript[:81] not in query_arg
-        assert long_transcript[:80] in query_arg
 
     @pytest.mark.asyncio
     async def test_no_duplicates_in_result(self):
@@ -189,6 +172,6 @@ class TestNodeRetriever:
         )
 
         source = make_node("n1")
-        result = await service.retrieve(source, "")
+        result = await service.retrieve(source)
         ids = [n.id for n in result]
         assert len(ids) == len(set(ids))

@@ -115,7 +115,7 @@ class RetrievalEvalRunner:
         if not seeded:
             return RetrievalScoredResult(results=[])
 
-        query = f"{query_node.title} {query_node.description} {ex.query_node.quote[:80]}".strip()
+        query = f"{query_node.title} {query_node.description}"
         node_filter = NodeFilter(node_type=None)
         uuid_to_slug = {str(v): k for k, v in slug_map.items()}
         try:
