@@ -19,7 +19,7 @@ from seshat.observability.usage_tracker import (
 )
 from tests.integration.conftest import SKIP_IF_NO_EMBEDDINGS_API, SKIP_IF_NO_LLM_API
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.llm]
 
 
 class _YesNo(BaseModel):
@@ -120,5 +120,6 @@ class TestUsageTrackerIntegration:
 
         await azure_embeddings.aembed_query("The team agreed to use PostgreSQL.")
 
-        assert tracker.input_tokens > 0
-        assert tracker.output_tokens == 0  # embeddings produce no output tokens
+        assert tracker.embedding_input_tokens > 0
+        assert tracker.input_tokens == 0  # embedding tokens are tracked separately from LLM input
+        assert tracker.output_tokens == 0

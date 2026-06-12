@@ -34,13 +34,20 @@ class TokenBudgetExceededError(Exception):
 class UsageTracker:
     _UNCAPPED = 2**63 - 1  # sentinel for job-level trackers that never raise
 
-    def __init__(self, max_input_tokens: int, max_output_tokens: int) -> None:
+    def __init__(
+        self,
+        max_input_tokens: int,
+        max_output_tokens: int,
+        max_embedding_tokens: int = _UNCAPPED,
+    ) -> None:
         self._max_input = max_input_tokens
         self._max_output = max_output_tokens
+        self._max_embedding = max_embedding_tokens
         self._input_tokens = 0
         self._output_tokens = 0
         self._cache_read_tokens = 0
         self._cache_creation_tokens = 0
+        self._embedding_input_tokens = 0
         self._lock = asyncio.Lock()
 
     @classmethod
@@ -63,21 +70,28 @@ class UsageTracker:
     def cache_creation_tokens(self) -> int:
         return self._cache_creation_tokens
 
+    @property
+    def embedding_input_tokens(self) -> int:
+        return self._embedding_input_tokens
+
     async def add(
         self,
-        input_tokens: int,
-        output_tokens: int,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
         cache_read_tokens: int = 0,
         cache_creation_tokens: int = 0,
+        embedding_input_tokens: int = 0,
     ) -> None:
         async with self._lock:
             self._input_tokens += input_tokens
             self._output_tokens += output_tokens
             self._cache_read_tokens += cache_read_tokens
             self._cache_creation_tokens += cache_creation_tokens
+            self._embedding_input_tokens += embedding_input_tokens
 
         in_pct = self._input_tokens / self._max_input
         out_pct = self._output_tokens / self._max_output
+        emb_pct = self._embedding_input_tokens / self._max_embedding
         if in_pct >= _WARN_THRESHOLD or out_pct >= _WARN_THRESHOLD:
             logger.warning(
                 "Token budget at %.0f%% input / %.0f%% output (%d/%d in, %d/%d out)",
@@ -88,17 +102,28 @@ class UsageTracker:
                 self._output_tokens,
                 self._max_output,
             )
+        if emb_pct >= _WARN_THRESHOLD:
+            logger.warning(
+                "Embedding token budget at %.0f%% (%d/%d)",
+                emb_pct * 100,
+                self._embedding_input_tokens,
+                self._max_embedding,
+            )
 
     def check_caps(self) -> None:
-        """Raise TokenBudgetExceededError if either cap has been exceeded by more than _RAISE_THRESHOLD."""
+        """Raise TokenBudgetExceededError if any cap has been exceeded by more than _RAISE_THRESHOLD."""
         if self._input_tokens > self._max_input * _RAISE_THRESHOLD:
             raise TokenBudgetExceededError(f"Input token cap exceeded: {self._input_tokens} > {self._max_input}")
         if self._output_tokens > self._max_output * _RAISE_THRESHOLD:
             raise TokenBudgetExceededError(f"Output token cap exceeded: {self._output_tokens} > {self._max_output}")
+        if self._embedding_input_tokens > self._max_embedding * _RAISE_THRESHOLD:
+            raise TokenBudgetExceededError(
+                f"Embedding token cap exceeded: {self._embedding_input_tokens} > {self._max_embedding}"
+            )
 
     def log_totals(self, label: str) -> None:
         logger.info(
-            "%s token usage: input=%d/%d (%.1f%%), output=%d/%d (%.1f%%)",
+            "%s token usage: input=%d/%d (%.1f%%), output=%d/%d (%.1f%%), embedding=%d",
             label,
             self._input_tokens,
             self._max_input,
@@ -106,6 +131,7 @@ class UsageTracker:
             self._output_tokens,
             self._max_output,
             self._output_tokens / self._max_output * 100,
+            self._embedding_input_tokens,
         )
 
 
@@ -161,7 +187,7 @@ class TrackingEmbeddings(Embeddings):
     async def _record_embedding_cost(self, texts: list[str]) -> None:
         usage_tracker = _run_tracker_var.get()
         if usage_tracker is not None:
-            await usage_tracker._tracker.add(input_tokens=self._token_count(texts), output_tokens=0)
+            await usage_tracker._tracker.add(embedding_input_tokens=self._token_count(texts))
 
 
 def set_run_tracker(callback: TokenBudgetCallback) -> None:
@@ -179,12 +205,13 @@ def track_token_budget(
     max_input_fn: Callable[[Any], int],
     max_output_fn: Callable[[Any], int],
     label: str,
+    max_embedding_fn: Callable[[Any], int] | None = None,
     accumulate_to_fn: Callable[[Any], UsageTracker] | None = None,
 ) -> Callable:
     """Decorator for async instance methods: creates a per-call UsageTracker, sets it on the
     ContextVar so all LLM calls within the method accumulate into it, checks caps on completion,
     and logs totals. Caps are read from the instance at call time via max_input_fn(self) /
-    max_output_fn(self) so config changes are always respected.
+    max_output_fn(self) / max_embedding_fn(self) so config changes are always respected.
 
     If accumulate_to_fn is provided, stage totals are rolled up into that tracker (typically a
     job-level uncapped tracker on self) so callers can surface per-job usage without re-running."""
@@ -192,7 +219,8 @@ def track_token_budget(
     def decorator(fn: Callable) -> Callable:
         @functools.wraps(fn)
         async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-            tracker = UsageTracker(max_input_fn(self), max_output_fn(self))
+            max_emb = max_embedding_fn(self) if max_embedding_fn is not None else UsageTracker._UNCAPPED
+            tracker = UsageTracker(max_input_fn(self), max_output_fn(self), max_embedding_tokens=max_emb)
             set_run_tracker(TokenBudgetCallback(tracker))
             try:
                 result = await fn(self, *args, **kwargs)
@@ -206,6 +234,7 @@ def track_token_budget(
                     output_tokens=tracker.output_tokens,
                     cache_read_tokens=tracker.cache_read_tokens,
                     cache_creation_tokens=tracker.cache_creation_tokens,
+                    embedding_input_tokens=tracker.embedding_input_tokens,
                 )
 
                 if accumulate_to_fn is not None:
@@ -214,6 +243,7 @@ def track_token_budget(
                         output_tokens=tracker.output_tokens,
                         cache_read_tokens=tracker.cache_read_tokens,
                         cache_creation_tokens=tracker.cache_creation_tokens,
+                        embedding_input_tokens=tracker.embedding_input_tokens,
                     )
 
         return wrapper

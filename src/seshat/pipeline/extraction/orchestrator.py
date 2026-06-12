@@ -149,6 +149,7 @@ class ExtractionOrchestrator:
     @track_token_budget(
         max_input_fn=lambda self: self._config.max_total_input_tokens,
         max_output_fn=lambda self: self._config.max_total_output_tokens,
+        max_embedding_fn=lambda self: self._config.max_total_embedding_tokens,
         label="resolution",
         accumulate_to_fn=lambda self: self._job_tracker,
     )

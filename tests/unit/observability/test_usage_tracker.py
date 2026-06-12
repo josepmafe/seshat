@@ -68,6 +68,20 @@ class TestUsageTracker:
         with pytest.raises(TokenBudgetExceededError, match="Output token cap exceeded"):
             tracker.check_caps()
 
+    @pytest.mark.asyncio
+    async def test_accumulates_embedding_tokens(self):
+        tracker = UsageTracker(max_input_tokens=1000, max_output_tokens=500)
+        await tracker.add(embedding_input_tokens=120)
+        await tracker.add(embedding_input_tokens=80)
+        assert tracker.embedding_input_tokens == 200
+        assert tracker.input_tokens == 0
+
+    def test_check_caps_raises_on_embedding_exceeded(self):
+        tracker = UsageTracker(max_input_tokens=1000, max_output_tokens=500, max_embedding_tokens=100)
+        tracker._embedding_input_tokens = 111  # over 110%
+        with pytest.raises(TokenBudgetExceededError, match="Embedding token cap exceeded"):
+            tracker.check_caps()
+
 
 class TestTokenBudgetCallback:
     @pytest.mark.asyncio

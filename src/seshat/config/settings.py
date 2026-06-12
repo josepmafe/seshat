@@ -98,6 +98,9 @@ class ExtractionConfig(BaseConfig):
     max_total_output_tokens: int = Field(
         default=500_000, gt=0, description="Hard cap on total output tokens generated in one extraction run."
     )
+    max_total_embedding_tokens: int = Field(
+        default=10_000_000, gt=0, description="Hard cap on total embedding input tokens in one extraction run."
+    )
     max_hint_nodes: int = Field(
         default=20, gt=0, description="Maximum number of KB hint nodes injected into the extraction prompt."
     )
