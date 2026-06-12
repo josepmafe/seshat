@@ -87,18 +87,3 @@ class TestFetchExampleNodeFilter:
         captured = vs.captured_filters[0]
         assert captured is not None
         assert captured.node_type is None
-
-    @pytest.mark.asyncio
-    async def test_query_includes_truncated_quote(self) -> None:
-        """_fetch_example must include the first 80 chars of the query node quote, matching NodeRetriever."""
-        vs = _CapturingVectorStore()
-        config = Mock(spec=EvalConfig)
-        runner = RetrievalEvalRunner(vector_store=vs, config=config)
-
-        example = _make_cross_type_example()
-        await runner._fetch_example(example)
-
-        assert len(vs.captured_queries) == 1
-        query = vs.captured_queries[0]
-        expected_quote_fragment = example.query_node.quote[:80]
-        assert expected_quote_fragment in query

@@ -4,10 +4,12 @@ import json
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
 import pytest
 
 from seshat.knowledge_store.pg_store import PostgresKBStore
+from seshat.models.api import NodeFilter
 from seshat.models.enums import (
     ConceptType,
     NodeState,
@@ -96,3 +98,30 @@ class TestValidateConnectionString:
             PostgresKBStore._validate_connection_string("mysql://secret:hunter2@host/db")
         assert "secret" not in str(exc_info.value)
         assert "hunter2" not in str(exc_info.value)
+
+
+class TestPaginatedQuery:
+    @pytest.mark.asyncio
+    async def test_paginates_across_multiple_pages(self, store: PostgresKBStore):
+        page_size = 10
+        page_one = [_make_node(f"n{i}") for i in range(page_size)]
+        page_two = [_make_node(f"n{i}") for i in range(page_size, page_size + 3)]
+        store.query = AsyncMock(side_effect=[page_one, page_two])
+
+        result = await store.paginated_query(NodeFilter(limit=page_size))
+
+        assert len(result) == page_size + 3
+        assert store.query.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_fetches_extra_page_when_last_page_is_full(self, store: PostgresKBStore):
+        # A full last page is indistinguishable from a page with more data behind it,
+        # so the loop makes one extra call (returning empty) to confirm termination.
+        page_size = 5
+        full_page = [_make_node(f"n{i}") for i in range(page_size)]
+        store.query = AsyncMock(side_effect=[full_page, []])
+
+        result = await store.paginated_query(NodeFilter(limit=page_size))
+
+        assert len(result) == page_size
+        assert store.query.call_count == 2

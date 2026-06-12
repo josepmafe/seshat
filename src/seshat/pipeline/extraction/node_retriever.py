@@ -70,12 +70,13 @@ class NodeRetriever:
             if result.node_id == node_id:
                 continue
 
-            kb_node = await self._get_node(result.node_id)
+            kb_node = await self._kb.get_node(result.node_id)
             if kb_node is not None:
                 seen[result.node_id] = kb_node
-                tokens_used += count_tokens(kb_node.title + " " + kb_node.description)
+                tokens_used += count_tokens(f"{kb_node.title} {kb_node.description}")
 
-        # if we have fewer than top_k results, traverse neighbours of retrieved nodes to fill up targets (up to cap)
+        # if we have fewer than top_k results, traverse neighbours of retrieved nodes to fill up targets (up to cap).
+        # TOCONSIDER: retrieve all neighbours in parallel, re-rerank them and take top-k.
         for result in results:
             if len(seen) >= cap:
                 break
@@ -83,7 +84,10 @@ class NodeRetriever:
             if result.node_id not in seen:
                 continue
 
-            for neighbour in await self._get_neighbours(result.node_id):
+            neighbours = await self._kb.get_neighbours(
+                result.node_id, rel_types=self._config.traversal_rel_types, direction=GraphDirection.BOTH
+            )
+            for neighbour in neighbours:
                 if len(seen) >= cap:
                     break
 
@@ -95,6 +99,8 @@ class NodeRetriever:
         logger.debug("target retrieval done: %d targets for node id=%s", len(targets), node.id)
         return targets
 
+    # Retry kept here (not in the vector store) because retryable exceptions are
+    # provider-specific (httpx, openai) and don't belong in the store abstraction.
     @async_retry()
     async def _vector_search(
         self, query: str, node_filter: NodeFilter, *, exclude_job_id: str | None
@@ -105,16 +111,4 @@ class NodeRetriever:
             node_filter=node_filter,
             exclude_job_id=exclude_job_id,
             score_threshold=self._config.min_similarity_score,
-        )
-
-    @async_retry()
-    async def _get_node(self, node_id: str) -> KBNode | None:
-        return await self._kb.get_node(node_id)
-
-    @async_retry()
-    async def _get_neighbours(self, node_id: str) -> list[KBNode]:
-        return await self._kb.get_neighbours(
-            node_id,
-            rel_types=self._config.traversal_rel_types,
-            direction=GraphDirection.BOTH,
         )

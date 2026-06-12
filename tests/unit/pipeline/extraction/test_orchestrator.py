@@ -6,7 +6,6 @@ import pytest
 from seshat.agents.identification.base import IdentificationRetryExhaustedError
 from seshat.agents.verification import VerificationRetryExhaustedError
 from seshat.config.settings import ExtractionConfig, VerificationLLMConfig
-from seshat.models.api import NodeFilter
 from seshat.models.enums import ApprovalMethod, ConceptType, NodeStatus
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator, _assemble_kb_hint
 from tests.helpers import make_anchored_concept, make_doc, make_node
@@ -54,7 +53,7 @@ def _make_orchestrator(
     node_retriever.max_concurrent_retrievals = 10
 
     kb_store = MagicMock()
-    kb_store.query = AsyncMock(return_value=kb_approved_nodes or [])
+    kb_store.paginated_query = AsyncMock(return_value=kb_approved_nodes or [])
 
     blob_store = MagicMock()
     blob_store.get = AsyncMock(return_value=TRANSCRIPT.encode())
@@ -323,40 +322,11 @@ class TestExtractionOrchestrator:
     @pytest.mark.asyncio
     async def test_run_resolution_with_no_approved_nodes_returns_empty(self):
         orchestrator = _make_orchestrator()
-        orchestrator._kb.query = AsyncMock(return_value=[])
+        orchestrator._kb.paginated_query = AsyncMock(return_value=[])
 
         result = await orchestrator.run_resolution(make_doc(), job_id="job-1")
 
         assert result.relationships == []
-
-    @pytest.mark.asyncio
-    async def test_query_paginates_across_multiple_pages(self):
-        page_size = 10
-        page_one = [make_node(f"n{i}") for i in range(page_size)]
-        page_two = [make_node(f"n{i}") for i in range(page_size, page_size + 3)]
-
-        orchestrator = _make_orchestrator()
-        orchestrator._kb.query = AsyncMock(side_effect=[page_one, page_two])
-
-        result = await orchestrator._query(NodeFilter(limit=page_size))
-
-        assert len(result) == page_size + 3
-        assert orchestrator._kb.query.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_query_fetches_extra_page_when_last_page_is_full(self):
-        # A full last page is indistinguishable from a page with more data behind it,
-        # so the loop makes one extra call (returning empty) to confirm termination.
-        page_size = 5
-        full_page = [make_node(f"n{i}") for i in range(page_size)]
-
-        orchestrator = _make_orchestrator()
-        orchestrator._kb.query = AsyncMock(side_effect=[full_page, []])
-
-        result = await orchestrator._query(NodeFilter(limit=page_size))
-
-        assert len(result) == page_size
-        assert orchestrator._kb.query.call_count == 2
 
 
 class TestJobTimeout:
@@ -414,7 +384,7 @@ class TestKbHintIsolation:
             TRANSCRIPT, "blob-key", ConceptType.DECISION, "job-1", kb_hint="prebuilt hint"
         )
 
-        orchestrator._kb.query.assert_not_called()
+        orchestrator._kb.paginated_query.assert_not_called()
         args, _ = agent.identify.call_args
         assert args[1] == "prebuilt hint"
 
@@ -423,7 +393,7 @@ class TestKbHintIsolation:
         """KB queries for all concept types are issued before any agent.identify call."""
         call_log: list[str] = []
 
-        async def tracking_query(*args, **kwargs):
+        async def tracking_query(_node_filter):
             call_log.append("kb_query")
             return []
 
@@ -440,7 +410,7 @@ class TestKbHintIsolation:
             extraction_registry=registry,
             concept_types=[ConceptType.DECISION, ConceptType.RISK],
         )
-        orchestrator._kb.query = tracking_query
+        orchestrator._kb.paginated_query = tracking_query
 
         await orchestrator.run_identification(make_doc(), job_id="job-1")
 
