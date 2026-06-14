@@ -1,3 +1,5 @@
+import logging
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,8 +11,11 @@ from seshat.pipeline.extraction.node_retriever import NodeRetriever
 from tests.helpers import make_node
 
 
-def _make_service(search_results=None, kb_nodes=None, neighbour_nodes=None, top_k=3):
-    rag_config = RAGConfig(top_k=top_k)
+def _make_service(search_results=None, kb_nodes=None, neighbour_nodes=None, top_k=3, max_context_tokens=None):
+    rag_kwargs: dict[str, Any] = {"top_k": top_k}
+    if max_context_tokens is not None:
+        rag_kwargs["max_context_tokens"] = max_context_tokens
+    rag_config = RAGConfig(**rag_kwargs)
 
     vector_store = MagicMock()
     vector_store.search = AsyncMock(return_value=search_results or [])
@@ -108,20 +113,17 @@ class TestNodeRetriever:
         # top_k=10 → cap=20, so token budget is the binding constraint here
         candidates = [make_node(f"n{i}", title=f"Node {i}") for i in range(2, 6)]
         search_results = [SearchResult(node_id=str(c.id), score=0.9) for c in candidates]
-
-        kb_store = MagicMock()
-        kb_store.get_node = AsyncMock(side_effect=lambda nid: next((n for n in candidates if str(n.id) == nid), None))
-        kb_store.get_neighbours = AsyncMock(return_value=[])
-        service = NodeRetriever(
-            rag_config=RAGConfig(top_k=10, max_context_tokens=18),
-            kb_store=kb_store,
-            vector_store=MagicMock(search=AsyncMock(return_value=search_results)),
+        service = _make_service(
+            search_results=search_results,
+            kb_nodes=candidates,
+            top_k=10,
+            max_context_tokens=18,
         )
 
         result = await service.retrieve(make_node("n1"))
 
         assert len(result) == 2
-        assert kb_store.get_node.call_count == 2
+        assert service._kb.get_node.call_count == 2
 
     @pytest.mark.asyncio
     async def test_cap_limits_neighbour_expansion(self):
@@ -159,6 +161,76 @@ class TestNodeRetriever:
         call_kwargs = service._vs.search.call_args.kwargs
         node_filter = call_kwargs["node_filter"]
         assert node_filter.node_type == expected_type
+
+    @pytest.mark.asyncio
+    async def test_duplicate_vector_result_logged_and_skipped(self, caplog):
+        candidate = make_node("n2", title="Use Redis")
+        dup_id = str(candidate.id)
+        search_results = [
+            SearchResult(node_id=dup_id, score=0.9),
+            SearchResult(node_id=dup_id, score=0.8),  # duplicate
+        ]
+        service = _make_service(search_results=search_results, kb_nodes=[candidate])
+
+        with caplog.at_level(logging.WARNING, logger="seshat.pipeline.extraction.node_retriever"):
+            result = await service.retrieve(make_node("n1"))
+
+        ids = [n.id for n in result]
+        assert ids.count(candidate.id) == 1
+        assert any("Duplicate" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_source_node_excluded_when_appearing_as_neighbour(self):
+        source = make_node("n1")
+        candidate = make_node("n2", title="Use Redis")
+        search_results = [SearchResult(node_id=str(candidate.id), score=0.9)]
+        service = _make_service(
+            search_results=search_results,
+            kb_nodes=[candidate],
+            neighbour_nodes=[source],
+        )
+
+        result = await service.retrieve(source)
+
+        assert not any(n.id == source.id for n in result)
+
+    @pytest.mark.asyncio
+    async def test_over_budget_neighbour_does_not_block_cheaper_sibling(self):
+        # fat_neighbour has a 200-char title (~55 tokens); thin_neighbour is tiny (~8).
+        # budget=20 (hard cap=22): candidate consumes ~8 tokens as a direct hit,
+        # leaving ~14 under the hard cap — enough for thin but not fat.
+        candidate = make_node("n2", title="A")
+        fat_neighbour = make_node("n3", title="B" * 200)
+        thin_neighbour = make_node("n4", title="C")
+        search_results = [SearchResult(node_id=str(candidate.id), score=0.9)]
+        service = _make_service(
+            search_results=search_results,
+            kb_nodes=[candidate],
+            neighbour_nodes=[fat_neighbour, thin_neighbour],
+            top_k=10,
+            max_context_tokens=20,
+        )
+
+        result = await service.retrieve(make_node("n1"))
+
+        ids = {n.id for n in result}
+        assert thin_neighbour.id in ids
+        assert fat_neighbour.id not in ids
+
+    @pytest.mark.asyncio
+    async def test_exhausted_budget_skips_get_neighbours_call(self):
+        candidate = make_node("n2", title="Use Redis")
+        search_results = [SearchResult(node_id=str(candidate.id), score=0.9)]
+        service = _make_service(
+            search_results=search_results,
+            kb_nodes=[candidate],
+            top_k=10,
+            max_context_tokens=1,
+        )
+
+        await service.retrieve(make_node("n1"))
+
+        assert service._kb.get_neighbours.call_count == 0
 
     @pytest.mark.asyncio
     async def test_no_duplicates_in_result(self):
