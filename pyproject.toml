@@ -130,3 +130,10 @@ markers = [
     "eval: eval harness tests (unit and integration)",
 ]
 testpaths = ["tests"]
+
+[tool.coverage.report]
+omit = [
+    "src/seshat/eval/*/entrypoint.py",
+    "src/seshat/eval/calibration/*_entrypoint.py",
+    "src/seshat/pipeline/bootstrap.py",
+]
