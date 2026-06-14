@@ -14,6 +14,7 @@ from seshat.eval.identification.scorers import scorer
 from seshat.eval.mlflow_logging import configure_trace_processors, log_eval_run_metadata
 from seshat.models.enums import ConceptType
 from seshat.models.nodes import IdentificationResult
+from seshat.observability.usage_tracker import track_eval_usage
 from seshat.utils.log import set_task_num
 
 if TYPE_CHECKING:
@@ -80,6 +81,7 @@ class IdentificationEvalRunner:
         )
         return gate
 
+    @track_eval_usage(label="identification")
     async def _run_all_predictions(
         self, examples: list[IdentificationCorpusExample]
     ) -> tuple[dict[str, IdentificationResult], set[Path]]:

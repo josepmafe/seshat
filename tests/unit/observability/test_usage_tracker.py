@@ -122,7 +122,7 @@ class TestTrackTokenBudget:
         captured = []
 
         class _Obj:
-            @track_token_budget(lambda self: 1000, lambda self: 500, label="test")
+            @track_token_budget(label="test", max_input_fn=lambda self: 1000, max_output_fn=lambda self: 500)
             async def run(self):
                 captured.append(get_run_tracker())
 
@@ -133,7 +133,7 @@ class TestTrackTokenBudget:
     @pytest.mark.asyncio
     async def test_raises_on_cap_exceeded(self):
         class _Obj:
-            @track_token_budget(lambda self: 10, lambda self: 10, label="test")
+            @track_token_budget(label="test", max_input_fn=lambda self: 10, max_output_fn=lambda self: 10)
             async def run(self):
                 cb = get_run_tracker()
                 assert cb is not None
@@ -145,7 +145,7 @@ class TestTrackTokenBudget:
     @pytest.mark.asyncio
     async def test_does_not_raise_within_overage_allowance(self):
         class _Obj:
-            @track_token_budget(lambda self: 1000, lambda self: 500, label="test")
+            @track_token_budget(label="test", max_input_fn=lambda self: 1000, max_output_fn=lambda self: 500)
             async def run(self):
                 cb = get_run_tracker()
                 assert cb is not None
@@ -158,7 +158,7 @@ class TestTrackTokenBudget:
         trackers = []
 
         class _Obj:
-            @track_token_budget(lambda self: 10_000, lambda self: 10_000, label="test")
+            @track_token_budget(label="test", max_input_fn=lambda self: 10_000, max_output_fn=lambda self: 10_000)
             async def run(self):
                 trackers.append(get_run_tracker())
 

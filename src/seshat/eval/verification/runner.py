@@ -13,6 +13,7 @@ from seshat.eval.gate import upsert_gate
 from seshat.eval.mlflow_logging import configure_trace_processors, log_eval_run_metadata, make_input_redactor
 from seshat.eval.verification.corpus_loader import load_corpus
 from seshat.eval.verification.scorers import scorer
+from seshat.observability.usage_tracker import track_eval_usage
 from seshat.utils.log import set_task_num
 
 if TYPE_CHECKING:
@@ -85,6 +86,7 @@ class VerificationEvalRunner:
         )
         return gate
 
+    @track_eval_usage(label="verification")
     async def _run_all_predictions(
         self, examples: list[VerificationCorpusExample]
     ) -> tuple[dict[tuple[str, int], VerificationResult], set[Path]]:

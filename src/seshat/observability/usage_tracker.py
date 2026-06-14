@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.embeddings import Embeddings
+from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
 from seshat.observability.usage_logger import log_token_metrics
@@ -94,20 +95,20 @@ class UsageTracker:
         emb_pct = self._embedding_input_tokens / self._max_embedding
         if in_pct >= _WARN_THRESHOLD or out_pct >= _WARN_THRESHOLD:
             logger.warning(
-                "Token budget at %.0f%% input / %.0f%% output (%d/%d in, %d/%d out)",
+                "Token budget at %.0f%% input / %.0f%% output (%s/%s in, %s/%s out)",
                 in_pct * 100,
                 out_pct * 100,
-                self._input_tokens,
-                self._max_input,
-                self._output_tokens,
-                self._max_output,
+                _fmt(self._input_tokens),
+                _fmt(self._max_input),
+                _fmt(self._output_tokens),
+                _fmt(self._max_output),
             )
         if emb_pct >= _WARN_THRESHOLD:
             logger.warning(
-                "Embedding token budget at %.0f%% (%d/%d)",
+                "Embedding token budget at %.0f%% (%s/%s)",
                 emb_pct * 100,
-                self._embedding_input_tokens,
-                self._max_embedding,
+                _fmt(self._embedding_input_tokens),
+                _fmt(self._max_embedding),
             )
 
     def check_caps(self) -> None:
@@ -123,15 +124,14 @@ class UsageTracker:
 
     def log_totals(self, label: str) -> None:
         logger.info(
-            "%s token usage: input=%d/%d (%.1f%%), output=%d/%d (%.1f%%), embedding=%d",
+            "%s token usage: input=%s (%.1f%%), output=%s (%.1f%%), embedding=%s (%.1f%%)",
             label,
-            self._input_tokens,
-            self._max_input,
+            _fmt(self._input_tokens),
             self._input_tokens / self._max_input * 100,
-            self._output_tokens,
-            self._max_output,
+            _fmt(self._output_tokens),
             self._output_tokens / self._max_output * 100,
-            self._embedding_input_tokens,
+            _fmt(self._embedding_input_tokens),
+            self._embedding_input_tokens / self._max_embedding * 100,
         )
 
 
@@ -142,14 +142,17 @@ class TokenBudgetCallback(AsyncCallbackHandler):
     async def on_llm_end(self, response: LLMResult, *, run_id: UUID, **kwargs: Any) -> None:
         for generations in response.generations:
             for gen in generations:
-                if isinstance(gen, ChatGeneration) and gen.message.usage_metadata:
+                if isinstance(gen, ChatGeneration) and isinstance(gen.message, AIMessage):
                     usage = gen.message.usage_metadata
-                    details = usage.get("input_token_details", {})
+                    if usage is None:
+                        continue
+
+                    input_details = usage.get("input_token_details", {})
                     await self._tracker.add(
                         input_tokens=usage["input_tokens"],
                         output_tokens=usage["output_tokens"],
-                        cache_read_tokens=details.get("cache_read", 0),
-                        cache_creation_tokens=details.get("cache_creation", 0),
+                        cache_read_tokens=input_details.get("cache_read", 0),
+                        cache_creation_tokens=input_details.get("cache_creation", 0),
                     )
 
 
@@ -202,25 +205,42 @@ def get_run_tracker() -> TokenBudgetCallback | None:
 
 
 def track_token_budget(
-    max_input_fn: Callable[[Any], int],
-    max_output_fn: Callable[[Any], int],
     label: str,
+    *,
+    metrics_label: str | None = None,
+    uncapped: bool = False,
+    max_input_fn: Callable[[Any], int] | None = None,
+    max_output_fn: Callable[[Any], int] | None = None,
     max_embedding_fn: Callable[[Any], int] | None = None,
     accumulate_to_fn: Callable[[Any], UsageTracker] | None = None,
 ) -> Callable:
-    """Decorator for async instance methods: creates a per-call UsageTracker, sets it on the
-    ContextVar so all LLM calls within the method accumulate into it, checks caps on completion,
-    and logs totals. Caps are read from the instance at call time via max_input_fn(self) /
-    max_output_fn(self) / max_embedding_fn(self) so config changes are always respected.
+    """Decorator for async instance methods that tracks token usage via UsageTracker.
 
-    If accumulate_to_fn is provided, stage totals are rolled up into that tracker (typically a
-    job-level uncapped tracker on self) so callers can surface per-job usage without re-running."""
+    Sets a per-call tracker on the ContextVar before the method runs so all LLM/embedding
+    calls inside accumulate into it. Logs totals and MLflow metrics on completion.
+
+    Pass uncapped=True for tracking-only (no budget enforcement), e.g. eval runners.
+    Otherwise max_input_fn and max_output_fn are required; caps are read from the instance
+    at call time so config changes are always respected.
+
+    If accumulate_to_fn is provided, stage totals are rolled up into that tracker (typically
+    a job-level uncapped tracker on self)."""
+
+    if not uncapped and (max_input_fn is None or max_output_fn is None):
+        raise ValueError("track_token_budget requires max_input_fn and max_output_fn unless uncapped=True")
 
     def decorator(fn: Callable) -> Callable:
         @functools.wraps(fn)
         async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-            max_emb = max_embedding_fn(self) if max_embedding_fn is not None else UsageTracker._UNCAPPED
-            tracker = UsageTracker(max_input_fn(self), max_output_fn(self), max_embedding_tokens=max_emb)
+            if uncapped:
+                tracker = UsageTracker.uncapped()
+            else:
+                tracker = UsageTracker(
+                    max_input_fn(self),  # type: ignore[misc]
+                    max_output_fn(self),  # type: ignore[misc]
+                    max_embedding_fn(self) if max_embedding_fn is not None else UsageTracker._UNCAPPED,
+                )
+
             set_run_tracker(TokenBudgetCallback(tracker))
             try:
                 result = await fn(self, *args, **kwargs)
@@ -228,8 +248,9 @@ def track_token_budget(
                 return result
             finally:
                 tracker.log_totals(label)
+
                 log_token_metrics(
-                    label,
+                    stage=(metrics_label if metrics_label is not None else label),
                     input_tokens=tracker.input_tokens,
                     output_tokens=tracker.output_tokens,
                     cache_read_tokens=tracker.cache_read_tokens,
@@ -249,3 +270,10 @@ def track_token_budget(
         return wrapper
 
     return decorator
+
+
+track_eval_usage = functools.partial(track_token_budget, metrics_label="", uncapped=True)
+
+
+def _fmt(n: int) -> str:
+    return f"{n:,}"

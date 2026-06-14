@@ -62,6 +62,12 @@ class ExtractionOrchestrator:
     def usage(self) -> UsageTracker:
         return self._job_tracker
 
+    @track_token_budget(
+        max_input_fn=lambda self: self._config.max_total_input_tokens,
+        max_output_fn=lambda self: self._config.max_total_output_tokens,
+        label="identification",
+        accumulate_to_fn=lambda self: self._job_tracker,
+    )
     async def run_identification(self, doc: TranscriptDocument, job_id: str) -> IdentificationResult:
         transcript = (await self._blob.get(doc.blob_key)).decode()
         coro = self._run_identification(transcript, doc.blob_key, job_id)
@@ -69,12 +75,6 @@ class ExtractionOrchestrator:
             return await asyncio.wait_for(coro, self._config.identification_timeout_seconds)
         return await coro
 
-    @track_token_budget(
-        max_input_fn=lambda self: self._config.max_total_input_tokens,
-        max_output_fn=lambda self: self._config.max_total_output_tokens,
-        label="identification",
-        accumulate_to_fn=lambda self: self._job_tracker,
-    )
     async def _run_identification(
         self,
         transcript: str,
@@ -111,6 +111,13 @@ class ExtractionOrchestrator:
             nodes_by_type=nodes_by_type,
         )
 
+    @track_token_budget(
+        max_input_fn=lambda self: self._config.max_total_input_tokens,
+        max_output_fn=lambda self: self._config.max_total_output_tokens,
+        max_embedding_fn=lambda self: self._config.max_total_embedding_tokens,
+        label="resolution",
+        accumulate_to_fn=lambda self: self._job_tracker,
+    )
     async def run_resolution(self, doc: TranscriptDocument, job_id: str) -> ResolutionResult:
         approved = await self._kb.paginated_query(NodeFilter(job_id=job_id, status=NodeStatus.APPROVED))
         logger.info("Resolution run: %d approved nodes retrieved", len(approved))
@@ -143,13 +150,6 @@ class ExtractionOrchestrator:
             return await asyncio.wait_for(coro, self._config.resolution_timeout_seconds)
         return await coro
 
-    @track_token_budget(
-        max_input_fn=lambda self: self._config.max_total_input_tokens,
-        max_output_fn=lambda self: self._config.max_total_output_tokens,
-        max_embedding_fn=lambda self: self._config.max_total_embedding_tokens,
-        label="resolution",
-        accumulate_to_fn=lambda self: self._job_tracker,
-    )
     async def _run_resolution(
         self,
         source_nodes: list[KBNode],

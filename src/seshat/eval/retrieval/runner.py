@@ -16,6 +16,7 @@ from seshat.eval.models import RetrievalScoredResult
 from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.retrieval.scorers import TOP_K, scorer
 from seshat.models.api import NodeFilter
+from seshat.observability.usage_tracker import track_eval_usage
 from seshat.utils.log import get_logger, set_task_num
 from seshat.utils.retry import async_retry
 
@@ -93,6 +94,7 @@ class RetrievalEvalRunner:
         )
         return gate
 
+    @track_eval_usage(label="retrieval")
     async def _run_all_predictions(
         self,
         examples: list[RetrievalCorpusExample],
