@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -55,7 +55,7 @@ class AnchoredConcept(BaseModel, Generic[M]):
     quote_anchor: QuoteAnchor | None
 
 
-class _BaseIdentificationAgent(_BaseAgent, ABC, Generic[M]):
+class _BaseIdentificationAgent(_BaseAgent, Generic[M]):
     def __init__(
         self,
         llm: BaseChatModel,
@@ -73,10 +73,6 @@ class _BaseIdentificationAgent(_BaseAgent, ABC, Generic[M]):
     @property
     @abstractmethod
     def output_schema(self) -> type[ConceptList[M]]: ...
-
-    @property
-    @abstractmethod
-    def _system_prompt(self) -> str: ...
 
     @property
     def grouped_identification(self) -> bool:

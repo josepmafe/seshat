@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections import defaultdict
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
@@ -16,10 +15,11 @@ from seshat.models.nodes import (
     KBRelationship,
     ResolutionResult,
 )
+from seshat.observability.usage_tracker import UsageTracker, track_token_budget
 from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
 from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _deduplicate, _PendingNode, _quote_text
 from seshat.utils.log import get_logger
-from seshat.utils.retry import async_retry
+from seshat.utils.tokens import count_tokens
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -56,9 +56,20 @@ class ExtractionOrchestrator:
         self._blob = blob_store
         self._verifier = verification_agent
         self._heuristics_scorer = HeuristicsScorer()
+        self._job_tracker = UsageTracker.uncapped()
 
+    @property
+    def usage(self) -> UsageTracker:
+        return self._job_tracker
+
+    @track_token_budget(
+        max_input_fn=lambda self: self._config.max_total_input_tokens,
+        max_output_fn=lambda self: self._config.max_total_output_tokens,
+        label="identification",
+        accumulate_to_fn=lambda self: self._job_tracker,
+    )
     async def run_identification(self, doc: TranscriptDocument, job_id: str) -> IdentificationResult:
-        transcript = await self._fetch_transcript(doc.blob_key)
+        transcript = (await self._blob.get(doc.blob_key)).decode()
         coro = self._run_identification(transcript, doc.blob_key, job_id)
         if self._config.identification_timeout_seconds is not None:
             return await asyncio.wait_for(coro, self._config.identification_timeout_seconds)
@@ -71,16 +82,13 @@ class ExtractionOrchestrator:
         job_id: str,
         hints: dict[ConceptType, str] | None = None,
     ) -> IdentificationResult:
-        # TODO: implement token budget enforcement (max_total_input_tokens / max_total_output_tokens).
-        # Approach: LangChain callback handler or explicit tracker injection — warn at cap, abort at
-        # n*cap. Start with LLM calls only; embeddings and transcription can be added later
-        # (RAG context is already bounded by max_context_tokens).
         t0 = time.perf_counter()
         logger.info("Starting identification run for blob_key=%s", blob_key)
 
         if hints is None:
             hints = await self._fetch_kb_hints()
         pending, failed_concept_types = await self._identification_pass(transcript, blob_key, job_id, hints)
+
         nodes = await self._score_and_finalize(pending, transcript)
 
         elapsed_ms = round((time.perf_counter() - t0) * 1000)
@@ -91,7 +99,7 @@ class ExtractionOrchestrator:
             elapsed_ms,
             extra={"elapsed_ms": elapsed_ms},
         )
-        nodes_by_type: dict[ConceptType, int] = defaultdict(int, dict.fromkeys(self.concept_types, 0))
+        nodes_by_type: dict[ConceptType, int] = dict.fromkeys(self.concept_types, 0)
         for node in nodes:
             nodes_by_type[node.type] += 1
 
@@ -100,12 +108,18 @@ class ExtractionOrchestrator:
             nodes=nodes,
             confidence_breakdowns={node.id: node.metadata.confidence_breakdown for node in nodes},  # type: ignore[misc]
             failed_concept_types=failed_concept_types,
-            nodes_by_type=dict(nodes_by_type),
+            nodes_by_type=nodes_by_type,
         )
 
+    @track_token_budget(
+        max_input_fn=lambda self: self._config.max_total_input_tokens,
+        max_output_fn=lambda self: self._config.max_total_output_tokens,
+        max_embedding_fn=lambda self: self._config.max_total_embedding_tokens,
+        label="resolution",
+        accumulate_to_fn=lambda self: self._job_tracker,
+    )
     async def run_resolution(self, doc: TranscriptDocument, job_id: str) -> ResolutionResult:
-        transcript = await self._fetch_transcript(doc.blob_key)
-        approved = await self._query(NodeFilter(job_id=job_id, status=NodeStatus.APPROVED))
+        approved = await self._kb.paginated_query(NodeFilter(job_id=job_id, status=NodeStatus.APPROVED))
         logger.info("Resolution run: %d approved nodes retrieved", len(approved))
         # TODO: resolution should run exactly once, after the job is fully settled:
         # - auto_mode / all-above-threshold jobs: trigger immediately after identification (current path, correct).
@@ -122,7 +136,6 @@ class ExtractionOrchestrator:
                     # node_type=None: resolution needs candidates of all types so cross-type
                     # agents (e.g. DECISION→RISK MITIGATES) can find their targets.
                     node,
-                    transcript,
                     node_filter=NodeFilter(node_type=None),
                     exclude_job_id=job_id,
                 )
@@ -170,31 +183,11 @@ class ExtractionOrchestrator:
     def concept_types(self) -> list[ConceptType]:
         return self._config.concept_types
 
-    @async_retry()
-    async def _fetch_transcript(self, blob_key: str) -> str:
-        return (await self._blob.get(blob_key)).decode()
-
-    async def _query(self, node_filter: NodeFilter) -> list[KBNode]:
-        """Paginate through all matching nodes, respecting node_filter.limit as the page size."""
-
-        @async_retry()
-        async def _paginated_query(offset: int) -> list[KBNode]:
-            return await self._kb.query(node_filter.model_copy(update={"offset": offset}))
-
-        results: list[KBNode] = []
-        page_size = node_filter.limit
-        offset = node_filter.offset
-        while True:
-            page = await _paginated_query(offset)
-            results.extend(page)
-            if len(page) < page_size:
-                break
-            offset += page_size
-        return results
-
     async def _fetch_kb_hints(self) -> dict[ConceptType, str]:
         async def _hint_for(concept_type: ConceptType) -> tuple[ConceptType, str]:
-            recent = await self._query(NodeFilter(node_type=concept_type, limit=self._config.max_hint_nodes))
+            recent = await self._kb.paginated_query(
+                NodeFilter(node_type=concept_type, limit=self._config.max_hint_nodes)
+            )
             recent.sort(key=lambda n: n.metadata.meeting_date or date.min, reverse=True)
             return concept_type, _assemble_kb_hint(recent, self._config.max_hint_tokens)
 
@@ -269,27 +262,9 @@ class ExtractionOrchestrator:
             )
 
         t0 = time.perf_counter()
-        logger.debug("Scoring %d nodes (verifier=%s)", len(pending), "enabled" if verification_enabled else "disabled")
+        logger.debug("Scoring %d nodes (verifier %s)", len(pending), "enabled" if verification_enabled else "disabled")
         if verification_enabled:
-            assert self._config.verification is not None
-            sem = asyncio.Semaphore(self._config.verification.max_concurrent_calls)
-
-            async def _verify(pnode: _PendingNode) -> None:
-                assert self._verifier is not None
-                async with sem:
-                    quote_text = _quote_text(pnode.quote_anchors, transcript)
-                    try:
-                        verification_result = await self._verifier.verify(
-                            pnode.title, pnode.description, quote_text, transcript=transcript
-                        )
-                    except VerificationRetryExhaustedError:
-                        logger.warning(
-                            "Verification exhausted retries for %r — skipping (verification_passed=None)", pnode.title
-                        )
-                    else:
-                        pnode.verification = verification_result.supported
-
-            await asyncio.gather(*[_verify(pnode) for pnode in pending])
+            await self._run_verification(pending, transcript)
 
         for pnode in pending:
             pnode.breakdown = ConfidenceBreakdown(
@@ -309,6 +284,27 @@ class ExtractionOrchestrator:
         )
         return nodes
 
+    async def _run_verification(self, pending: list[_PendingNode], transcript: str) -> None:
+        assert self._config.verification is not None
+        sem = asyncio.Semaphore(self._config.verification.max_concurrent_calls)
+
+        async def _verify(pnode: _PendingNode) -> None:
+            assert self._verifier is not None
+            async with sem:
+                quote_text = _quote_text(pnode.quote_anchors, transcript)
+                try:
+                    verification_result = await self._verifier.verify(
+                        pnode.title, pnode.description, quote_text, transcript=transcript
+                    )
+                except VerificationRetryExhaustedError:
+                    logger.warning(
+                        "Verification exhausted retries for %r — skipping (verification_passed=None)", pnode.title
+                    )
+                else:
+                    pnode.verification = verification_result.supported
+
+        await asyncio.gather(*[_verify(pnode) for pnode in pending])
+
 
 def _build_relationship(rel: ResolvedRelationship, job_id: str) -> KBRelationship:
     return KBRelationship(
@@ -326,7 +322,7 @@ def _assemble_kb_hint(nodes: list[KBNode], max_hint_tokens: int) -> str:
     for node in nodes:
         date_tag = node.metadata.meeting_date.isoformat() if node.metadata.meeting_date else "unknown"
         snippet = f"{node.title} (date {date_tag}): {node.description[:80]}"
-        cost = len(snippet) // 4
+        cost = count_tokens(snippet)
         if used + cost > max_hint_tokens:
             break
         lines.append(snippet)

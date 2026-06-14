@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 import mlflow
@@ -13,7 +14,6 @@ from seshat.utils.hashing import fingerprint
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from mlflow.entities.span import LiveSpan
     from mlflow.tracking.fluent import ActiveModel
@@ -139,8 +139,6 @@ def make_input_redactor(
 
 def _log_breakdown_artifact(breakdown: dict, run_id: str) -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
-        breakdown_path = f"{tmp_dir}/breakdown.json"
-        with open(breakdown_path, "w") as f:
-            json.dump(breakdown, f, indent=2)
-
-        mlflow.log_artifact(breakdown_path, artifact_path="eval", run_id=run_id)
+        breakdown_path = Path(tmp_dir) / "breakdown.json"
+        breakdown_path.write_text(json.dumps(breakdown, indent=2))
+        mlflow.log_artifact(str(breakdown_path), artifact_path="eval", run_id=run_id)

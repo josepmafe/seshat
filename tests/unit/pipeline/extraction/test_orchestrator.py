@@ -6,7 +6,6 @@ import pytest
 from seshat.agents.identification.base import IdentificationRetryExhaustedError
 from seshat.agents.verification import VerificationRetryExhaustedError
 from seshat.config.settings import ExtractionConfig, VerificationLLMConfig
-from seshat.models.api import NodeFilter
 from seshat.models.enums import ApprovalMethod, ConceptType, NodeStatus
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator, _assemble_kb_hint
 from tests.helpers import make_anchored_concept, make_doc, make_node
@@ -54,7 +53,7 @@ def _make_orchestrator(
     node_retriever.max_concurrent_retrievals = 10
 
     kb_store = MagicMock()
-    kb_store.query = AsyncMock(return_value=kb_approved_nodes or [])
+    kb_store.paginated_query = AsyncMock(return_value=kb_approved_nodes or [])
 
     blob_store = MagicMock()
     blob_store.get = AsyncMock(return_value=TRANSCRIPT.encode())
@@ -71,7 +70,6 @@ def _make_orchestrator(
 
 
 class TestExtractionOrchestrator:
-    @pytest.mark.asyncio
     async def test_returns_nodes_from_extraction(self):
         concept = _make_concept("Use PostgreSQL", quote="use PostgreSQL")
         orchestrator = _make_orchestrator(extraction_results=[concept])
@@ -83,7 +81,6 @@ class TestExtractionOrchestrator:
         assert result.nodes[0].metadata.job_id == "job-1"
         assert result.nodes[0].metadata.confidence_breakdown.verification_enabled is False
 
-    @pytest.mark.asyncio
     async def test_empty_extraction_returns_empty_result(self):
         orchestrator = _make_orchestrator(extraction_results=[])
 
@@ -91,7 +88,6 @@ class TestExtractionOrchestrator:
 
         assert result.nodes == []
 
-    @pytest.mark.asyncio
     async def test_failed_extraction_tasks_land_in_failed_concept_types(self):
         """Both generic exceptions and IdentificationRetryExhaustedError populate failed_concept_types."""
         good_agent = MagicMock()
@@ -124,7 +120,6 @@ class TestExtractionOrchestrator:
         assert ConceptType.ACTION_ITEM in result.failed_concept_types
         assert ConceptType.RISK in result.failed_concept_types
 
-    @pytest.mark.asyncio
     async def test_empty_extraction_result_not_counted_as_failure(self):
         agent = MagicMock()
         agent.identify = AsyncMock(return_value=[])
@@ -142,7 +137,6 @@ class TestExtractionOrchestrator:
         assert result.nodes == []
         assert result.failed_concept_types == []
 
-    @pytest.mark.asyncio
     async def test_auto_mode_assigns_auto_approved_status(self):
         concept = _make_concept("Use PostgreSQL")
         orchestrator = _make_orchestrator(extraction_results=[concept], auto_mode=True, confidence_threshold=0.0)
@@ -153,7 +147,6 @@ class TestExtractionOrchestrator:
         assert node.status == NodeStatus.APPROVED
         assert node.metadata.approval_method == ApprovalMethod.AUTO
 
-    @pytest.mark.asyncio
     async def test_high_confidence_assigns_threshold_approval(self):
         concept = _make_concept("Use PostgreSQL", quote="use PostgreSQL")
         orchestrator = _make_orchestrator(
@@ -167,7 +160,6 @@ class TestExtractionOrchestrator:
         assert node.status == NodeStatus.APPROVED
         assert node.metadata.approval_method == ApprovalMethod.THRESHOLD
 
-    @pytest.mark.asyncio
     async def test_low_confidence_assigns_pending_review(self):
         concept = _make_concept("maybe something", description="unclear")
         orchestrator = _make_orchestrator(
@@ -179,7 +171,6 @@ class TestExtractionOrchestrator:
 
         assert result.nodes[0].status == NodeStatus.PENDING_REVIEW
 
-    @pytest.mark.asyncio
     async def test_relationships_built_from_resolution(self):
         from seshat.agents.resolution.base import ResolvedRelationship
         from seshat.models.enums import RelationshipType
@@ -205,7 +196,6 @@ class TestExtractionOrchestrator:
         assert len(result.relationships) == 1
         assert result.relationships[0].rel_type == RelationshipType.SUPERSEDES
 
-    @pytest.mark.asyncio
     async def test_verification_called_when_verifier_present(self):
         from seshat.agents.verification import VerificationResult
 
@@ -222,7 +212,6 @@ class TestExtractionOrchestrator:
         assert len(result.nodes) == 1
         assert result.nodes[0].metadata.confidence_breakdown.verification_enabled is True
 
-    @pytest.mark.asyncio
     async def test_verification_exhausted_retries_leaves_node_with_heuristics_only(self):
         concept = _make_concept("Use PostgreSQL", quote="use PostgreSQL")
 
@@ -240,7 +229,6 @@ class TestExtractionOrchestrator:
         assert result.nodes[0].metadata.confidence_breakdown.verification_passed is None
         assert result.nodes[0].metadata.confidence_breakdown.verification_enabled is True
 
-    @pytest.mark.asyncio
     async def test_verification_supported_node_approved_unsupported_rejected_in_auto_mode(self):
         from seshat.agents.verification import VerificationResult
 
@@ -269,7 +257,6 @@ class TestExtractionOrchestrator:
         assert result_supported.nodes[0].status == NodeStatus.APPROVED
         assert result_unsupported.nodes[0].status == NodeStatus.REJECTED
 
-    @pytest.mark.asyncio
     async def test_nodes_by_type_counts_per_type(self):
         concepts = [
             _make_concept("Use PostgreSQL"),
@@ -281,7 +268,6 @@ class TestExtractionOrchestrator:
 
         assert result.nodes_by_type[ConceptType.DECISION] == 2
 
-    @pytest.mark.asyncio
     async def test_nodes_by_type_zero_for_configured_type_with_no_results(self):
         orchestrator = _make_orchestrator(
             extraction_results=[],
@@ -293,7 +279,6 @@ class TestExtractionOrchestrator:
         assert result.nodes_by_type[ConceptType.DECISION] == 0
         assert result.nodes_by_type[ConceptType.RISK] == 0
 
-    @pytest.mark.asyncio
     async def test_resolution_retrieves_without_type_filter(self):
         approved_node = make_node("n1", status=NodeStatus.APPROVED)
         orchestrator = _make_orchestrator(kb_approved_nodes=[approved_node])
@@ -304,7 +289,6 @@ class TestExtractionOrchestrator:
         node_filter = call_kwargs["node_filter"]
         assert node_filter.node_type is None
 
-    @pytest.mark.asyncio
     async def test_resolution_failed_sources_propagated_to_result(self):
         from seshat.models.nodes import FailedResolutionSource
 
@@ -320,47 +304,16 @@ class TestExtractionOrchestrator:
         assert len(result.failed_sources) == 1
         assert result.failed_sources[0].node_id == approved_node.id
 
-    @pytest.mark.asyncio
     async def test_run_resolution_with_no_approved_nodes_returns_empty(self):
         orchestrator = _make_orchestrator()
-        orchestrator._kb.query = AsyncMock(return_value=[])
+        orchestrator._kb.paginated_query = AsyncMock(return_value=[])
 
         result = await orchestrator.run_resolution(make_doc(), job_id="job-1")
 
         assert result.relationships == []
 
-    @pytest.mark.asyncio
-    async def test_query_paginates_across_multiple_pages(self):
-        page_size = 10
-        page_one = [make_node(f"n{i}") for i in range(page_size)]
-        page_two = [make_node(f"n{i}") for i in range(page_size, page_size + 3)]
-
-        orchestrator = _make_orchestrator()
-        orchestrator._kb.query = AsyncMock(side_effect=[page_one, page_two])
-
-        result = await orchestrator._query(NodeFilter(limit=page_size))
-
-        assert len(result) == page_size + 3
-        assert orchestrator._kb.query.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_query_fetches_extra_page_when_last_page_is_full(self):
-        # A full last page is indistinguishable from a page with more data behind it,
-        # so the loop makes one extra call (returning empty) to confirm termination.
-        page_size = 5
-        full_page = [make_node(f"n{i}") for i in range(page_size)]
-
-        orchestrator = _make_orchestrator()
-        orchestrator._kb.query = AsyncMock(side_effect=[full_page, []])
-
-        result = await orchestrator._query(NodeFilter(limit=page_size))
-
-        assert len(result) == page_size
-        assert orchestrator._kb.query.call_count == 2
-
 
 class TestJobTimeout:
-    @pytest.mark.asyncio
     async def test_extraction_raises_timeout_when_exceeded(self):
         async def _slow(*_args, **_kwargs):
             await asyncio.sleep(10)
@@ -380,7 +333,6 @@ class TestJobTimeout:
         with pytest.raises(asyncio.TimeoutError):
             await orchestrator.run_identification(make_doc(), job_id="job-1")
 
-    @pytest.mark.asyncio
     async def test_resolution_raises_timeout_when_exceeded(self):
         async def _slow(*_args, **_kwargs):
             await asyncio.sleep(10)
@@ -396,7 +348,6 @@ class TestJobTimeout:
 class TestKbHintIsolation:
     """KB hint fetching happens in _run_identification, not inside _identify_concept_type."""
 
-    @pytest.mark.asyncio
     async def test_identify_concept_type_accepts_kb_hint_and_does_not_query_kb(self):
         """_identify_concept_type takes kb_hint as a parameter and never calls the KB itself."""
         concept = _make_concept("Use PostgreSQL", quote="use PostgreSQL")
@@ -414,16 +365,15 @@ class TestKbHintIsolation:
             TRANSCRIPT, "blob-key", ConceptType.DECISION, "job-1", kb_hint="prebuilt hint"
         )
 
-        orchestrator._kb.query.assert_not_called()
+        orchestrator._kb.paginated_query.assert_not_called()
         args, _ = agent.identify.call_args
         assert args[1] == "prebuilt hint"
 
-    @pytest.mark.asyncio
     async def test_run_identification_gathers_kb_hints_before_agent_calls(self):
         """KB queries for all concept types are issued before any agent.identify call."""
         call_log: list[str] = []
 
-        async def tracking_query(*args, **kwargs):
+        async def tracking_query(_node_filter):
             call_log.append("kb_query")
             return []
 
@@ -440,7 +390,7 @@ class TestKbHintIsolation:
             extraction_registry=registry,
             concept_types=[ConceptType.DECISION, ConceptType.RISK],
         )
-        orchestrator._kb.query = tracking_query
+        orchestrator._kb.paginated_query = tracking_query
 
         await orchestrator.run_identification(make_doc(), job_id="job-1")
 

@@ -46,7 +46,6 @@ def _make_agent(llm, grouped_identification_types=frozenset(), **llm_kwargs) -> 
 
 
 class TestBaseIdentificationAgent:
-    @pytest.mark.asyncio
     async def test_identify_returns_anchored_concepts_on_success(self):
         item = _make_decision()
         llm = make_structured_llm(return_value=DecisionList(items=[item]))
@@ -56,7 +55,6 @@ class TestBaseIdentificationAgent:
         assert len(results) == 1
         assert results[0].item.title == "Use PostgreSQL"
 
-    @pytest.mark.asyncio
     async def test_identify_raises_on_all_retries_fail(self):
         llm = make_structured_llm(side_effect=Exception("LLM error"))
 
@@ -64,7 +62,6 @@ class TestBaseIdentificationAgent:
         with pytest.raises(IdentificationRetryExhaustedError):
             await agent.identify(transcript="text", kb_hint="", transcript_file="test.txt")
 
-    @pytest.mark.asyncio
     async def test_fuzzy_quote_set_when_verbatim_match(self):
         item = _make_decision(quote="transcript text")
         llm = make_structured_llm(return_value=DecisionList(items=[item]))
@@ -75,7 +72,6 @@ class TestBaseIdentificationAgent:
         assert results[0].quote_anchor.char_start == 0
         assert results[0].quote_anchor.char_end == len("transcript text")
 
-    @pytest.mark.asyncio
     async def test_fuzzy_quote_none_when_no_match(self):
         item = _make_decision(quote="something not in transcript")
         llm = make_structured_llm(return_value=DecisionList(items=[item]))
@@ -84,7 +80,6 @@ class TestBaseIdentificationAgent:
         results = await agent.identify(transcript="transcript text", kb_hint="", transcript_file="test.txt")
         assert results[0].quote_anchor is None
 
-    @pytest.mark.asyncio
     async def test_identify_routes_through_grouping_when_type_in_config(self):
         from seshat.agents.identification.grouping import ConceptGroup, _GroupingSchema, _GroupSchema
 
@@ -110,7 +105,6 @@ class TestBaseIdentificationAgent:
         assert isinstance(results[0], ConceptGroup)
         assert results[0].group_title == "Storage"
 
-    @pytest.mark.asyncio
     async def test_identify_skips_grouping_when_type_not_in_config(self):
         item = _make_decision()
         llm = make_structured_llm(return_value=DecisionList(items=[item]))

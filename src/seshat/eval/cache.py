@@ -55,6 +55,8 @@ async def read_or_run(
         coro.close()
         logger.debug("Cache hit in %r call: using result from %s", coro.__name__, cache_fp)
         return model_cls.model_validate_json(cache_fp.read_text()), cache_fp  # noqa: ASYNC240
+
+    logger.debug("Cache miss in %r call: running coroutine and caching result to %s", coro.__name__, cache_fp)
     result = await coro
     cache_fp.write_text(result.model_dump_json())  # noqa: ASYNC240
     return result, cache_fp
@@ -70,10 +72,12 @@ def sweep_stale_entries(cache_dir: Path, corpus_ids: list[str], touched: set[Pat
     for corpus_id in corpus_ids:
         for f in cache_dir.glob(f"{corpus_id}_*.json"):
             if f not in touched:
+                logger.debug("Removing stale cache file %s", f)
                 f.unlink(missing_ok=True)
 
 
 def clear_cache_dir(cache_dir: Path) -> None:
     """Delete all files in the cache directory. Use with caution."""
+    logger.info("Clearing cache directory %s", cache_dir)
     for f in cache_dir.glob("*.json"):
         f.unlink(missing_ok=True)

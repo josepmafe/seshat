@@ -177,7 +177,6 @@ def _decision_result(source_id: str, target_id: str, rel_type: RelationshipType)
 
 
 class TestResolve:
-    @pytest.mark.asyncio
     async def test_empty_source_nodes_returns_empty(self):
         agent = _make_agent_with_llm()
         node = make_node("n1")
@@ -188,7 +187,6 @@ class TestResolve:
         assert failed == []
         assert agent._llm.with_structured_output.call_count == 0
 
-    @pytest.mark.asyncio
     async def test_empty_per_source_targets_returns_empty(self):
         agent = _make_agent_with_llm()
         node = make_node("n1")
@@ -199,7 +197,6 @@ class TestResolve:
         assert failed == []
         assert agent._llm.with_structured_output.call_count == 0
 
-    @pytest.mark.asyncio
     async def test_successful_resolution_returns_relationships(self):
         src = make_node("src")
         tgt = make_node("tgt")
@@ -214,7 +211,6 @@ class TestResolve:
         assert rels[0].target_id == tgt.id
         assert failed == []
 
-    @pytest.mark.asyncio
     async def test_source_excluded_from_its_own_targets(self):
         node = make_node("n1")
         agent = _make_agent_with_llm()
@@ -225,7 +221,6 @@ class TestResolve:
         assert failed == []
         assert agent._llm.with_structured_output.call_count == 0
 
-    @pytest.mark.asyncio
     async def test_per_source_candidates_restricts_targets(self):
         src = make_node("src")
         included = make_node("included")
@@ -241,7 +236,6 @@ class TestResolve:
         context_str = call_args[0][0][1].content
         assert excluded.id.hex not in context_str
 
-    @pytest.mark.asyncio
     async def test_failed_task_is_skipped_other_results_kept(self):
         src1 = make_node("src1")
         src2 = make_node("src2")
@@ -266,7 +260,6 @@ class TestResolve:
 class TestIndexIdMapping:
     """LLM receives positional indices as IDs; _to_relationships restores full UUIDs via id_map."""
 
-    @pytest.mark.asyncio
     async def test_context_uses_positional_indices_not_uuids(self):
         src = make_node("src")
         tgt = make_node("tgt")
@@ -281,7 +274,6 @@ class TestIndexIdMapping:
         assert src.id.hex not in context_str
         assert tgt.id.hex not in context_str
 
-    @pytest.mark.asyncio
     async def test_positional_indices_resolve_to_correct_uuids(self):
         src = make_node("src")
         tgt = make_node("tgt")
@@ -295,7 +287,6 @@ class TestIndexIdMapping:
 
 
 class TestRunForSource:
-    @pytest.mark.asyncio
     async def test_returns_empty_when_only_target_is_source_itself(self):
         node = make_node("n1")
         agent = _make_agent_with_llm()
@@ -305,7 +296,6 @@ class TestRunForSource:
         assert result == []
         assert agent._llm.with_structured_output.call_count == 0
 
-    @pytest.mark.asyncio
     async def test_successful_llm_call_returns_relationships(self):
         src = make_node("src")
         tgt = make_node("tgt")
@@ -317,7 +307,6 @@ class TestRunForSource:
         assert len(result) == 1
         assert result[0].rel_type == RelationshipType.SUPERSEDES
 
-    @pytest.mark.asyncio
     async def test_exhausted_retries_raises(self):
         src = make_node("src")
         tgt = make_node("tgt")

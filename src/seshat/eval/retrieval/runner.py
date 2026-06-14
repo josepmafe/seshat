@@ -16,7 +16,8 @@ from seshat.eval.models import RetrievalScoredResult
 from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.retrieval.scorers import TOP_K, scorer
 from seshat.models.api import NodeFilter
-from seshat.utils.log import get_logger
+from seshat.observability.usage_tracker import track_eval_usage
+from seshat.utils.log import get_logger, set_task_num
 from seshat.utils.retry import async_retry
 
 if TYPE_CHECKING:
@@ -93,13 +94,15 @@ class RetrievalEvalRunner:
         )
         return gate
 
+    @track_eval_usage(label="retrieval")
     async def _run_all_predictions(
         self,
         examples: list[RetrievalCorpusExample],
     ) -> tuple[dict[str, list[str]], set[Path]]:
         result_cache: dict[str, list[str]] = {}
         touched: set[Path] = set()
-        for ex in examples:
+        for task_idx, ex in enumerate(examples):
+            set_task_num(task_idx)
             cache_fp = build_cache_fp(self._config.retrieval_cache_dir, ex)
             scored, used = await read_or_run(cache_fp, RetrievalScoredResult, self._fetch_example(ex))
             threshold = self._config.retrieval_score_threshold or 0.0
@@ -114,7 +117,7 @@ class RetrievalEvalRunner:
         if not seeded:
             return RetrievalScoredResult(results=[])
 
-        query = f"{query_node.title} {query_node.description} {ex.query_node.quote[:80]}".strip()
+        query = f"{query_node.title} {query_node.description}"
         node_filter = NodeFilter(node_type=None)
         uuid_to_slug = {str(v): k for k, v in slug_map.items()}
         try:

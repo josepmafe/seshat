@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from seshat.models.enums import EmbeddingProvider, VectorStoreProvider
+from seshat.observability.usage_tracker import TrackingEmbeddings
 from seshat.secrets.factory import get_secrets_resolver
 from seshat.utils.log import get_logger
 
@@ -26,13 +27,14 @@ def _build_embeddings(index: VectorIndexConfig, config: SeshatConfig) -> Embeddi
         case EmbeddingProvider.OPENAI:
             from langchain_openai import OpenAIEmbeddings
 
-            return OpenAIEmbeddings(model=index.embedding_model, api_key=api_key)
+            raw = OpenAIEmbeddings(model=index.embedding_model, api_key=api_key)
         case EmbeddingProvider.AZURE_OPENAI:
             from langchain_openai import AzureOpenAIEmbeddings
 
-            return AzureOpenAIEmbeddings(azure_deployment=index.embedding_model, api_key=api_key)
+            raw = AzureOpenAIEmbeddings(azure_deployment=index.embedding_model, api_key=api_key)
         case _:
             raise ValueError(f"Unsupported embedding provider: {index.embedding_provider!r}")
+    return TrackingEmbeddings(raw)
 
 
 def get_vector_store(config: SeshatConfig) -> AbstractVectorStore:

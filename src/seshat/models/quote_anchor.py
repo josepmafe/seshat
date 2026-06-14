@@ -27,7 +27,9 @@ class QuoteAnchor(BaseModel):
                 char_end=char_start + len(norm_quote),
             )
 
-        # Fallback: find shortest prefix/suffix that appears only once.
+        # Fallback: find the shortest prefix that appears only once (start anchor), and the
+        # shortest suffix that appears only once (end anchor) by applying the same logic to
+        # the reversed strings, then reversing the result back.
         norm_transcript_rev = norm_transcript[::-1]
         fuzzy_start = cls._unique_anchor(norm_quote, norm_transcript)
         fuzzy_end_rev = cls._unique_anchor(norm_quote[::-1], norm_transcript_rev)

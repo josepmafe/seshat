@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.documents import Document
 from langchain_postgres import PGVector
 
+from seshat.models.api import SearchResult
 from seshat.utils.db import ensure_psycopg_scheme
 from seshat.utils.log import get_logger
 from seshat.vector_store.base_store import AbstractVectorStore
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
     from langchain_core.embeddings import Embeddings
 
     from seshat.config.settings import VectorIndexConfig, VectorStoreConfig
-    from seshat.models.api import NodeFilter, SearchResult
+    from seshat.models.api import NodeFilter
 
 logger = get_logger(__name__)
 
@@ -57,8 +58,6 @@ class PGVectorStore(AbstractVectorStore):
         exclude_job_id: str | None = None,
         score_threshold: float | None = None,
     ) -> list[SearchResult]:
-        from seshat.models.api import SearchResult
-
         filter_dict = _build_filter(node_filter, exclude_job_id)
         results = await self._store.asimilarity_search_with_relevance_scores(
             query, k=top_k, filter=filter_dict, score_threshold=score_threshold
