@@ -43,6 +43,7 @@ class _StubVectorStore(AbstractVectorStore):
 
 
 @pytest.mark.integration
+@pytest.mark.eval
 class TestRetrievalMetaScorerIntegration:
     @pytest.mark.asyncio
     async def test_sweep_end_to_end(self, tmp_path: Path) -> None:

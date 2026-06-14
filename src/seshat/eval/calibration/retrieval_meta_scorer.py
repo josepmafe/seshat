@@ -10,6 +10,7 @@ from seshat.eval.models import RetrievalScoredResult
 from seshat.eval.retrieval.corpus_loader import load_corpus
 from seshat.eval.retrieval.scorers import TOP_K
 from seshat.models.api import SearchResult
+from seshat.observability.usage_tracker import track_eval_usage
 
 if TYPE_CHECKING:
     from seshat.config.eval_settings import EvalConfig
@@ -61,6 +62,7 @@ class RetrievalMetaScorer:
         best_idx = int(np.argmax([p.macro_f2 for p in points]))
         return RetrievalSweepResult(points=points, suggested_threshold=points[best_idx].threshold)
 
+    @track_eval_usage(label="retrieval")
     async def _build_cache(self) -> _Cache:
         """Load scored results from the shared retrieval file cache; run vector store on miss."""
         from seshat.eval.retrieval.runner import RetrievalEvalRunner

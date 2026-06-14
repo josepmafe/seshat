@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pytest
 from pydantic import BaseModel
 
 from seshat.eval.cache import clear_cache_dir, read_or_run, sweep_stale_entries
@@ -20,14 +19,12 @@ async def _coro(value: int) -> _Dummy:
 
 
 class TestReadOrRun:
-    @pytest.mark.asyncio
     async def test_returns_coroutine_result_and_writes_cache_fp(self, tmp_path: Path):
         cache_fp = tmp_path / "entry.json"
         result, _ = await read_or_run(cache_fp, _Dummy, _coro(42))
         assert result.value == 42
         assert cache_fp.exists()
 
-    @pytest.mark.asyncio
     async def test_returns_cached_result_without_running_coroutine(self, tmp_path: Path):
         cache_fp = tmp_path / "entry.json"
         cache_fp.write_text(_Dummy(value=99).model_dump_json())
@@ -43,13 +40,11 @@ class TestReadOrRun:
         assert result.value == 99
         assert not called
 
-    @pytest.mark.asyncio
     async def test_returns_path_of_file_used(self, tmp_path: Path):
         cache_fp = tmp_path / "entry.json"
         _, used = await read_or_run(cache_fp, _Dummy, _coro(1))
         assert used == cache_fp
 
-    @pytest.mark.asyncio
     async def test_returns_path_on_cache_hit(self, tmp_path: Path):
         cache_fp = tmp_path / "entry.json"
         cache_fp.write_text(_Dummy(value=7).model_dump_json())

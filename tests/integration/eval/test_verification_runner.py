@@ -4,7 +4,7 @@ from seshat.eval.models import GateResult
 from tests.integration.conftest import SKIP_IF_NO_LLM_API
 from tests.integration.eval.helpers import make_eval_config, make_verification_runner
 
-pytestmark = [pytest.mark.integration, pytest.mark.llm, pytest.mark.eval, SKIP_IF_NO_LLM_API]
+pytestmark = [pytest.mark.integration, pytest.mark.llm, pytest.mark.agents, pytest.mark.eval, SKIP_IF_NO_LLM_API]
 
 
 class TestVerificationEvalRunner:

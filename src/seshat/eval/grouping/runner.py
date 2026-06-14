@@ -15,6 +15,8 @@ from seshat.eval.grouping.corpus_loader import load_corpus
 from seshat.eval.grouping.scorers import scorer
 from seshat.eval.mlflow_logging import log_eval_run_metadata
 from seshat.models.enums import ConceptType
+from seshat.observability.usage_tracker import track_eval_usage
+from seshat.utils.log import set_task_num
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -92,19 +94,21 @@ class GroupingEvalRunner:
         )
         return gate
 
+    @track_eval_usage(label="grouping")
     async def _run_all_predictions(
         self, examples: list[GroupingCorpusExample]
     ) -> tuple[dict[str, _GroupingCacheEntry], set[Path]]:
         sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
         agent_hash = self._agent.fingerprint()
 
-        async def _run_one(ex: GroupingCorpusExample) -> tuple[str, _GroupingCacheEntry, Path]:
+        async def _run_one(task_idx: int, ex: GroupingCorpusExample) -> tuple[str, _GroupingCacheEntry, Path]:
+            set_task_num(task_idx)
             cache_fp = build_cache_fp(self._config.grouping_cache_dir, ex, agent_hash=agent_hash)
             async with sem:
                 result, used = await read_or_run(cache_fp, _GroupingCacheEntry, _run_grouping(self._agent, ex))
             return ex.corpus_id, result, used
 
-        triples = await asyncio.gather(*(_run_one(ex) for ex in examples))
+        triples = await asyncio.gather(*(_run_one(i, ex) for i, ex in enumerate(examples)))
         results = {corpus_id: result for corpus_id, result, _ in triples}
         touched = {used for _, _, used in triples}
         return results, touched

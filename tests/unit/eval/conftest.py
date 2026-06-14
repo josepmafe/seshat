@@ -11,8 +11,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-pytestmark = pytest.mark.eval
-
 _EVAL_DIR = Path(__file__).parent
 
 

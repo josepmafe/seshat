@@ -14,6 +14,8 @@ from seshat.eval.identification.scorers import scorer
 from seshat.eval.mlflow_logging import configure_trace_processors, log_eval_run_metadata
 from seshat.models.enums import ConceptType
 from seshat.models.nodes import IdentificationResult
+from seshat.observability.usage_tracker import track_eval_usage
+from seshat.utils.log import set_task_num
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -79,6 +81,7 @@ class IdentificationEvalRunner:
         )
         return gate
 
+    @track_eval_usage(label="identification")
     async def _run_all_predictions(
         self, examples: list[IdentificationCorpusExample]
     ) -> tuple[dict[str, IdentificationResult], set[Path]]:
@@ -88,7 +91,8 @@ class IdentificationEvalRunner:
         sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
         agent_hash = self._orchestrator._identification_registry.fingerprint()
 
-        async def _run_one(ex: IdentificationCorpusExample) -> tuple[str, IdentificationResult, Path]:
+        async def _run_one(task_idx: int, ex: IdentificationCorpusExample) -> tuple[str, IdentificationResult, Path]:
+            set_task_num(task_idx)
             cache_fp = build_cache_fp(self._config.identification_cache_dir, ex, agent_hash=agent_hash)
             async with sem:
                 result, used = await read_or_run(
@@ -98,7 +102,7 @@ class IdentificationEvalRunner:
                 )
             return ex.corpus_id, result, used
 
-        triples = await asyncio.gather(*(_run_one(ex) for ex in examples))
+        triples = await asyncio.gather(*(_run_one(i, ex) for i, ex in enumerate(examples)))
         results = {corpus_id: result for corpus_id, result, _ in triples}
         touched = {used for _, _, used in triples}
         return results, touched

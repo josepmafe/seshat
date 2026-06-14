@@ -39,7 +39,7 @@ class TestNodeRetrieverRetrieveCandidates:
             status=NodeStatus.APPROVED,
         )
 
-        results = await node_retriever.retrieve(query_node, "")
+        results = await node_retriever.retrieve(query_node)
 
         assert any(r.id == seeded.id for r in results)
 
@@ -60,7 +60,7 @@ class TestNodeRetrieverRetrieveCandidates:
             status=NodeStatus.APPROVED,
         )
 
-        results = await node_retriever.retrieve(query_node, "")
+        results = await node_retriever.retrieve(query_node)
 
         assert all(r.id != orphan.id for r in results)
 
@@ -91,7 +91,7 @@ class TestNodeRetrieverRetrieveCandidates:
             status=NodeStatus.APPROVED,
         )
 
-        results = await node_retriever.retrieve(query_node, "", exclude_job_id=current_job)
+        results = await node_retriever.retrieve(query_node, exclude_job_id=current_job)
 
         assert all(r.id != current_node.id for r in results)
 
@@ -126,7 +126,7 @@ class TestNodeRetrieverRetrieveCandidates:
             status=NodeStatus.APPROVED,
         )
 
-        results = await retriever.retrieve(query_node, "")
+        results = await retriever.retrieve(query_node)
 
         assert any(r.id == neighbour.id for r in results)
 
@@ -152,6 +152,6 @@ class TestNodeRetrieverRetrieveCandidates:
             status=NodeStatus.APPROVED,
         )
 
-        results = await retriever.retrieve(query_node, "")
+        results = await retriever.retrieve(query_node)
 
         assert len(results) < len(nodes)

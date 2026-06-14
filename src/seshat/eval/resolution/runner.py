@@ -14,6 +14,8 @@ from seshat.eval.resolution.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.resolution.scorers import scorer
 from seshat.models.enums import ConceptType
 from seshat.models.nodes import ResolutionResult
+from seshat.observability.usage_tracker import track_eval_usage
+from seshat.utils.log import set_task_num
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -101,12 +103,14 @@ class ResolutionEvalRunner:
         )
         return gate
 
+    @track_eval_usage(label="resolution")
     async def _run_all_predictions(
         self, examples: list[ResolutionCorpusExample]
     ) -> tuple[dict[str, ResolutionResult], set[Path]]:
         sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
 
-        async def _run_one(ex: ResolutionCorpusExample) -> tuple[str, ResolutionResult, Path]:
+        async def _run_one(task_idx: int, ex: ResolutionCorpusExample) -> tuple[str, ResolutionResult, Path]:
+            set_task_num(task_idx)
             kb_nodes = self._kb_nodes[ex.corpus_id]
             source_nodes = [kb_nodes[n.id] for n in ex.source_nodes]
             kb_target_nodes = [kb_nodes[n.id] for n in ex.kb_nodes]
@@ -125,7 +129,7 @@ class ResolutionEvalRunner:
                 )
             return ex.corpus_id, result, used
 
-        triples = await asyncio.gather(*(_run_one(ex) for ex in examples))
+        triples = await asyncio.gather(*(_run_one(i, ex) for i, ex in enumerate(examples)))
         results = {corpus_id: result for corpus_id, result, _ in triples}
         touched = {used for _, _, used in triples}
         return results, touched

@@ -63,6 +63,7 @@ class ResolutionRegistry:
         (src, tgt) pair where src is in source_types and tgt is in target_types.
         """
         prompts: list[str] = []
+        # sorted for deterministic hash — set iteration order is not guaranteed
         for ct in sorted(source_types & target_types, key=lambda c: c.value):
             if ct in self._same_type._agents:
                 prompts.append(self._same_type._agents[ct]._system_prompt)

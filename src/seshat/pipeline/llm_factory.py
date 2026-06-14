@@ -51,7 +51,7 @@ def _build_llm(llm: _LLMConfig, config: SeshatConfig) -> BaseChatModel:
         kwargs["api_key"] = SecretStr(secrets.get_secret(llm.api_key_secret_key))  # type: ignore[arg-type]
 
     if llm.provider in _PROMPT_CACHING_PROVIDERS:
-        # in case we ever add other kwargs to the LLMConfig, ensure we don't accidentally omit the prompt-caching header
+        # user-supplied model_kwargs win; caching header is the default and is overridden if explicitly set
         model_kwargs = kwargs.get("model_kwargs", {})
         kwargs["model_kwargs"] = {"extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"}} | model_kwargs
 

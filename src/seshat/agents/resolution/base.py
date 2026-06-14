@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, TypeVar
 from uuid import UUID
 
@@ -88,7 +88,7 @@ class ResolvedRelationship(BaseModel):
     rationale: str
 
 
-class _BaseResolutionAgent(_BaseAgent, ABC, Generic[E]):
+class _BaseResolutionAgent(_BaseAgent, Generic[E]):
     """Drives parallel per-source LLM calls and assembles resolved relationships."""
 
     def __init__(self, llm: BaseChatModel, config: ResolutionLLMConfig) -> None:
@@ -98,10 +98,6 @@ class _BaseResolutionAgent(_BaseAgent, ABC, Generic[E]):
     @property
     @abstractmethod
     def _result_model(self) -> type[_ResultBase[E]]: ...
-
-    @property
-    @abstractmethod
-    def _system_prompt(self) -> str: ...
 
     @abstractmethod
     def _validate_relationships(

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import random
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, TypeVar
 
 from pydantic import BaseModel
 
+from seshat.observability.usage_tracker import get_run_tracker
 from seshat.utils.hashing import fingerprint
 from seshat.utils.log import get_logger
 
@@ -24,7 +26,7 @@ class RetryExhaustedError(Exception):
     pass
 
 
-class _BaseAgent:
+class _BaseAgent(ABC):
     """Base class for all LLM-calling agents. Provides a structured-output call with exponential backoff retry."""
 
     def __init__(self, llm: BaseChatModel, config: _LLMConfig) -> None:
@@ -38,8 +40,8 @@ class _BaseAgent:
         return {"system": self._system_prompt}
 
     @property
-    def _system_prompt(self) -> str:
-        raise NotImplementedError
+    @abstractmethod
+    def _system_prompt(self) -> str: ...
 
     async def _retryable_structured_ainvoke(
         self,
@@ -50,23 +52,29 @@ class _BaseAgent:
         on_error_log_prefix: str | None = None,
     ) -> M:
         structured = self._llm.with_structured_output(response_model)
+
+        # add usage tracking callback if a tracker is available in context
+        tracker_callback = get_run_tracker()
+        if tracker_callback is not None:
+            structured = structured.with_config(callbacks=[tracker_callback])
+
         on_error_log_prefix = on_error_log_prefix or response_model.__name__
-        attempts = max(1, self._max_retries)
+        attempts = max(1, self._max_retries)  # run at least once
         for attempt in range(attempts):
             try:
                 result = await structured.ainvoke(messages)
             except Exception as exc:
-                delay = 0.5 * (2**attempt) + random.uniform(0, 0.1)
                 logger.warning(
-                    "%s attempt %d/%d failed — retrying in %.2fs due to %s: %s",
+                    "%s attempt %d/%d failed due to %s: %s",
                     on_error_log_prefix,
                     attempt + 1,
                     attempts,
-                    delay,
                     type(exc).__name__,
                     exc,
                 )
-                await asyncio.sleep(delay)
+                if attempt < attempts - 1:
+                    delay = 0.5 * (2**attempt) + random.uniform(0, 0.1)
+                    await asyncio.sleep(delay)
             else:
                 assert_msg = f"Expected LLM output to be {response_model.__name__}, got {type(result).__name__}"
                 assert isinstance(result, response_model), assert_msg

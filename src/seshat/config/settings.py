@@ -19,6 +19,10 @@ logger = get_logger(__name__)
 class BaseConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
+    def _set_on_frozen_model(self, field: str, value: object) -> None:
+        # Pydantic v2: only valid inside model_validator(mode="after"); bypasses the frozen guard.
+        object.__setattr__(self, field, value)
+
 
 class _LLMConfig(BaseConfig):
     provider: LLMProvider
@@ -38,7 +42,7 @@ class _LLMConfig(BaseConfig):
     @model_validator(mode="after")
     def _default_api_key_secret_key(self) -> "_LLMConfig":
         if self.api_key_secret_key is None:
-            object.__setattr__(self, "api_key_secret_key", f"{self.provider}_api_key")
+            self._set_on_frozen_model("api_key_secret_key", f"{self.provider}_api_key")
         return self
 
 
@@ -94,6 +98,9 @@ class ExtractionConfig(BaseConfig):
     max_total_output_tokens: int = Field(
         default=500_000, gt=0, description="Hard cap on total output tokens generated in one extraction run."
     )
+    max_total_embedding_tokens: int = Field(
+        default=10_000_000, gt=0, description="Hard cap on total embedding input tokens in one extraction run."
+    )
     max_hint_nodes: int = Field(
         default=20, gt=0, description="Maximum number of KB hint nodes injected into the extraction prompt."
     )
@@ -142,7 +149,7 @@ class VectorIndexConfig(BaseConfig):
     @model_validator(mode="after")
     def _default_api_key_secret_key(self) -> "VectorIndexConfig":
         if self.api_key_secret_key is None:
-            object.__setattr__(self, "api_key_secret_key", f"{self.embedding_provider}_api_key")
+            self._set_on_frozen_model("api_key_secret_key", f"{self.embedding_provider}_api_key")
         return self
 
 

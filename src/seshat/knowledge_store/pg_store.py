@@ -14,6 +14,7 @@ import asyncpg
 from seshat.models.enums import GraphDirection, NodeState, RelationshipType
 from seshat.models.nodes import KBNode, KBRelationship
 from seshat.utils.log import get_logger
+from seshat.utils.retry import async_retry
 
 type _Conn = asyncpg.Connection | asyncpg.pool.PoolConnectionProxy
 
@@ -161,6 +162,7 @@ class PostgresKBStore:
         if result == "UPDATE 0":
             raise KeyError(f"update_node_state: node_id={node_id!r} not found")
 
+    @async_retry()
     async def get_node(self, node_id: str) -> KBNode | None:
         logger.debug("Fetching node with node_id=%s", node_id)
 
@@ -170,6 +172,7 @@ class PostgresKBStore:
 
         return self._row_to_node(row)
 
+    @async_retry()
     async def get_neighbours(
         self,
         node_id: str,
@@ -207,6 +210,7 @@ class PostgresKBStore:
         rows = await self.pool.fetch(query, *params)
         return [self._row_to_node(r) for r in rows]
 
+    @async_retry()
     async def query(self, node_filter: NodeFilter) -> list[KBNode]:
         conditions = ["1=1"]
         params: list[object] = []
@@ -250,6 +254,19 @@ class PostgresKBStore:
 
         rows = await self.pool.fetch(query, *params)
         return [self._row_to_node(r) for r in rows]
+
+    async def paginated_query(self, node_filter: NodeFilter) -> list[KBNode]:
+        """Fetch all matching nodes across pages, using node_filter.limit as the page size."""
+        results: list[KBNode] = []
+        page_size = node_filter.limit
+        offset = node_filter.offset
+        while True:
+            page = await self.query(node_filter.model_copy(update={"offset": offset}))
+            results.extend(page)
+            if len(page) < page_size:
+                break
+            offset += page_size
+        return results
 
     @staticmethod
     def _node_to_row_args(node: KBNode, created_at: datetime) -> tuple:

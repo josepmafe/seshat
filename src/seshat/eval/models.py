@@ -111,15 +111,23 @@ class GateResult(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def passed(self) -> bool:
-        if self._all_metrics_are_none():
+        all_metrics = [
+            self.identification_metrics,
+            self.resolution_metrics,
+            self.retrieval_metrics,
+            self.verification_metrics,
+            self.grouping_metrics,
+        ]
+        if all(metric is None for metric in all_metrics):
             return False
-        return (
-            self._identification_passes()
-            and self._resolution_passes()
-            and self._retrieval_passes()
-            and self._grouping_passes()
-            and self._verification_passes()
-        )
+
+        for harness_metrics in all_metrics:
+            if harness_metrics is None:
+                continue
+            if not all(entry.passed for entry in harness_metrics.values()):
+                return False
+
+        return True
 
     def model_post_init(self, __context: object) -> None:
         if not self.timestamp:
@@ -130,37 +138,3 @@ class GateResult(BaseModel):
         payload = self.model_dump(exclude={"passed", "validation_hash"})
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(serialized.encode()).hexdigest()[:16]
-
-    def _all_metrics_are_none(self) -> bool:
-        return (
-            self.identification_metrics is None
-            and self.resolution_metrics is None
-            and self.retrieval_metrics is None
-            and self.verification_metrics is None
-            and self.grouping_metrics is None
-        )
-
-    def _identification_passes(self) -> bool:
-        if self.identification_metrics is None:
-            return True
-        return all(e.passed for e in self.identification_metrics.values())
-
-    def _resolution_passes(self) -> bool:
-        if self.resolution_metrics is None:
-            return True
-        return all(e.passed for e in self.resolution_metrics.values())
-
-    def _retrieval_passes(self) -> bool:
-        if self.retrieval_metrics is None:
-            return True
-        return all(e.passed for e in self.retrieval_metrics.values())
-
-    def _grouping_passes(self) -> bool:
-        if self.grouping_metrics is None:
-            return True
-        return all(e.passed for e in self.grouping_metrics.values())
-
-    def _verification_passes(self) -> bool:
-        if self.verification_metrics is None:
-            return True
-        return all(e.passed for e in self.verification_metrics.values())

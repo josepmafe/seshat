@@ -16,6 +16,7 @@ from seshat.eval.identification.corpus_loader import load_corpus
 from seshat.eval.identification.matcher import match_nodes
 from seshat.models.enums import ConceptType
 from seshat.models.nodes import IdentificationResult
+from seshat.observability.usage_tracker import track_eval_usage
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -93,6 +94,7 @@ class IdentificationMetaScorer:
 
         return IdentificationSweepResult(points=points, suggested_threshold=best.threshold)
 
+    @track_eval_usage(label="identification")
     async def _build_cache(self) -> _Cache:
         """Run identification pipeline once per corpus example; use file cache when available."""
         examples = load_corpus(self._config.identification_corpus_dir)

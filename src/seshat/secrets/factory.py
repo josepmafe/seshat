@@ -20,6 +20,8 @@ def get_secrets_resolver(config: SeshatConfig) -> AbstractSecretsResolver:
 
 @lru_cache(maxsize=1)
 def _cached_resolver(config: SecretsConfig) -> AbstractSecretsResolver:
+    # Split from get_secrets_resolver so lru_cache operates on the hashable SecretsConfig,
+    # not the full SeshatConfig which is unhashable.
     logger.debug("Initialising secrets resolver: %s", config.provider)
     match config.provider:
         case SecretsProvider.ENV:

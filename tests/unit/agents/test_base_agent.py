@@ -14,6 +14,10 @@ class _ConcreteAgent(_BaseAgent):
     def __init__(self, llm, max_retries: int = 3) -> None:
         super().__init__(llm=llm, config=IdentificationLLMConfig(max_retries=max_retries))
 
+    @property
+    def _system_prompt(self) -> str:
+        return ""
+
 
 def _make_agent(side_effect=None, return_value=None, max_retries: int = 3) -> _ConcreteAgent:
     return _ConcreteAgent(
@@ -22,7 +26,6 @@ def _make_agent(side_effect=None, return_value=None, max_retries: int = 3) -> _C
 
 
 class TestRetryableStructuredAinvoke:
-    @pytest.mark.asyncio
     async def test_returns_result_on_first_success(self):
         expected = VerificationResult(supported=True)
         agent = _make_agent(return_value=expected)
@@ -35,7 +38,6 @@ class TestRetryableStructuredAinvoke:
 
         assert result is expected
 
-    @pytest.mark.asyncio
     async def test_retries_on_failure_and_succeeds(self):
         expected = VerificationResult(supported=True)
         agent = _make_agent(side_effect=[Exception("fail"), expected])
@@ -48,7 +50,6 @@ class TestRetryableStructuredAinvoke:
 
         assert result is expected
 
-    @pytest.mark.asyncio
     async def test_raises_exhaustion_error_after_all_retries_fail(self):
         exhaustion = RetryExhaustedError("all retries exhausted")
         agent = _make_agent(side_effect=Exception("always fails"), max_retries=2)
@@ -60,7 +61,6 @@ class TestRetryableStructuredAinvoke:
                 raise_on_exhaustion=exhaustion,
             )
 
-    @pytest.mark.asyncio
     async def test_sleeps_between_retry_attempts(self):
         exhaustion = RetryExhaustedError("exhausted")
         agent = _make_agent(side_effect=Exception("fail"), max_retries=3)
@@ -75,4 +75,4 @@ class TestRetryableStructuredAinvoke:
                 raise_on_exhaustion=exhaustion,
             )
 
-        assert mock_sleep.call_count == 3  # one sleep per attempt, including the final failed one
+        assert mock_sleep.call_count == 2  # no sleep after the final failed attempt
