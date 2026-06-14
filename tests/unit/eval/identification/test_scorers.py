@@ -96,87 +96,46 @@ class TestIdentificationScorer:
 
 
 class TestFieldAccuracyFeedback:
-    def test_decision_set_field_alternatives_considered_perfect(self):
-        # DECISION matched; alternatives_considered in extra_fields → set-field score = 1.0
+    @pytest.mark.parametrize(
+        ("quote", "ctype", "predicted_fields", "expected_fields", "expected_key", "expected_score"),
+        [
+            (
+                _DECISION_QUOTE,
+                ConceptType.DECISION,
+                {"alternatives_considered": ["MySQL", "SQLite"]},
+                {"alternatives_considered": ["MySQL", "SQLite"]},
+                "decision.alternatives_considered",
+                1.0,
+            ),
+            (
+                _DECISION_QUOTE,
+                ConceptType.DECISION,
+                {"alternatives_considered": ["MySQL"]},
+                {"alternatives_considered": ["MySQL", "SQLite"]},
+                "decision.alternatives_considered",
+                0.5,
+            ),
+            (_RISK_QUOTE, ConceptType.RISK, {"type": "future"}, {"type": "future"}, "risk.type", 1.0),
+            (_RISK_QUOTE, ConceptType.RISK, {"type": "blocker"}, {"type": "future"}, "risk.type", 0.0),
+            (
+                _DECISION_QUOTE,
+                ConceptType.ACTION_ITEM,
+                {"assignee": "Alice"},
+                {"assignee": "Alice"},
+                "action_item.assignee",
+                1.0,
+            ),
+        ],
+    )
+    def test_field_accuracy(self, quote, ctype, predicted_fields, expected_fields, expected_key, expected_score):
         inputs = {"transcript": TRANSCRIPT, "corpus_id": "001"}
-        outputs = {
-            "nodes": [
-                _node_with_concept_fields(
-                    _DECISION_QUOTE, ConceptType.DECISION, {"alternatives_considered": ["MySQL", "SQLite"]}
-                )
-            ]
-        }
+        outputs = {"nodes": [_node_with_concept_fields(quote, ctype, predicted_fields)]}
         expectations = {
-            "expected_nodes": [
-                corpus_node(
-                    _DECISION_QUOTE, ConceptType.DECISION, extra_fields={"alternatives_considered": ["MySQL", "SQLite"]}
-                ).model_dump(mode="json")
-            ]
+            "expected_nodes": [corpus_node(quote, ctype, extra_fields=expected_fields).model_dump(mode="json")]
         }
         feedbacks = scorer(inputs=inputs, outputs=outputs, expectations=expectations)
         by_name = {f.name: f.value for f in feedbacks}
-        assert by_name["decision.alternatives_considered"] == pytest.approx(1.0)
-
-    def test_decision_set_field_alternatives_considered_partial(self):
-        # Only one of two expected alternatives predicted → score = 0.5
-        inputs = {"transcript": TRANSCRIPT, "corpus_id": "001"}
-        outputs = {
-            "nodes": [
-                _node_with_concept_fields(_DECISION_QUOTE, ConceptType.DECISION, {"alternatives_considered": ["MySQL"]})
-            ]
-        }
-        expectations = {
-            "expected_nodes": [
-                corpus_node(
-                    _DECISION_QUOTE, ConceptType.DECISION, extra_fields={"alternatives_considered": ["MySQL", "SQLite"]}
-                ).model_dump(mode="json")
-            ]
-        }
-        feedbacks = scorer(inputs=inputs, outputs=outputs, expectations=expectations)
-        by_name = {f.name: f.value for f in feedbacks}
-        assert by_name["decision.alternatives_considered"] == pytest.approx(0.5)
-
-    def test_risk_exact_field_type_match(self):
-        # RISK matched; type exact field correct → score = 1.0
-        inputs = {"transcript": TRANSCRIPT, "corpus_id": "001"}
-        outputs = {"nodes": [_node_with_concept_fields(_RISK_QUOTE, ConceptType.RISK, {"type": "future"})]}
-        expectations = {
-            "expected_nodes": [
-                corpus_node(_RISK_QUOTE, ConceptType.RISK, extra_fields={"type": "future"}).model_dump(mode="json")
-            ]
-        }
-        feedbacks = scorer(inputs=inputs, outputs=outputs, expectations=expectations)
-        by_name = {f.name: f.value for f in feedbacks}
-        assert by_name["risk.type"] == pytest.approx(1.0)
-
-    def test_risk_exact_field_type_mismatch(self):
-        # RISK matched but predicted wrong type value → score = 0.0
-        inputs = {"transcript": TRANSCRIPT, "corpus_id": "001"}
-        outputs = {"nodes": [_node_with_concept_fields(_RISK_QUOTE, ConceptType.RISK, {"type": "blocker"})]}
-        expectations = {
-            "expected_nodes": [
-                corpus_node(_RISK_QUOTE, ConceptType.RISK, extra_fields={"type": "future"}).model_dump(mode="json")
-            ]
-        }
-        feedbacks = scorer(inputs=inputs, outputs=outputs, expectations=expectations)
-        by_name = {f.name: f.value for f in feedbacks}
-        assert by_name["risk.type"] == pytest.approx(0.0)
-
-    def test_action_item_fuzzy_field_assignee_present(self):
-        # ACTION_ITEM matched; assignee fuzzy score > 0 when names match
-        action_quote = "We decided to use PostgreSQL for all operational data."
-        inputs = {"transcript": TRANSCRIPT, "corpus_id": "001"}
-        outputs = {"nodes": [_node_with_concept_fields(action_quote, ConceptType.ACTION_ITEM, {"assignee": "Alice"})]}
-        expectations = {
-            "expected_nodes": [
-                corpus_node(action_quote, ConceptType.ACTION_ITEM, extra_fields={"assignee": "Alice"}).model_dump(
-                    mode="json"
-                )
-            ]
-        }
-        feedbacks = scorer(inputs=inputs, outputs=outputs, expectations=expectations)
-        by_name = {f.name: f.value for f in feedbacks}
-        assert by_name["action_item.assignee"] == pytest.approx(1.0)
+        assert by_name[expected_key] == pytest.approx(expected_score)
 
 
 class TestNegativeCheckFeedback:

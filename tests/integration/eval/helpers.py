@@ -86,6 +86,17 @@ def make_grouping_runner(config: EvalConfig) -> GroupingEvalRunner:
     return GroupingEvalRunner(agent=agent, config=config)
 
 
+def make_identification_meta_scorer(config: EvalConfig):
+    from seshat.eval.calibration.identification_meta_scorer import IdentificationMetaScorer
+
+    id_config = cheap_identification_config()
+    res_config = cheap_resolution_config()
+    extraction_config = ExtractionConfig(
+        identification=id_config, resolution=res_config, grouped_identification_types=set()
+    )
+    return IdentificationMetaScorer(orchestrator=_make_eval_orchestrator(extraction_config), config=config, step=0.1)
+
+
 def make_eval_config(tmp_path: Path, experiment_name: str = "seshat-eval-test") -> EvalConfig:
     return EvalConfig(
         corpus_base_dir=CORPUS_BASE_DIR,

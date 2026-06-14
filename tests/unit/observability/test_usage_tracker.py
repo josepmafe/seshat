@@ -34,7 +34,6 @@ def _result(
 
 
 class TestUsageTracker:
-    @pytest.mark.asyncio
     async def test_accumulates_tokens(self):
         tracker = UsageTracker(max_input_tokens=1000, max_output_tokens=500)
         await tracker.add(input_tokens=100, output_tokens=50)
@@ -42,7 +41,6 @@ class TestUsageTracker:
         assert tracker.input_tokens == 300
         assert tracker.output_tokens == 130
 
-    @pytest.mark.asyncio
     async def test_accumulates_cache_tokens(self):
         tracker = UsageTracker(max_input_tokens=1000, max_output_tokens=500)
         await tracker.add(input_tokens=0, output_tokens=0, cache_read_tokens=40, cache_creation_tokens=10)
@@ -68,7 +66,6 @@ class TestUsageTracker:
         with pytest.raises(TokenBudgetExceededError, match="Output token cap exceeded"):
             tracker.check_caps()
 
-    @pytest.mark.asyncio
     async def test_accumulates_embedding_tokens(self):
         tracker = UsageTracker(max_input_tokens=1000, max_output_tokens=500)
         await tracker.add(embedding_input_tokens=120)
@@ -84,7 +81,6 @@ class TestUsageTracker:
 
 
 class TestTokenBudgetCallback:
-    @pytest.mark.asyncio
     async def test_accumulates_from_llm_result(self):
         tracker = UsageTracker(max_input_tokens=10_000, max_output_tokens=10_000)
         callback = TokenBudgetCallback(tracker)
@@ -94,7 +90,6 @@ class TestTokenBudgetCallback:
         assert tracker.input_tokens == 42
         assert tracker.output_tokens == 17
 
-    @pytest.mark.asyncio
     async def test_accumulates_cache_tokens_from_llm_result(self):
         tracker = UsageTracker(max_input_tokens=10_000, max_output_tokens=10_000)
         callback = TokenBudgetCallback(tracker)
@@ -104,7 +99,6 @@ class TestTokenBudgetCallback:
         assert tracker.cache_read_tokens == 30
         assert tracker.cache_creation_tokens == 20
 
-    @pytest.mark.asyncio
     async def test_skips_generation_without_usage_metadata(self):
         tracker = UsageTracker(max_input_tokens=10_000, max_output_tokens=10_000)
         callback = TokenBudgetCallback(tracker)
@@ -117,7 +111,6 @@ class TestTokenBudgetCallback:
 
 
 class TestTrackTokenBudget:
-    @pytest.mark.asyncio
     async def test_sets_run_tracker_before_fn(self):
         captured = []
 
@@ -130,7 +123,6 @@ class TestTrackTokenBudget:
         assert len(captured) == 1
         assert captured[0] is not None
 
-    @pytest.mark.asyncio
     async def test_raises_on_cap_exceeded(self):
         class _Obj:
             @track_token_budget(label="test", max_input_fn=lambda self: 10, max_output_fn=lambda self: 10)
@@ -142,7 +134,6 @@ class TestTrackTokenBudget:
         with pytest.raises(TokenBudgetExceededError):
             await _Obj().run()
 
-    @pytest.mark.asyncio
     async def test_does_not_raise_within_overage_allowance(self):
         class _Obj:
             @track_token_budget(label="test", max_input_fn=lambda self: 1000, max_output_fn=lambda self: 500)
@@ -153,7 +144,6 @@ class TestTrackTokenBudget:
 
         await _Obj().run()  # should not raise
 
-    @pytest.mark.asyncio
     async def test_tracker_isolated_per_call(self):
         trackers = []
 

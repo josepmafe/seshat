@@ -7,6 +7,7 @@ from tests.integration.eval.helpers import make_eval_config
 
 pytestmark = [
     pytest.mark.integration,
+    pytest.mark.llm,
     pytest.mark.embedding,
     pytest.mark.eval,
     SKIP_IF_NO_POSTGRES,

@@ -1,7 +1,5 @@
 import logging
 
-import pytest
-
 from seshat.agents.identification.grouping import GroupingAgent, _GroupingSchema, _GroupSchema
 from seshat.config.settings import IdentificationLLMConfig
 from seshat.models.enums import ConceptType
@@ -16,7 +14,6 @@ def _make_agent(return_value=None, side_effect=None, max_retries: int = 2) -> Gr
 
 
 class TestGroupingAgent:
-    @pytest.mark.asyncio
     async def test_empty_input_returns_empty_without_calling_llm(self):
         llm = make_structured_llm()
         agent = GroupingAgent(llm=llm, config=IdentificationLLMConfig())
@@ -26,7 +23,6 @@ class TestGroupingAgent:
         assert result == []
         llm.with_structured_output.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_groups_assembled_from_llm_response(self):
         concepts = [make_anchored_concept("Use PostgreSQL"), make_anchored_concept("Use Redis")]
         schema = _GroupingSchema(
@@ -44,7 +40,6 @@ class TestGroupingAgent:
         assert result[0].members[0].item.title == "Use PostgreSQL"
         assert result[0].members[1].item.title == "Use Redis"
 
-    @pytest.mark.asyncio
     async def test_unknown_member_ids_are_silently_dropped(self):
         concepts = [make_anchored_concept("Use PostgreSQL")]
         schema = _GroupingSchema(
@@ -58,7 +53,6 @@ class TestGroupingAgent:
 
         assert len(result[0].members) == 1
 
-    @pytest.mark.asyncio
     async def test_falls_back_to_singletons_after_all_retries_fail(self):
         concepts = [make_anchored_concept("Use PostgreSQL"), make_anchored_concept("Use Redis")]
         agent = _make_agent(side_effect=Exception("LLM error"), max_retries=3)
@@ -71,7 +65,6 @@ class TestGroupingAgent:
         for group in result:
             assert len(group.members) == 1
 
-    @pytest.mark.asyncio
     async def test_llm_returns_empty_groups_list_preserves_items_as_singletons(self, caplog):
         concepts = [make_anchored_concept("Use PostgreSQL")]
         schema = _GroupingSchema(groups=[])
@@ -85,7 +78,6 @@ class TestGroupingAgent:
         assert result[0].members[0].item.title == "Use PostgreSQL"
         assert any("singletons" in r.message for r in caplog.records)
 
-    @pytest.mark.asyncio
     async def test_group_with_all_unknown_ids_emits_warning_and_preserves_item(self, caplog):
         """A group whose every member_id is hallucinated is dropped, but the unassigned item becomes a singleton."""
         concepts = [make_anchored_concept("Use PostgreSQL")]
@@ -103,7 +95,6 @@ class TestGroupingAgent:
         assert result[0].members[0].item.title == "Use PostgreSQL"
         assert any("singletons" in r.message for r in caplog.records)
 
-    @pytest.mark.asyncio
     async def test_unassigned_items_become_singletons(self, caplog):
         """Items not assigned to any group are added as singleton groups with a warning."""
         concepts = [make_anchored_concept("Use PostgreSQL"), make_anchored_concept("Use Redis")]
@@ -123,7 +114,6 @@ class TestGroupingAgent:
         assert "Use Redis" in titles
         assert any("singletons" in r.message for r in caplog.records)
 
-    @pytest.mark.asyncio
     async def test_item_in_multiple_groups_emits_warning(self, caplog):
         """When the LLM violates the one-group-per-item rule, the item still appears in both groups
         and a warning is logged."""

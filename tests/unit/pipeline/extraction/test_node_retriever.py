@@ -28,7 +28,6 @@ def _make_service(search_results=None, kb_nodes=None, neighbour_nodes=None, top_
 
 
 class TestNodeRetriever:
-    @pytest.mark.asyncio
     async def test_returns_matched_kb_nodes(self):
         candidate = make_node("n2", title="Use Redis")
         search_results = [SearchResult(node_id=str(candidate.id), score=0.9)]
@@ -38,7 +37,6 @@ class TestNodeRetriever:
         result = await service.retrieve(source)
         assert any(n.id == candidate.id for n in result)
 
-    @pytest.mark.asyncio
     async def test_excludes_source_node_from_results(self):
         source = make_node("n1")
         search_results = [SearchResult(node_id=str(source.id), score=0.99)]
@@ -47,7 +45,6 @@ class TestNodeRetriever:
         result = await service.retrieve(source)
         assert not any(n.id == source.id for n in result)
 
-    @pytest.mark.asyncio
     async def test_includes_neighbours(self):
         candidate = make_node("n2", title="Use Redis")
         neighbour = make_node("n3", title="Redis Caching Decision")
@@ -62,7 +59,6 @@ class TestNodeRetriever:
         result = await service.retrieve(source)
         assert any(n.id == neighbour.id for n in result)
 
-    @pytest.mark.asyncio
     async def test_caller_node_filter_overrides_default_status(self):
         service = _make_service()
         source = make_node("n1")
@@ -74,7 +70,6 @@ class TestNodeRetriever:
         node_filter: NodeFilter = call_kwargs["node_filter"]
         assert node_filter.status == NodeStatus.PENDING_REVIEW
 
-    @pytest.mark.asyncio
     async def test_orphan_vector_result_is_silently_skipped(self):
         # vector store returns a hit, but the KB has no matching node
         orphan_id = str(make_node("orphan").id)
@@ -86,7 +81,6 @@ class TestNodeRetriever:
 
         assert result == []
 
-    @pytest.mark.asyncio
     async def test_exclude_job_id_forwarded_to_vector_search(self):
         service = _make_service()
         source = make_node("n1")
@@ -96,7 +90,6 @@ class TestNodeRetriever:
         call_kwargs = service._vs.search.call_args.kwargs
         assert call_kwargs["exclude_job_id"] == "job-42"
 
-    @pytest.mark.asyncio
     async def test_fetch_loop_stops_at_cap_without_fetching_remaining_results(self):
         # top_k=1 → cap=2; three vector hits — only 2 KB fetches should happen
         candidates = [make_node(f"n{i}", title=f"Node {i}") for i in range(2, 5)]
@@ -107,7 +100,6 @@ class TestNodeRetriever:
 
         assert service._kb.get_node.call_count == 2
 
-    @pytest.mark.asyncio
     async def test_token_budget_stops_fetch_before_top_k_cap(self):
         # each node costs ~9 tokens (title + description); budget of 18 allows 2 nodes
         # top_k=10 → cap=20, so token budget is the binding constraint here
@@ -125,7 +117,6 @@ class TestNodeRetriever:
         assert len(result) == 2
         assert service._kb.get_node.call_count == 2
 
-    @pytest.mark.asyncio
     async def test_cap_limits_neighbour_expansion(self):
         # top_k=1 → cap=2; one vector hit plus three neighbours — only 2 total should be kept
         candidate = make_node("n2", title="Use Redis")
@@ -143,7 +134,6 @@ class TestNodeRetriever:
 
         assert len(result) <= 2  # cap = top_k * 2
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("override_filter", "expected_type"),
         [
@@ -162,7 +152,6 @@ class TestNodeRetriever:
         node_filter = call_kwargs["node_filter"]
         assert node_filter.node_type == expected_type
 
-    @pytest.mark.asyncio
     async def test_duplicate_vector_result_logged_and_skipped(self, caplog):
         candidate = make_node("n2", title="Use Redis")
         dup_id = str(candidate.id)
@@ -179,7 +168,6 @@ class TestNodeRetriever:
         assert ids.count(candidate.id) == 1
         assert any("Duplicate" in r.message for r in caplog.records)
 
-    @pytest.mark.asyncio
     async def test_source_node_excluded_when_appearing_as_neighbour(self):
         source = make_node("n1")
         candidate = make_node("n2", title="Use Redis")
@@ -194,7 +182,6 @@ class TestNodeRetriever:
 
         assert not any(n.id == source.id for n in result)
 
-    @pytest.mark.asyncio
     async def test_over_budget_neighbour_does_not_block_cheaper_sibling(self):
         # fat_neighbour has a 200-char title (~55 tokens); thin_neighbour is tiny (~8).
         # budget=20 (hard cap=22): candidate consumes ~8 tokens as a direct hit,
@@ -217,7 +204,6 @@ class TestNodeRetriever:
         assert thin_neighbour.id in ids
         assert fat_neighbour.id not in ids
 
-    @pytest.mark.asyncio
     async def test_exhausted_budget_skips_get_neighbours_call(self):
         candidate = make_node("n2", title="Use Redis")
         search_results = [SearchResult(node_id=str(candidate.id), score=0.9)]
@@ -232,7 +218,6 @@ class TestNodeRetriever:
 
         assert service._kb.get_neighbours.call_count == 0
 
-    @pytest.mark.asyncio
     async def test_no_duplicates_in_result(self):
         candidate = make_node("n2", title="Use Redis")
         search_results = [SearchResult(node_id=str(candidate.id), score=0.9)]

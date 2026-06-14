@@ -26,7 +26,6 @@ def _make_agent(side_effect=None, return_value=None, max_retries: int = 3) -> _C
 
 
 class TestRetryableStructuredAinvoke:
-    @pytest.mark.asyncio
     async def test_returns_result_on_first_success(self):
         expected = VerificationResult(supported=True)
         agent = _make_agent(return_value=expected)
@@ -39,7 +38,6 @@ class TestRetryableStructuredAinvoke:
 
         assert result is expected
 
-    @pytest.mark.asyncio
     async def test_retries_on_failure_and_succeeds(self):
         expected = VerificationResult(supported=True)
         agent = _make_agent(side_effect=[Exception("fail"), expected])
@@ -52,7 +50,6 @@ class TestRetryableStructuredAinvoke:
 
         assert result is expected
 
-    @pytest.mark.asyncio
     async def test_raises_exhaustion_error_after_all_retries_fail(self):
         exhaustion = RetryExhaustedError("all retries exhausted")
         agent = _make_agent(side_effect=Exception("always fails"), max_retries=2)
@@ -64,7 +61,6 @@ class TestRetryableStructuredAinvoke:
                 raise_on_exhaustion=exhaustion,
             )
 
-    @pytest.mark.asyncio
     async def test_sleeps_between_retry_attempts(self):
         exhaustion = RetryExhaustedError("exhausted")
         agent = _make_agent(side_effect=Exception("fail"), max_retries=3)

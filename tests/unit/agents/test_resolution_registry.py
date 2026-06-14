@@ -36,14 +36,12 @@ class TestSameTypeResolutionRegistry:
         with pytest.raises(KeyError):
             registry.get(ConceptType.DECISION)
 
-    @pytest.mark.asyncio
     async def test_resolve_all_returns_empty_when_no_nodes(self):
         registry = _make_same_type_registry()
         rels, failed = await registry.resolve_all(source_nodes=[], per_source_targets={})
         assert rels == []
         assert failed == []
 
-    @pytest.mark.asyncio
     async def test_resolve_all_partitions_by_type_and_collects_results(self):
         registry = _make_same_type_registry()
 
@@ -65,7 +63,6 @@ class TestSameTypeResolutionRegistry:
         assert rels[0].rel_type == RelationshipType.SUPERSEDES
         assert failed == []
 
-    @pytest.mark.asyncio
     async def test_resolve_all_returns_empty_when_no_same_type_targets(self):
         registry = _make_same_type_registry()
 
@@ -96,14 +93,12 @@ class TestCrossTypeResolutionRegistry:
         with pytest.raises(KeyError):
             registry.get(ConceptType.DECISION, ConceptType.DECISION)
 
-    @pytest.mark.asyncio
     async def test_resolve_all_returns_empty_when_no_nodes(self):
         registry = _make_cross_type_registry()
         rels, failed = await registry.resolve_all(source_nodes=[], per_source_targets={})
         assert rels == []
         assert failed == []
 
-    @pytest.mark.asyncio
     async def test_resolve_all_dispatches_to_matching_pair_agent(self):
         registry = _make_cross_type_registry()
 
@@ -129,7 +124,6 @@ class TestCrossTypeResolutionRegistry:
         assert rels[0].rel_type == RelationshipType.MITIGATES
         assert failed == []
 
-    @pytest.mark.asyncio
     async def test_resolve_all_skips_pairs_with_no_matching_nodes(self):
         registry = _make_cross_type_registry()
 
@@ -150,7 +144,6 @@ class TestCrossTypeResolutionRegistry:
 
 
 class TestResolutionRegistry:
-    @pytest.mark.asyncio
     @pytest.mark.parametrize("stripped_type", ["blocks"])
     async def test_invalid_rel_targeting_superseded_node_is_stripped(self, stripped_type):
         source = make_node("src")
@@ -179,7 +172,6 @@ class TestResolutionRegistry:
 
 
 class TestGlobalSemaphoreForwarding:
-    @pytest.mark.asyncio
     async def test_global_sem_forwarded_to_same_type_agents(self):
         registry = _make_same_type_registry()
         sem = asyncio.Semaphore(1)
@@ -200,7 +192,6 @@ class TestGlobalSemaphoreForwarding:
         call_kwargs = decision_agent.resolve.call_args
         assert call_kwargs.args[2] is sem or call_kwargs.kwargs.get("global_sem") is sem
 
-    @pytest.mark.asyncio
     async def test_global_sem_forwarded_to_cross_type_agents(self):
         registry = _make_cross_type_registry()
         sem = asyncio.Semaphore(1)

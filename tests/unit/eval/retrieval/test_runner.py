@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
-import pytest
-
 from seshat.config.eval_settings import EvalConfig
 from seshat.eval.models import RetrievalCorpusExample, RetrievalCorpusNode
 from seshat.eval.retrieval.runner import RetrievalEvalRunner
@@ -73,7 +71,6 @@ def _make_cross_type_example() -> RetrievalCorpusExample:
 
 
 class TestFetchExampleNodeFilter:
-    @pytest.mark.asyncio
     async def test_search_uses_untyped_filter(self, tmp_path: Path) -> None:
         """_fetch_example must pass NodeFilter(node_type=None) so cross-type candidates are searchable."""
         vs = _CapturingVectorStore()

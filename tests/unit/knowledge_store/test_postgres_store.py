@@ -101,7 +101,6 @@ class TestValidateConnectionString:
 
 
 class TestPaginatedQuery:
-    @pytest.mark.asyncio
     async def test_paginates_across_multiple_pages(self, store: PostgresKBStore):
         page_size = 10
         page_one = [_make_node(f"n{i}") for i in range(page_size)]
@@ -113,7 +112,6 @@ class TestPaginatedQuery:
         assert len(result) == page_size + 3
         assert store.query.call_count == 2
 
-    @pytest.mark.asyncio
     async def test_fetches_extra_page_when_last_page_is_full(self, store: PostgresKBStore):
         # A full last page is indistinguishable from a page with more data behind it,
         # so the loop makes one extra call (returning empty) to confirm termination.
