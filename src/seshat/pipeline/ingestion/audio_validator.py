@@ -1,3 +1,6 @@
+from seshat.utils.audio import audio_duration_seconds
+
+
 class AudioValidationError(Exception):
     pass
 
@@ -38,3 +41,10 @@ class AudioValidator:
                 )
 
         return inferred
+
+    @staticmethod
+    def get_duration_seconds(audio_bytes: bytes) -> float:
+        duration = audio_duration_seconds(audio_bytes)
+        if duration is None:
+            raise AudioValidationError("Unable to determine audio duration")
+        return duration
