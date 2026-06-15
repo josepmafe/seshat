@@ -131,6 +131,7 @@ markers = [
     "llm: requires a live LLM API key (any provider); subset of integration",
     "agents: requires a live LLM API key; subset of llm",
     "embedding: requires an embeddings API key; subset of llm",
+    "transcription: requires a live transcription API key (AssemblyAI or OpenAI); subset of llm",
     "eval: eval harness tests (unit and integration)",
 ]
 testpaths = ["tests"]

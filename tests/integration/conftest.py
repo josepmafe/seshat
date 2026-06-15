@@ -102,6 +102,21 @@ SKIP_IF_NO_EMBEDDINGS_API = pytest.mark.skipif(
 )
 
 
+def _assemblyai_reachable() -> bool:
+    return bool(os.environ.get("ASSEMBLYAI_API_KEY"))
+
+
+SKIP_IF_NO_ASSEMBLYAI_API = pytest.mark.skipif(
+    not _assemblyai_reachable(),
+    reason="AssemblyAI API not reachable — ASSEMBLYAI_API_KEY not set",
+)
+
+SKIP_IF_NO_OPENAI_API = pytest.mark.skipif(
+    not _openai_reachable(),
+    reason="OpenAI API not reachable — OPENAI_API_KEY not set or network issue",
+)
+
+
 @pytest.fixture
 async def vector_store(pg_test_url):
     from seshat.config.settings import SecretsConfig, SeshatConfig, VectorStoreConfig
