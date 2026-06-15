@@ -5,15 +5,12 @@ import pytest
 from seshat.agents.identification.registry import IdentificationAgentRegistry
 from seshat.agents.resolution.registry import ResolutionRegistry
 from seshat.agents.verification import VerificationAgent
-from seshat.blob_store.s3_store import S3BlobStore
-from seshat.config.settings import BlobStoreConfig, ExtractionConfig, RAGConfig
+from seshat.config.settings import ExtractionConfig, RAGConfig
 from seshat.models.enums import ConceptType, NodeStatus
 from seshat.pipeline.extraction.node_retriever import NodeRetriever
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 from tests.helpers import make_doc, make_node
 from tests.integration.conftest import (
-    LOCALSTACK_REGION,
-    LOCALSTACK_TEST_BUCKET,
     SKIP_IF_NO_EMBEDDINGS_API,
     SKIP_IF_NO_LOCALSTACK,
     SKIP_IF_NO_POSTGRES,
@@ -47,19 +44,6 @@ Fair point. Let's make sure Sergio writes the migration script by Friday.
 
 What cloud provider are we actually deploying to? That's still not decided.
 """
-
-
-@pytest.fixture
-async def blob_store(localstack_s3_url):
-    config = BlobStoreConfig(
-        bucket=LOCALSTACK_TEST_BUCKET,
-        region=LOCALSTACK_REGION,
-        endpoint_url=localstack_s3_url,
-    )
-    store = S3BlobStore(config)
-    await store.connect()
-    yield store
-    await store.close()
 
 
 @pytest.fixture
