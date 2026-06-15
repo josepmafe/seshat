@@ -3,7 +3,8 @@ revision = 3
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.15'",
-    "python_full_version < '3.15'",
+    "python_full_version == '3.14.*'",
+    "python_full_version < '3.14'",
 ]
 
 [[package]]
@@ -199,6 +200,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/19/14/2c5dd9f512b66549ae92767a9c7b330ae88e1932ca57876909410251fe13/anyio-4.13.0.tar.gz", hash = "sha256:334b70e641fd2221c1505b3890c69882fe4a2df910cba14d97019b90b24439dc", size = 231622, upload-time = "2026-03-24T12:59:09.671Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/da/42/e921fccf5015463e32a3cf6ee7f980a6ed0f395ceeaa45060b61d86486c2/anyio-4.13.0-py3-none-any.whl", hash = "sha256:08b310f9e24a9594186fd75b4f73f4a4152069e3853f1ed8bfbf58369f4ad708", size = 114353, upload-time = "2026-03-24T12:59:08.246Z" },
+]
+
+[[package]]
+name = "assemblyai"
+version = "0.64.16"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-settings", marker = "python_full_version >= '3.14'" },
+    { name = "typing-extensions" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3b/3f/3055433e3186552cbaf352d878b5ca60583ef924de1834a2a76ccbf3c8d8/assemblyai-0.64.16.tar.gz", hash = "sha256:2051a483abf2817587608e79863eb3f006730b79363e4cf7a69f22c231b2be64", size = 77585, upload-time = "2026-06-11T18:58:26.628Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/bf/f3b0cf35fc1dd0ffddbf5fb390c6a8cfeedf73a8e3834748b8422b066a16/assemblyai-0.64.16-py3-none-any.whl", hash = "sha256:e8ca376d80612b92ac050a7a0addf6d016b13ba16ceed412492cb4f94e0178f3", size = 70352, upload-time = "2026-06-11T18:58:25.43Z" },
 ]
 
 [[package]]
@@ -2055,6 +2072,15 @@ wheels = [
 ]
 
 [[package]]
+name = "mutagen"
+version = "1.47.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/81/e6/64bc71b74eef4b68e61eb921dcf72dabd9e4ec4af1e11891bbd312ccbb77/mutagen-1.47.0.tar.gz", hash = "sha256:719fadef0a978c31b4cf3c956261b3c58b6948b32023078a2117b1de09f0fc99", size = 1274186, upload-time = "2023-09-03T16:33:33.411Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b0/7a/620f945b96be1f6ee357d211d5bf74ab1b7fe72a9f1525aafbfe3aee6875/mutagen-1.47.0-py3-none-any.whl", hash = "sha256:edd96f50c5907a9539d8e5bba7245f62c9f520aef333d13392a79a4f70aca719", size = 194391, upload-time = "2023-09-03T16:33:29.955Z" },
+]
+
+[[package]]
 name = "mypy"
 version = "1.20.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3381,6 +3407,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiobotocore" },
     { name = "alembic" },
+    { name = "assemblyai" },
     { name = "asyncpg" },
     { name = "bcrypt" },
     { name = "boto3" },
@@ -3392,9 +3419,11 @@ dependencies = [
     { name = "langchain-openai" },
     { name = "langchain-postgres" },
     { name = "mlflow", extra = ["langchain"] },
+    { name = "mutagen" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyyaml" },
     { name = "spacy" },
     { name = "streamlit" },
     { name = "typer" },
@@ -3441,6 +3470,7 @@ test = [
 requires-dist = [
     { name = "aiobotocore", specifier = ">=3.7" },
     { name = "alembic", specifier = ">=1.18" },
+    { name = "assemblyai", specifier = ">=0.37" },
     { name = "asyncpg", specifier = ">=0.31" },
     { name = "bcrypt", specifier = ">=5.0" },
     { name = "boto3", specifier = ">=1.43" },
@@ -3452,9 +3482,11 @@ requires-dist = [
     { name = "langchain-openai", specifier = ">=1.2" },
     { name = "langchain-postgres", specifier = ">=0.0.17" },
     { name = "mlflow", extras = ["langchain"], specifier = ">=3.12.0" },
+    { name = "mutagen", specifier = ">=1.47.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "spacy", specifier = ">=3.8" },
     { name = "streamlit", specifier = ">=1.57" },
     { name = "typer", specifier = ">=0.25" },
