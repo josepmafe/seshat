@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from pydantic import SecretStr
+
 from seshat.models.enums import EmbeddingProvider, VectorStoreProvider
 from seshat.observability.usage_tracker import TrackingEmbeddings
 from seshat.secrets.factory import get_secrets_resolver
@@ -18,11 +20,10 @@ logger = get_logger(__name__)
 
 
 def _build_embeddings(index: VectorIndexConfig, config: SeshatConfig) -> Embeddings:
-    from pydantic import SecretStr
-
     secrets = get_secrets_resolver(config)
     api_key = SecretStr(secrets.get_secret(index.api_key_secret_key))  # type: ignore[arg-type]
 
+    raw: Embeddings
     match index.embedding_provider:
         case EmbeddingProvider.OPENAI:
             from langchain_openai import OpenAIEmbeddings
@@ -34,6 +35,7 @@ def _build_embeddings(index: VectorIndexConfig, config: SeshatConfig) -> Embeddi
             raw = AzureOpenAIEmbeddings(azure_deployment=index.embedding_model, api_key=api_key)
         case _:
             raise ValueError(f"Unsupported embedding provider: {index.embedding_provider!r}")
+
     return TrackingEmbeddings(raw)
 
 
