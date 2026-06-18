@@ -74,6 +74,13 @@ Pre-formatted text (YAML/JSON) → Text Validator                          → T
 
 1. **Size check** — the upload is read in chunks; if the running byte count exceeds `TranscriptionConfig.max_file_bytes` (default 500 MB) before the upload completes, the connection is rejected immediately with HTTP 413. The server drains the remaining request body before closing the connection to avoid leaving the client hanging.
 2. **Magic byte check** — once the upload is complete, the first 16 bytes are inspected. If the signature does not match an allowed audio format, the file is rejected with HTTP 400. Allowed signatures: MP3 (`ID3` or `\xFF\xFB`), WAV (`RIFF....WAVE`), M4A (`ftyp` box at offset 4 with `M4A ` brand). Do not rely on `Content-Type` or file extension — both are caller-controlled.
+3. **Duration check** — after magic bytes are confirmed, audio duration is extracted via mutagen. If `duration > TranscriptionConfig.max_audio_seconds`, the file is rejected with HTTP 400.
+
+**`AudioValidator` methods:**
+- `check_size(actual_bytes, max_bytes)` — enforces the size limit (step 1 above)
+- `validate_magic_bytes(data, alleged_ext)` — returns the inferred extension; raises `AudioValidationError` if the signature does not match any allowed format (step 2 above)
+- `get_duration_seconds(audio_bytes)` — extracts audio duration via mutagen; raises `AudioValidationError` if the bytes are unparseable
+- `check_duration(actual_seconds, max_seconds)` — enforces the duration limit (step 3 above)
 
 > **v2 — video input:** video files (.mp4/.mkv/.webm) require ffmpeg audio extraction before transcription. ffmpeg has a known CVE history and is a significant attack surface. Deferred to v2 with explicit security hardening: magic byte validation, subprocess timeout, and system-generated temp filenames (no original filename used in any filesystem path).
 
@@ -99,13 +106,14 @@ class TranscriptMetadata(BaseModel):
 
 ### Transcription
 
-Provider selection happens at startup via the transcription factory reading `TranscriptionConfig.provider`. The pipeline stage calls `transcription_service.transcribe(audio_path) -> str` only.
+Provider selection happens at startup via the transcription factory reading `TranscriptionConfig.provider`. The pipeline stage calls `transcriber.transcribe(audio_bytes, extension) -> str` only.
 
-**Blob download before transcription:** the uploaded audio file is stored in blob storage as `jobs/{meeting_date}/{job_id}/raw/input.*` immediately after ingestion validation. The transcription stage must download it to a system-generated temporary file path before invoking `transcribe()`. The original filename must never be used in any filesystem path. The temporary file is deleted after `transcribe()` returns (success or failure).
+**No temporary files:** the uploaded audio file is stored in blob storage as `jobs/{meeting_date}/{job_id}/raw/input.*` immediately after ingestion validation. The transcription stage downloads the raw bytes from blob storage; the orchestrator passes `audio_bytes` and the inferred `extension` directly to `transcriber.transcribe(audio_bytes, extension)` — no temporary files are created.
 
 ```python
-class AbstractTranscriptionService(ABC):
-    async def transcribe(self, audio_path: str) -> str: ...
+class AbstractTranscriber(ABC):
+    async def transcribe(self, audio_bytes: bytes, extension: str) -> str:
+        """Transcribe raw audio bytes and return plain text."""
     # Returns the plain-text transcript. Diarization output (speaker turns) is reserved for v2.
 ```
 
@@ -150,7 +158,7 @@ This provides a full recovery path (reprocess from raw transcript without re-tra
 
 ### Text Input Schema
 
-Pre-formatted text input must conform to a defined YAML/JSON schema with required fields: `date`, `content`. `participants` is optional — include it when known to enable action item assignee resolution. The validator rejects non-conforming input at the boundary.
+Pre-formatted text input must conform to a defined YAML/JSON schema. `ParsedTextInput` is a Pydantic `BaseModel` (not a dataclass) with fields: `meeting_date` (alias `date`, required), `content` (required), `participants` (optional list of strings). Missing or invalid fields raise `TextValidationError`. The validator rejects non-conforming input at the boundary.
 
 ### Init Pipeline (KB Seeding)
 
@@ -380,7 +388,7 @@ class ExtractionConfig(BaseModel):
 class RAGConfig(BaseModel):
     enabled: bool = True
     top_k: int = 5        # candidates retained from vector search (fed to graph traversal)
-    min_score: float = 0.5  # minimum similarity score [0, 1]; set by RetrievalMetaScorer.sweep_threshold() (argmax macro-F2 over the retrieval corpus)
+    min_similarity_score: float = 0.5  # minimum similarity score [0, 1]; set by RetrievalMetaScorer.sweep_threshold() (argmax macro-F2 over the retrieval corpus)
     max_context_tokens: int = 4000
     traversal_max_depth: int = 1                            # direct neighbours only for MVP
     traversal_rel_types: list[RelationshipType] | None = None  # None = all relationship types
@@ -391,7 +399,7 @@ Metadata filters for retrieval are **not** config — they are passed per-job in
 
 > **Traversal risk:** unbounded `traversal_max_depth` or large graphs can inflate retrieved context beyond `max_context_tokens`. The assembler truncates at `max_context_tokens` — but a high depth combined with a dense graph will silently drop nodes from the end of the context window. Keep `traversal_max_depth=1` for MVP; increase only after measuring context token usage on real data.
 
-> **Truncation ordering:** before serialising retrieved nodes into the context window, the assembler estimates each node's token cost using `len(title + description) / 4` and greedily includes nodes in order (see below) until `max_context_tokens` is reached. Nodes that would exceed the budget are pre-empted — not serialised at all. The count of pre-empted nodes is logged to MLflow before serialisation begins (alongside the count of any nodes dropped after-the-fact for other reasons). Ordering: `meeting_date DESC NULLS LAST` (most recent first; init-sourced nodes with `meeting_date=None` sort last). Within the same `meeting_date`, nodes that appear in `resolution_candidates` for the current job rank above unrelated nodes — these are the nodes the resolution agent is most likely to need for accurate resolution.
+> **Truncation ordering:** before serialising retrieved nodes into the context window, the assembler estimates each node's token cost using `len(title + description) / 4` and greedily includes nodes in order (see below) until `max_context_tokens` is reached. Nodes that would exceed the budget are pre-empted — not serialised at all. The count of pre-empted nodes is logged to MLflow before serialisation begins (alongside the count of any nodes dropped after-the-fact for other reasons). Ordering: `meeting_date DESC NULLS LAST` (most recent first; init-sourced nodes with `meeting_date=None` sort last).
 
 ### VectorStoreConfig
 
@@ -444,6 +452,8 @@ class TranscriptionConfig(BaseModel):
     max_file_bytes: int = 500 * 1024 * 1024  # 500 MB; enforced by streaming size check before upload completes (HTTP 413)
     max_audio_seconds: int = 7200       # job transitions to FAILED if duration.total_seconds() exceeds this cap (default: 2h)
     max_retries: int = 3                # per-call retry attempts on transient errors (API timeout, HTTP 429)
+    timeout_seconds: float | None = None     # per-request HTTP timeout in seconds; None means no limit
+    api_key_secret_key: str | None = None    # Secrets key for the transcription API key; defaults to '<provider>_api_key'
 ```
 
 ### ObservabilityConfig
@@ -615,8 +625,6 @@ class FailedResolutionSource(BaseModel):
 
 `ExtractionResult` is the output of the extraction pass and the payload returned by `GET /jobs/{id}/results` while a job is in `AWAITING_REVIEW`. Relationships are produced in a separate `ResolutionResult` after node approval (see §5).
 
-> **Deviation from original spec:** the original spec included `relationships` and `resolution_candidates` in `ExtractionResult`, with resolution running before review. The implementation separates these: resolution runs after node approval, against approved nodes only. This ensures relationships only connect nodes that actually exist in the KB, and eliminates wasted LLM calls on rejected nodes. `ResolutionCandidate` is removed entirely — since resolution runs post-approval there is no review-time window to surface candidates to the reviewer. A node grounded in the transcript should be approved regardless of its relationship to existing nodes; downstream conflict is expressed as a relationship after the fact, not a gate at approval time.
-
 > **Vector store indexing:** one vector per `KBNode` — the embedding is generated from `title` + `description` after extraction. `NodeMetadata` travels with the vector for runtime metadata filtering (applied as `>=` comparisons for `min_confidence`, equality for all other fields). The `confidence`, `node_type`, and `node_state` fields are duplicated from `KBNode` intentionally — the vector store needs them for filtering without a round-trip to the KB store. **Invariant:** `NodeMetadata.confidence`, `NodeMetadata.node_type`, and `NodeMetadata.node_state` must always equal the corresponding fields on `KBNode` — they are written together in the same transaction and neither is ever updated independently.
 >
 > **Indexing timing:** vectors are written to the vector store during the `WRITING` stage, as part of the same Postgres transaction as the KB row (§4, Node Lifecycle Invariant). They are **not** written after extraction. Nodes from a job in `AWAITING_REVIEW` are not yet retrievable via RAG — invisible to concurrent jobs until the reviewing job reaches `DONE`. This is intentional: unreviewed nodes should not influence future extractions.
@@ -688,8 +696,6 @@ Transcript text and retrieved KB context are untrusted inputs injected into agen
 
 **Deduplication (within-meeting):** after all agents complete, `_PendingNode` objects are deduplicated before being built into `KBNode`. The merge criterion is title exact-match + type equality: two `_PendingNode` objects of the same `ConceptType` with identical normalised titles (lowercased, whitespace-collapsed) are the same concept — the later one (higher position in agent output order) is kept, the earlier discarded. No `SUPERSEDES` relationship is created within a single job — `SUPERSEDES` is reserved for cross-meeting evolution only.
 
-> **Note from original spec:** a cosine-similarity fallback (threshold 0.85) was planned as a secondary merge criterion. This is **not implemented in MVP** — title exact-match is the only deduplication signal. The cosine-similarity fallback and associated merge test cases in the eval corpus are deferred until chunking is introduced, at which point cross-chunk deduplication becomes the primary use case.
-
 **v2 — chunking (when needed):** if transcripts regularly exceed model context limits or per-call cost becomes a concern, introduce TextTiling (NLTK) as the first chunking strategy. Per-chunk agent calls produce multiple `_PendingNode` objects for the same concept; cross-chunk deduplication must be extended with the cosine-similarity fallback at that point. If TextTiling boundaries are poor (meeting-transcript prose is not well-served by topic-shift detection), fall back to `RecursiveCharacterTextSplitter` (LangChain, 500-token windows, 100-token overlap). Semantic chunking and diarization-based splitting remain v2+ options requiring production audio to validate.
 
 ### Status Assignment
@@ -703,7 +709,7 @@ Transcript text and retrieved KB context are untrusted inputs injected into agen
 The pipeline is **append-and-state-only** — extracted content is never modified after creation. A node's `title`, `description`, `quote_anchors`, and `confidence` are immutable once written. The only permitted mutation is `update_node_state()` on existing nodes when a `SUPERSEDES` or `AMENDS` relationship is established by the resolution step. If a later meeting revisits an existing decision, the resolution step creates a new node and expresses the relationship via `SUPERSEDES`, `AMENDS`, or `CONFLICTS_WITH` — it never overwrites the original. This preserves the full decision history in the graph.
 
 Consequences:
-- **State transitions:** when a new node carries a `SUPERSEDES` or `AMENDS` relationship, the pipeline calls `update_node_state()` on the target node — advancing its `state` to `SUPERSEDED` or `AMENDED` respectively. This is the only mutation the pipeline applies to an existing node. A `CONFLICTS_WITH` relationship does **not** trigger a state transition — both nodes remain `NodeState.CURRENT`. `CONFLICTS_WITH` is a graph-level annotation only; reviewers discover active conflicts via the graph query UI (Screen 4 highlights them) and via `resolution_candidates` surfaced at review time (Screen 3). This is intentional: a conflict between two `CURRENT` nodes is a signal for human judgment, not an automatic state change.
+- **State transitions:** when a new node carries a `SUPERSEDES` or `AMENDS` relationship, the pipeline calls `update_node_state()` on the target node — advancing its `state` to `SUPERSEDED` or `AMENDED` respectively. This is the only mutation the pipeline applies to an existing node. A `CONFLICTS_WITH` relationship does **not** trigger a state transition — both nodes remain `NodeState.CURRENT`. `CONFLICTS_WITH` is a graph-level annotation only; reviewers discover active conflicts via the graph query UI (Screen 4 highlights them). This is intentional: a conflict between two `CURRENT` nodes is a signal for human judgment, not an automatic state change.
 
   **Stale CONFLICTS edges:** when one party in a `CONFLICTS_WITH` pair is later superseded (its `state` advances to `SUPERSEDED`), the edge is not deleted — the Node Lifecycle Invariant is append-only. Instead, `GET /graph/{node_id}`, `GET /graph/{node_id}/impact`, and Screen 4 filter out `CONFLICTS_WITH` relationships where either party has `state != CURRENT`. The stale edge remains in `ops.kb_relationships` for historical audit but is invisible on all normal query paths. A future "show historical graph" view can expose it explicitly.
 - **Store sync and recovery:** the KB store (`PostgresKBStore`) and the vector store (pgvector) share the same Postgres instance. Each node write is a single database transaction: `write_node()` inserts the KB row and `upsert()` inserts the vector embedding atomically. A crash mid-transaction leaves no partial state — Postgres MVCC ensures either both writes are committed or neither is. `NodeState` transitions (`update_node_state()`) are also single-row updates within a transaction.
@@ -795,7 +801,7 @@ Once both calls return, a **heuristic validation step** merges the outputs and r
 
 Validation failures are logged and the offending relationship is dropped — they do not fail the job.
 
-**Effect on `resolution_candidates`:** heuristic validation operates on the `KBRelationship` list only — it does not prune `resolution_candidates`. A candidate that was flagged by the resolution step but whose resulting relationship was dropped by validation will still appear in `resolution_candidates` in the `ExtractionResult`. This is intentional: `resolution_candidates` is a reviewer signal ("the resolution agent thought this existing node might be affected"), not a guarantee that a relationship was written. The reviewer sees the candidate, assesses it, and the absence of a written relationship is the correct outcome if validation dropped it.
+Heuristic validation operates on the `KBRelationship` list only — validation failures drop the offending relationship but do not otherwise affect the resolution result.
 
 ### Retrieval Quality Baseline
 
@@ -813,9 +819,9 @@ sweeps `score_threshold` across [0, 1] and selects the value that maximises **ma
 (beta=2) — a recall-weighted metric that prevents the degenerate threshold=0 solution.
 Positive corpus examples contribute F2; negative examples (no expected matches) contribute
 specificity (1 if nothing returned, 0 otherwise). Both feed the macro average. The
-suggested threshold is written back to `RAGConfig.min_score`.
+suggested threshold is written back to `RAGConfig.min_similarity_score`.
 
-`seshat eval` runs this retrieval baseline alongside extraction evaluation — both are part of the same MLflow eval run, linked to the same experiment.
+`seshat eval` runs this retrieval baseline as an independent pass — each pass produces its own MLflow run, linked to the same experiment.
 
 ---
 
@@ -841,7 +847,7 @@ PostgresKBStore              AbstractVectorStore          S3BlobStore
 | `PostgresKBStore` | Concrete class | Single MVP implementation; v2 adds `Neo4jKBStore` and a shared `KBStore` protocol *at that point* — no speculative interface today |
 | `S3BlobStore` | Concrete class | Single MVP implementation (LocalStack / real S3); no v2 provider swap planned within the same process |
 | `AbstractVectorStore` | Abstract + implementations | LangChain already owns provider abstraction here; interface is thin and multiple v2 providers (Chroma, Qdrant, Weaviate) are realistic |
-| `AbstractTranscriptionService` | Abstract + implementations | Three providers are already enumerated (AssemblyAI, OpenAI, Deepgram); factory-swappable at startup |
+| `AbstractTranscriber` | Abstract + implementations | Three providers are already enumerated (AssemblyAI, OpenAI, Deepgram); factory-swappable at startup via `get_transcriber()`, which returns a `TrackingTranscriber` wrapper that records audio duration via mutagen and pushes ceiling-rounded seconds into the active `UsageTracker` |
 | `AbstractDocumentLoader` | Abstract + implementations | v2 loaders (Notion, Confluence) are network-backed and behaviourally different from `MarkdownDocumentLoader` |
 | `AbstractSecretsResolver` | Abstract + implementations | Two providers in MVP (ENV, AWS); v2 adds Azure and Vault — startup factory swap |
 | `AsyncioTaskQueue` | Concrete class, duck-typed swap | One queue for MVP; the v2 `ARQTaskQueue` exposes the same three methods (`enqueue / get_status / cancel`) — no formal protocol needed, the swap is a one-line change at the worker entrypoint |
@@ -1240,7 +1246,6 @@ This is the primary correctness gate for the knowledge base. For each `PENDING_R
 - Node title, type (`ConceptType`), and description
 - source quote inline (the transcript excerpt grounding this node, resolved from `quote_anchors`)
 - `ConfidenceBreakdown`: final score + per-component breakdown (verification / heuristics)
-- relationships from `ExtractionResult.relationships` where `source_id == node.id` (read-only), with a hyperlink to each target node in Screen 4
 - Per-node action: approve / reject / edit (opens an inline form pre-filled with current `title` + `description`; also exposes optional metadata fields `participants`, `team`, `project`, `domain`)
 - Bulk approve rule: threshold slider + optional exclude list → maps to `BulkApproveRule` in `ApproveRequest`
 - **Manual node creation panel** (operator role only — hidden for `reviewer`): form with `type` dropdown (required), `title` (required), `description` (required), optional `source_quote` + `blob_key` (co-required — UI disables "Add node" if exactly one is filled), optional `participants`, `team`, `project`, `domain`. "Add node" appends to an in-memory list shown below the form; each entry has a remove button. Submitted as `created_nodes` in the `ApproveRequest` payload — no separate API call.
@@ -1368,11 +1373,13 @@ src/
     knowledge_store/  # PostgresKBStore
     vector_store/     # AbstractVectorStore + implementations
     blob_store/       # S3BlobStore
-    transcription/    # AbstractTranscriptionService + implementations (AssemblyAI, OpenAI, Deepgram)
+    transcription/    # AbstractTranscriber + implementations (AssemblyAI, OpenAI, Deepgram); get_transcriber() factory returns a TrackingTranscriber wrapper
     document_loader/  # AbstractDocumentLoader + implementations (used by seshat init)
     config/           # Settings, StrEnums
     secrets/          # AbstractSecretsResolver + implementations
     models/           # Shared Pydantic models (KBNode, ExtractionResult, etc.)
+    utils/
+      audio.py        # audio_duration_seconds / audio_duration_seconds_ceil via mutagen
 tests/
   unit/
   integration/

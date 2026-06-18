@@ -31,6 +31,7 @@ seshat/
 │       ├── secrets/         # AWS Secrets Manager helpers
 │       ├── utils/           # Shared utilities
 │       └── vector_store/    # pgvector semantic search abstraction
+├── scripts/         # Standalone helper scripts (not part of the package)
 ├── tests/
 ├── data/
 ├── docs/

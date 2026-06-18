@@ -209,6 +209,19 @@ class TranscriptionConfig(BaseConfig):
     max_file_bytes: int = Field(default=500 * 1024 * 1024, gt=0)
     max_audio_seconds: int = Field(default=7200, gt=0)
     max_retries: int = Field(default=3, ge=0)
+    timeout_seconds: float | None = Field(
+        default=None, gt=0, description="Per-request timeout for transcription calls in seconds; None means no limit."
+    )
+    api_key_secret_key: str | None = Field(
+        default=None,
+        description="Secrets key for the transcription provider API key. Defaults to '<provider>_api_key' if not set.",
+    )
+
+    @model_validator(mode="after")
+    def _default_api_key_secret_key(self) -> "TranscriptionConfig":
+        if self.api_key_secret_key is None:
+            self._set_on_frozen_model("api_key_secret_key", f"{self.provider}_api_key")
+        return self
 
 
 class ObservabilityConfig(BaseConfig):

@@ -22,6 +22,10 @@ dependencies = [
     "langchain-anthropic>=1.4.3",
     "langchain-aws>=1.4.2",
     "langchain-openai>=1.2",
+    # Transcription
+    "assemblyai>=0.37",
+    "mutagen>=1.47.0",
+    "pyyaml>=6.0",
     # Observability
     "mlflow[langchain]>=3.12.0",
     # Web & CLI
@@ -58,6 +62,15 @@ complexity = [
 ]
 eval = [
     "rapidfuzz>=3.14.5",
+]
+
+scripts = [
+    { include-group = "audio" },
+]
+audio = [
+    "elevenlabs>=2.53.0",
+    "lameenc>=1.8.2",
+    "miniaudio>=1.71",
 ]
 
 [build-system]
@@ -113,6 +126,9 @@ runtime-evaluated-base-classes = ["pydantic.BaseModel"]
 # backslash continuations, which are not semantically cleaner than long lines.
 "src/seshat/agents/**" = ["E501"]
 "tests/integration/agents/**" = ["E501"]
+# Scripts are CLI tools — print() is intentional, and long string literals
+# (sample scripts, argparse help text, noise profile prompts) cannot be split.
+"scripts/**" = ["T201", "E501"]
 
 [tool.mypy]
 files = ["src"]
@@ -127,6 +143,7 @@ markers = [
     "llm: requires a live LLM API key (any provider); subset of integration",
     "agents: requires a live LLM API key; subset of llm",
     "embedding: requires an embeddings API key; subset of llm",
+    "transcription: requires a live transcription API key (AssemblyAI or OpenAI); subset of llm",
     "eval: eval harness tests (unit and integration)",
 ]
 testpaths = ["tests"]
