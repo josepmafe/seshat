@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from seshat.models.transcript import TranscriptDocument, TranscriptMetadata
+from seshat.pipeline.ingestion.audio_validator import AudioValidator
+from seshat.pipeline.ingestion.text_validator import TextValidator
+from seshat.utils.log import get_logger
+
+if TYPE_CHECKING:
+    from datetime import date as DateType
+
+    from seshat.blob_store.s3_store import S3BlobStore
+    from seshat.config.settings import TranscriptionConfig
+    from seshat.transcription.base import AbstractTranscriber
+
+logger = get_logger(__name__)
+
+
+class IngestionOrchestrator:
+    def __init__(
+        self,
+        transcriber: AbstractTranscriber,
+        blob_store: S3BlobStore,
+        transcription_config: TranscriptionConfig,
+    ) -> None:
+        self._transcription = transcriber
+        self._blob = blob_store
+        self._config = transcription_config
+
+    async def ingest_audio(
+        self,
+        audio_bytes: bytes,
+        meeting_date: DateType,
+        job_id: str,
+        metadata: TranscriptMetadata,
+        filename: str | None = None,
+    ) -> TranscriptDocument:
+        ext = self._validate_and_get_audio_extension(audio_bytes, filename)
+
+        input_key = self._blob.raw_input_key(meeting_date, job_id, ext)
+        await self._blob.put(input_key, audio_bytes)
+        logger.info("Job %s: uploaded raw audio to %s", job_id, input_key)
+
+        transcript_text = await self._transcription.transcribe(audio_bytes, extension=ext)
+
+        transcript_key = self._blob.raw_transcript_key(meeting_date, job_id)
+        await self._blob.put(transcript_key, transcript_text.encode())
+        logger.info("Job %s: uploaded transcript to %s", job_id, transcript_key)
+
+        return TranscriptDocument(
+            source_type="audio",
+            blob_key=transcript_key,
+            metadata=metadata,
+        )
+
+    async def ingest_text(
+        self,
+        raw_bytes: bytes,
+        filename: str,
+        job_id: str,
+    ) -> TranscriptDocument:
+        parsed = TextValidator.parse(raw_bytes, filename)
+
+        ext = filename.rsplit(".", 1)[-1].lower()
+        input_key = self._blob.raw_input_key(parsed.meeting_date, job_id, ext)
+        await self._blob.put(input_key, raw_bytes)
+        logger.info("Job %s: uploaded raw text input to %s", job_id, input_key)
+
+        transcript_key = self._blob.raw_transcript_key(parsed.meeting_date, job_id)
+        await self._blob.put(transcript_key, parsed.content.encode())
+        logger.info("Job %s: uploaded transcript to %s", job_id, transcript_key)
+
+        metadata = TranscriptMetadata(
+            meeting_date=parsed.meeting_date,
+            participants=parsed.participants,
+        )
+        return TranscriptDocument(
+            source_type="text",
+            blob_key=transcript_key,
+            metadata=metadata,
+        )
+
+    def _validate_and_get_audio_extension(self, audio_bytes: bytes, filename: str | None) -> str:
+        AudioValidator.check_size(len(audio_bytes), self._config.max_file_bytes)
+
+        audio_duration = AudioValidator.get_duration_seconds(audio_bytes)
+        AudioValidator.check_duration(audio_duration, self._config.max_audio_seconds)
+
+        alleged_ext = filename.rsplit(".", 1)[-1].lower() if filename and "." in filename else None
+        ext = AudioValidator.validate_magic_bytes(audio_bytes, alleged_ext=alleged_ext)
+        return ext

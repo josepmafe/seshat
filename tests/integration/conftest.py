@@ -3,9 +3,15 @@ import os
 import socket
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
+
+from seshat.blob_store.s3_store import S3BlobStore
+from seshat.config.settings import BlobStoreConfig
+
+_AUDIO_FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "audio"
 
 load_dotenv()
 
@@ -102,6 +108,21 @@ SKIP_IF_NO_EMBEDDINGS_API = pytest.mark.skipif(
 )
 
 
+def _assemblyai_reachable() -> bool:
+    return bool(os.environ.get("ASSEMBLYAI_API_KEY"))
+
+
+SKIP_IF_NO_ASSEMBLYAI_API = pytest.mark.skipif(
+    not _assemblyai_reachable(),
+    reason="AssemblyAI API not reachable — ASSEMBLYAI_API_KEY not set",
+)
+
+SKIP_IF_NO_OPENAI_API = pytest.mark.skipif(
+    not _openai_reachable(),
+    reason="OpenAI API not reachable — OPENAI_API_KEY not set or network issue",
+)
+
+
 @pytest.fixture
 async def vector_store(pg_test_url):
     from seshat.config.settings import SecretsConfig, SeshatConfig, VectorStoreConfig
@@ -193,6 +214,29 @@ async def localstack_s3_url():
             for obj in page.get("Contents", []):
                 await s3.delete_object(Bucket=LOCALSTACK_TEST_BUCKET, Key=obj["Key"])
         await s3.delete_bucket(Bucket=LOCALSTACK_TEST_BUCKET)
+
+
+@pytest.fixture(scope="session")
+def short_audio_path():
+    return _AUDIO_FIXTURES_DIR / "test-audio-short.mp3"
+
+
+@pytest.fixture(scope="session")
+def short_audio_bytes(short_audio_path) -> bytes:
+    return short_audio_path.read_bytes()
+
+
+@pytest.fixture
+async def blob_store(localstack_s3_url):
+    config = BlobStoreConfig(
+        bucket=LOCALSTACK_TEST_BUCKET,
+        region=LOCALSTACK_REGION,
+        endpoint_url=localstack_s3_url,
+    )
+    store = S3BlobStore(config)
+    await store.connect()
+    yield store
+    await store.close()
 
 
 def _get_localstack_url():
