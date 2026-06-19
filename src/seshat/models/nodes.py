@@ -25,13 +25,13 @@ class KBRelationship(SeshatModel):
 
 
 class ConfidenceBreakdown(SeshatModel):
-    verification_enabled: bool = Field(
+    grounding_enabled: bool = Field(
         default=False,
-        description="Whether the verification step was configured for this run; False means heuristics-only scoring.",
+        description="Whether the grounding step was configured for this run; False means heuristics-only scoring.",
     )
-    verification_passed: bool | None = Field(
+    grounding_passed: bool | None = Field(
         default=None,
-        description="Result of the verification gate; None when verification is disabled or retries exhausted.",
+        description="Result of the grounding gate; None when grounding is disabled or retries exhausted.",
     )
     heuristics: float = Field(
         ge=0, le=1, description="Heuristic signal (always present); the sole continuous confidence signal."

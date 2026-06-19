@@ -51,12 +51,12 @@ class IdentificationLLMConfig(_LLMConfig):
     model: str = "claude-sonnet-4-6"
 
 
-class VerificationLLMConfig(_LLMConfig):
+class GroundingLLMConfig(_LLMConfig):
     provider: LLMProvider = LLMProvider.OPENAI
     model: str = "gpt-5.4-nano"
     use_full_transcript: bool = Field(
         default=True,
-        description="When False, verification uses only the identified quote instead of the full transcript.",
+        description="When False, grounding uses only the identified quote instead of the full transcript.",
     )
 
 
@@ -107,8 +107,8 @@ class ExtractionConfig(BaseConfig):
     max_hint_tokens: int = Field(
         default=1000, gt=0, description="Maximum tokens consumed by hint nodes injected into the extraction prompt."
     )
-    verification: VerificationLLMConfig | None = Field(
-        default=None, description="Optional second LLM used to verify extraction results; None disables verification."
+    grounding: GroundingLLMConfig | None = Field(
+        default=None, description="Optional second LLM used to ground extraction results; None disables grounding."
     )
     identification_timeout_seconds: float | None = Field(
         default=None, gt=0, description="Optional wall-clock timeout for a full extraction run; None means no limit."
@@ -122,10 +122,10 @@ class ExtractionConfig(BaseConfig):
     )
 
     @model_validator(mode="after")
-    def check_verification_provider(self) -> "ExtractionConfig":
-        if self.verification is not None and self.verification.provider == self.identification.provider:
+    def check_grounding_provider(self) -> "ExtractionConfig":
+        if self.grounding is not None and self.grounding.provider == self.identification.provider:
             raise ValueError(
-                "`verification.provider` must differ from `identification.provider`"
+                "`grounding.provider` must differ from `identification.provider`"
                 f" (both are '{self.identification.provider}')"
             )
 
@@ -266,9 +266,9 @@ class SeshatConfig(BaseSettings):
     max_concurrent_init_runs: int = Field(default=1, gt=0)
 
     @model_validator(mode="after")
-    def _warn_verification_disabled(self) -> "SeshatConfig":
-        if self.extraction.verification is None:
-            logger.warning("verification=None: heuristics-only confidence scoring.")
+    def _warn_grounding_disabled(self) -> "SeshatConfig":
+        if self.extraction.grounding is None:
+            logger.warning("grounding=None: heuristics-only confidence scoring.")
         return self
 
 

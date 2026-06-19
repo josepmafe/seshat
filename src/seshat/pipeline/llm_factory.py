@@ -22,10 +22,10 @@ def get_identification_llm(config: SeshatConfig) -> BaseChatModel:
     return _build_llm(config.extraction.identification, config)
 
 
-def get_verification_llm(config: SeshatConfig) -> BaseChatModel:
-    if config.extraction.verification is None:
-        raise ValueError("verification is not configured")
-    return _build_llm(config.extraction.verification, config)
+def get_grounding_llm(config: SeshatConfig) -> BaseChatModel:
+    if config.extraction.grounding is None:
+        raise ValueError("grounding is not configured")
+    return _build_llm(config.extraction.grounding, config)
 
 
 def get_resolution_llm(config: SeshatConfig) -> BaseChatModel:

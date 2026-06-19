@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from seshat.agents.base import RetryExhaustedError, _BaseAgent
-from seshat.agents.verification import VerificationResult
+from seshat.agents.grounding import GroundingResult
 from seshat.config.settings import IdentificationLLMConfig
 from tests.helpers import make_structured_llm
 
@@ -27,24 +27,24 @@ def _make_agent(side_effect=None, return_value=None, max_retries: int = 3) -> _C
 
 class TestRetryableStructuredAinvoke:
     async def test_returns_result_on_first_success(self):
-        expected = VerificationResult(supported=True)
+        expected = GroundingResult(supported=True)
         agent = _make_agent(return_value=expected)
 
         result = await agent._retryable_structured_ainvoke(
             messages=[],
-            response_model=VerificationResult,
+            response_model=GroundingResult,
             raise_on_exhaustion=RetryExhaustedError("exhausted"),
         )
 
         assert result is expected
 
     async def test_retries_on_failure_and_succeeds(self):
-        expected = VerificationResult(supported=True)
+        expected = GroundingResult(supported=True)
         agent = _make_agent(side_effect=[Exception("fail"), expected])
 
         result = await agent._retryable_structured_ainvoke(
             messages=[],
-            response_model=VerificationResult,
+            response_model=GroundingResult,
             raise_on_exhaustion=RetryExhaustedError("exhausted"),
         )
 
@@ -57,7 +57,7 @@ class TestRetryableStructuredAinvoke:
         with pytest.raises(RetryExhaustedError, match="all retries exhausted"):
             await agent._retryable_structured_ainvoke(
                 messages=[],
-                response_model=VerificationResult,
+                response_model=GroundingResult,
                 raise_on_exhaustion=exhaustion,
             )
 
@@ -71,7 +71,7 @@ class TestRetryableStructuredAinvoke:
         ):
             await agent._retryable_structured_ainvoke(
                 messages=[],
-                response_model=VerificationResult,
+                response_model=GroundingResult,
                 raise_on_exhaustion=exhaustion,
             )
 

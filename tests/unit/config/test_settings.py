@@ -3,23 +3,23 @@ from pydantic import ValidationError
 
 from seshat.config.settings import (
     ExtractionConfig,
+    GroundingLLMConfig,
     IdentificationLLMConfig,
     SecretsConfig,
     SeshatConfig,
     SeshatConfigOverride,
     TranscriptionConfig,
-    VerificationLLMConfig,
     get_request_settings,
 )
 from seshat.models.enums import LLMProvider, SecretsProvider
 
 
-class TestVerificationModelValidator:
+class TestGroundingModelValidator:
     def test_same_provider_raises(self):
-        with pytest.raises(ValidationError, match=r"verification.provider"):
+        with pytest.raises(ValidationError, match=r"grounding.provider"):
             ExtractionConfig(
                 identification=IdentificationLLMConfig(provider=LLMProvider.ANTHROPIC),
-                verification=VerificationLLMConfig(
+                grounding=GroundingLLMConfig(
                     provider=LLMProvider.ANTHROPIC,
                     model="claude-haiku-4-5-20251001",
                 ),
