@@ -5,6 +5,7 @@ from seshat.config.settings import (
     ExtractionConfig,
     GroundingLLMConfig,
     IdentificationLLMConfig,
+    ReflectiveLLMConfig,
     SecretsConfig,
     SeshatConfig,
     SeshatConfigOverride,
@@ -12,6 +13,22 @@ from seshat.config.settings import (
     get_request_settings,
 )
 from seshat.models.enums import LLMProvider, SecretsProvider
+
+
+class TestReflectiveLLMConfig:
+    def test_defaults_to_disabled(self):
+        cfg = ReflectiveLLMConfig()
+        assert cfg.enabled is False
+        assert cfg.llm is None
+
+    def test_enabled_with_defaults(self):
+        cfg = ReflectiveLLMConfig(enabled=True)
+        assert cfg.enabled is True
+
+    def test_llm_override_accepted(self):
+        llm = IdentificationLLMConfig()
+        cfg = ReflectiveLLMConfig(enabled=True, llm=llm)
+        assert cfg.llm is llm
 
 
 class TestGroundingModelValidator:
