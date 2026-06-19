@@ -14,6 +14,7 @@ from seshat.eval.resolution.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.resolution.scorers import scorer
 from seshat.models.enums import ConceptType
 from seshat.models.nodes import ResolutionResult
+from seshat.observability.latency_tracker import track_eval_latency
 from seshat.observability.usage_tracker import track_eval_usage
 from seshat.utils.log import set_task_num
 
@@ -103,7 +104,8 @@ class ResolutionEvalRunner:
         )
         return gate
 
-    @track_eval_usage(label="resolution")
+    @track_eval_usage("resolution")
+    @track_eval_latency("resolution")
     async def _run_all_predictions(
         self, examples: list[ResolutionCorpusExample]
     ) -> tuple[dict[str, ResolutionResult], set[Path]]:

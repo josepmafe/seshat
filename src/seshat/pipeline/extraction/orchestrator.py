@@ -15,6 +15,7 @@ from seshat.models.nodes import (
     KBRelationship,
     ResolutionResult,
 )
+from seshat.observability.latency_tracker import track_latency_profile
 from seshat.observability.usage_tracker import UsageTracker, track_token_budget
 from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
 from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _deduplicate, _PendingNode, _quote_text
@@ -68,6 +69,7 @@ class ExtractionOrchestrator:
         label="identification",
         accumulate_to_fn=lambda self: self._job_tracker,
     )
+    @track_latency_profile("identification")
     async def run_identification(self, doc: TranscriptDocument, job_id: str) -> IdentificationResult:
         transcript = (await self._blob.get(doc.blob_key)).decode()
         coro = self._run_identification(transcript, doc.blob_key, job_id)
@@ -118,6 +120,7 @@ class ExtractionOrchestrator:
         label="resolution",
         accumulate_to_fn=lambda self: self._job_tracker,
     )
+    @track_latency_profile("resolution")
     async def run_resolution(self, doc: TranscriptDocument, job_id: str) -> ResolutionResult:
         approved = await self._kb.paginated_query(NodeFilter(job_id=job_id, status=NodeStatus.APPROVED))
         logger.info("Resolution run: %d approved nodes retrieved", len(approved))

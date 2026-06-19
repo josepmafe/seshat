@@ -1,6 +1,6 @@
 # `seshat/agents`
 
-LLM agents that power Seshat's meeting-transcript processing pipeline. There are three agent families plus a supporting verification agent.
+LLM agents that power Seshat's meeting-transcript processing pipeline. There are three agent families plus a supporting grounding agent.
 
 ## Folder structure
 
@@ -31,12 +31,12 @@ agents/
 │       ├── open_question.py    # OpenQuestionCrossTypeResolutionAgent (→ Decision, ActionItem)
 │       ├── risk.py             # RiskCrossTypeResolutionAgent (→ Decision, OpenQuestion, ActionItem)
 │       └── registry.py         # CrossTypeResolutionRegistry
-└── verification.py             # VerificationAgent (quote ↔ claim grounding check)
+└── grounding.py                # GroundingAgent (quote ↔ claim grounding check)
 ```
 
 ## `_BaseAgent` and retry contract
 
-`_BaseAgent` (`base.py`) is the inheritance root for every LLM-calling agent. All agent families inherit from it: `_BaseIdentificationAgent`, `GroupingAgent`, `_BaseResolutionAgent`, and `VerificationAgent`.
+`_BaseAgent` (`base.py`) is the inheritance root for every LLM-calling agent. All agent families inherit from it: `_BaseIdentificationAgent`, `GroupingAgent`, `_BaseResolutionAgent`, and `GroundingAgent`.
 
 **Retry contract:** on each transient failure the call sleeps with exponential backoff (`0.5 * 2^attempt + jitter`), then retries. After `LLMConfig.max_retries` attempts the caller-supplied `RetryExhaustedError` subclass is raised. Callers supply their own subclass so the exception hierarchy is preserved end-to-end.
 
@@ -49,7 +49,7 @@ RetryExhaustedError                         (seshat.agents.base)
 ├── IdentificationRetryExhaustedError       (seshat.agents.identification.base)
 ├── GroupingRetryExhaustedError             (seshat.agents.identification.grouping)
 ├── ResolutionRetryExhaustedError           (seshat.agents.resolution.base)
-└── VerificationRetryExhaustedError         (seshat.agents.verification)
+└── GroundingRetryExhaustedError            (seshat.agents.grounding)
 ```
 
 ## Identification agents
@@ -110,9 +110,13 @@ All resolution agent prompts (both same-type and cross-type) follow a standard l
 
 Definitions appear before guard rails so the LLM grounds its understanding of each relationship before learning what to exclude. Explicit guard rails per `rel_type` reduce over-prediction on boundary cases (e.g. `amends` vs `supersedes`, `blocks` vs `mitigates`). Inline examples anchor abstract rules to concrete instances — this is especially important for cross-type relationships, where the model otherwise conflates source-type semantics with target-type semantics.
 
-## Verification agent
+## Grounding agent
 
-`VerificationAgent` is independent of the identification/resolution families. Given a KB node's `title`, `description`, and `quote`, it asks the LLM whether the quote directly and unambiguously supports the claim. Used as a post-processing step to flag low-confidence nodes.
+`GroundingAgent` is independent of the identification/resolution families. Given a KB node's `title`, `description`, and `quote`, it asks the LLM whether the quote directly and unambiguously supports the claim. Used as a post-processing step to flag low-confidence nodes.
+
+### Known limitations
+
+The `GroundingAgent` performs a **grounding check** only: does the supporting quote substantiate the node's claim? It does not check **type correctness** (is this node actually a Decision, or a preference?) or **structural correctness** (does it satisfy the extraction rules in the identification agent's system prompt?). A node can pass grounding with a high confidence score and still be a misclassification. The same gap exists in resolution.
 
 ## Concept taxonomy and relationship ontology
 

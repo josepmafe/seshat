@@ -94,7 +94,7 @@ class IdentificationMetaScorer:
 
         return IdentificationSweepResult(points=points, suggested_threshold=best.threshold)
 
-    @track_eval_usage(label="identification")
+    @track_eval_usage("identification")
     async def _build_cache(self) -> _Cache:
         """Run identification pipeline once per corpus example; use file cache when available."""
         examples = load_corpus(self._config.identification_corpus_dir)

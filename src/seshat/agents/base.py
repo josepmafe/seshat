@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, TypeVar
 
 from pydantic import BaseModel
 
+from seshat.observability.latency_tracker import get_profiling_tracker
 from seshat.observability.usage_tracker import get_run_tracker
 from seshat.utils.hashing import fingerprint
 from seshat.utils.log import get_logger
@@ -50,13 +51,14 @@ class _BaseAgent(ABC):
         *,
         raise_on_exhaustion: RetryExhaustedError,
         on_error_log_prefix: str | None = None,
+        llm: BaseChatModel | None = None,
     ) -> M:
-        structured = self._llm.with_structured_output(response_model)
+        llm = llm or self._llm
+        structured = llm.with_structured_output(response_model)
 
-        # add usage tracking callback if a tracker is available in context
-        tracker_callback = get_run_tracker()
-        if tracker_callback is not None:
-            structured = structured.with_config(callbacks=[tracker_callback])
+        callbacks = self._get_callbacks()
+        if callbacks:
+            structured = structured.with_config(callbacks=callbacks)
 
         on_error_log_prefix = on_error_log_prefix or response_model.__name__
         attempts = max(1, self._max_retries)  # run at least once
@@ -81,3 +83,11 @@ class _BaseAgent(ABC):
                 return result
 
         raise raise_on_exhaustion
+
+    def _get_callbacks(self) -> list:
+        """Return a list of callbacks for the LLM call, including profiling and usage tracking."""
+        callbacks = []
+        for callback in (get_profiling_tracker(), get_run_tracker()):
+            if callback is not None:
+                callbacks.append(callback)
+        return callbacks

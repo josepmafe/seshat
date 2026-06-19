@@ -61,6 +61,49 @@ class TestRetryableStructuredAinvoke:
                 raise_on_exhaustion=exhaustion,
             )
 
+    async def test_uses_provided_llm_override(self):
+        expected = GroundingResult(supported=True)
+        default_llm = make_structured_llm(return_value=GroundingResult(supported=False))
+        override_llm = make_structured_llm(return_value=expected)
+        agent = _ConcreteAgent(llm=default_llm)
+
+        result = await agent._retryable_structured_ainvoke(
+            messages=[],
+            response_model=GroundingResult,
+            raise_on_exhaustion=RetryExhaustedError("exhausted"),
+            llm=override_llm,
+        )
+
+        assert result is expected
+        override_llm.with_structured_output.assert_called_once()
+        default_llm.with_structured_output.assert_not_called()
+
+    async def test_attaches_profiling_callback_when_set(self):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from seshat.observability.latency_tracker import LatencyTracker, LatencyTrackerCallback
+
+        cb = LatencyTrackerCallback(LatencyTracker())
+        structured_mock = MagicMock()
+        configured_mock = MagicMock()
+        configured_mock.ainvoke = AsyncMock(return_value=GroundingResult(supported=True))
+        structured_mock.with_config = MagicMock(return_value=configured_mock)
+
+        llm = MagicMock()
+        llm.with_structured_output = MagicMock(return_value=structured_mock)
+        agent = _ConcreteAgent(llm=llm)
+
+        with patch("seshat.agents.base.get_profiling_tracker", return_value=cb):
+            await agent._retryable_structured_ainvoke(
+                messages=[],
+                response_model=GroundingResult,
+                raise_on_exhaustion=RetryExhaustedError("exhausted"),
+            )
+
+        structured_mock.with_config.assert_called_once()
+        callbacks_passed = structured_mock.with_config.call_args[1]["callbacks"]
+        assert cb in callbacks_passed
+
     async def test_sleeps_between_retry_attempts(self):
         exhaustion = RetryExhaustedError("exhausted")
         agent = _make_agent(side_effect=Exception("fail"), max_retries=3)
