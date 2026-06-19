@@ -57,14 +57,14 @@ class TestBuildLlm:
         call_kwargs = mock_init.call_args.kwargs
         assert call_kwargs["model_kwargs"]["extra_headers"]["anthropic-beta"] == "prompt-caching-2024-07-31"
 
-    def test_bedrock_converse_sends_prompt_caching_header(self, minimal_config):
+    def test_bedrock_converse_does_not_send_prompt_caching_header(self, minimal_config):
         llm_cfg = IdentificationLLMConfig(provider=LLMProvider.BEDROCK_CONVERSE, model="anthropic.claude-sonnet-4-5")
 
         with patch("seshat.pipeline.llm_factory.init_chat_model") as mock_init:
             _build_llm(llm_cfg, minimal_config)
 
         call_kwargs = mock_init.call_args.kwargs
-        assert call_kwargs["model_kwargs"]["extra_headers"]["anthropic-beta"] == "prompt-caching-2024-07-31"
+        assert "model_kwargs" not in call_kwargs or "extra_headers" not in call_kwargs.get("model_kwargs", {})
 
     def test_azure_openai_does_not_send_prompt_caching_header(self, minimal_config):
         llm_cfg = IdentificationLLMConfig(provider=LLMProvider.AZURE_OPENAI, model="gpt-4o")

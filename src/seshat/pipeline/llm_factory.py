@@ -33,7 +33,7 @@ def get_resolution_llm(config: SeshatConfig) -> BaseChatModel:
 
 
 _PROVIDERS_WITHOUT_API_KEY = frozenset({LLMProvider.BEDROCK_CONVERSE})
-_PROMPT_CACHING_PROVIDERS = frozenset({LLMProvider.ANTHROPIC, LLMProvider.BEDROCK_CONVERSE})
+_PROMPT_CACHING_PROVIDERS = frozenset({LLMProvider.ANTHROPIC})
 
 
 def _build_llm(llm: _LLMConfig, config: SeshatConfig) -> BaseChatModel:
