@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from functools import partial
 from typing import TYPE_CHECKING
 
 from seshat.agents.resolution.cross_type.action_item import ActionItemCrossTypeResolutionAgent
 from seshat.agents.resolution.cross_type.decision import DecisionCrossTypeResolutionAgent
 from seshat.agents.resolution.cross_type.open_question import OpenQuestionCrossTypeResolutionAgent
 from seshat.agents.resolution.cross_type.risk import RiskCrossTypeResolutionAgent
+from seshat.agents.resolution.reflective import ReflectiveResolutionAgent
 from seshat.agents.resolution.same_type.registry import _scope_targets
 from seshat.models.enums import ConceptType
 from seshat.utils.log import get_logger
@@ -20,37 +20,29 @@ if TYPE_CHECKING:
 
     from langchain_core.language_models import BaseChatModel
 
-    from seshat.agents.resolution.base import BaseCrossTypeResolutionAgent, ResolvedRelationship
-    from seshat.config.settings import ResolutionLLMConfig
+    from seshat.agents.resolution.base import BaseCrossTypeResolutionAgent, ResolvedRelationship, _BaseResolutionAgent
+    from seshat.config.settings import ExtractionConfig
     from seshat.models.nodes import FailedResolutionSource, KBNode
 
 
-_decision_to_risk_agent = partial(DecisionCrossTypeResolutionAgent, target_type=ConceptType.RISK)
-_decision_to_open_question_agent = partial(DecisionCrossTypeResolutionAgent, target_type=ConceptType.OPEN_QUESTION)
-_decision_to_action_item_agent = partial(DecisionCrossTypeResolutionAgent, target_type=ConceptType.ACTION_ITEM)
-_risk_to_decision_agent = partial(RiskCrossTypeResolutionAgent, target_type=ConceptType.DECISION)
-_risk_to_open_question_agent = partial(RiskCrossTypeResolutionAgent, target_type=ConceptType.OPEN_QUESTION)
-_risk_to_action_item_agent = partial(RiskCrossTypeResolutionAgent, target_type=ConceptType.ACTION_ITEM)
-_open_question_to_decision_agent = partial(OpenQuestionCrossTypeResolutionAgent, target_type=ConceptType.DECISION)
-_open_question_to_action_item_agent = partial(OpenQuestionCrossTypeResolutionAgent, target_type=ConceptType.ACTION_ITEM)
-_action_item_to_risk_agent = partial(ActionItemCrossTypeResolutionAgent, target_type=ConceptType.RISK)
-
-
 class CrossTypeResolutionRegistry:
-    def __init__(self, llm: BaseChatModel, config: ResolutionLLMConfig) -> None:
-        self._agents_mapping: dict[tuple[ConceptType, ConceptType], BaseCrossTypeResolutionAgent] = {
-            (ConceptType.DECISION, ConceptType.RISK): _decision_to_risk_agent(llm, config),
-            (ConceptType.DECISION, ConceptType.OPEN_QUESTION): _decision_to_open_question_agent(llm, config),
-            (ConceptType.DECISION, ConceptType.ACTION_ITEM): _decision_to_action_item_agent(llm, config),
-            (ConceptType.RISK, ConceptType.DECISION): _risk_to_decision_agent(llm, config),
-            (ConceptType.RISK, ConceptType.OPEN_QUESTION): _risk_to_open_question_agent(llm, config),
-            (ConceptType.RISK, ConceptType.ACTION_ITEM): _risk_to_action_item_agent(llm, config),
-            (ConceptType.OPEN_QUESTION, ConceptType.DECISION): _open_question_to_decision_agent(llm, config),
-            (ConceptType.OPEN_QUESTION, ConceptType.ACTION_ITEM): _open_question_to_action_item_agent(llm, config),
-            (ConceptType.ACTION_ITEM, ConceptType.RISK): _action_item_to_risk_agent(llm, config),
+    def __init__(self, llm: BaseChatModel, config: ExtractionConfig, review_llm: BaseChatModel | None = None) -> None:
+        self._agents_mapping: dict[tuple[ConceptType, ConceptType], _BaseResolutionAgent] = {
+            (source_type, target_type): _make_agent(agent_cls, target_type, llm, config, review_llm)
+            for (source_type, target_type), agent_cls in (
+                ((ConceptType.DECISION, ConceptType.RISK), DecisionCrossTypeResolutionAgent),
+                ((ConceptType.DECISION, ConceptType.OPEN_QUESTION), DecisionCrossTypeResolutionAgent),
+                ((ConceptType.DECISION, ConceptType.ACTION_ITEM), DecisionCrossTypeResolutionAgent),
+                ((ConceptType.RISK, ConceptType.DECISION), RiskCrossTypeResolutionAgent),
+                ((ConceptType.RISK, ConceptType.OPEN_QUESTION), RiskCrossTypeResolutionAgent),
+                ((ConceptType.RISK, ConceptType.ACTION_ITEM), RiskCrossTypeResolutionAgent),
+                ((ConceptType.OPEN_QUESTION, ConceptType.DECISION), OpenQuestionCrossTypeResolutionAgent),
+                ((ConceptType.OPEN_QUESTION, ConceptType.ACTION_ITEM), OpenQuestionCrossTypeResolutionAgent),
+                ((ConceptType.ACTION_ITEM, ConceptType.RISK), ActionItemCrossTypeResolutionAgent),
+            )
         }
 
-    def get(self, src_type: ConceptType, tgt_type: ConceptType) -> BaseCrossTypeResolutionAgent:
+    def get(self, src_type: ConceptType, tgt_type: ConceptType) -> _BaseResolutionAgent:
         agent = self._agents_mapping.get((src_type, tgt_type))
         if agent is None:
             raise KeyError(f"No cross-type agent registered for ({src_type}, {tgt_type})")
@@ -104,3 +96,18 @@ class CrossTypeResolutionRegistry:
             scoped = _scope_targets(sources, per_source_targets, tgt_type)
             if any(scoped.values()):
                 yield (src_type, tgt_type), sources, scoped
+
+
+def _make_agent(
+    agent_cls: type[BaseCrossTypeResolutionAgent],
+    target_type: ConceptType,
+    llm: BaseChatModel,
+    config: ExtractionConfig,
+    review_llm: BaseChatModel | None,
+) -> _BaseResolutionAgent:
+    inner = agent_cls(llm=llm, config=config.resolution, target_type=target_type)
+    if not config.resolution_self_review.enabled:
+        return inner
+
+    logger.debug("Using ReflectiveCrossTypeResolutionAgent for %s", type(inner).__name__)
+    return ReflectiveResolutionAgent(inner=inner, review_llm=review_llm or llm)

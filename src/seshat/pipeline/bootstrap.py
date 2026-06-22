@@ -52,10 +52,17 @@ def _build_orchestrator(
     if identification_self_review_cfg.enabled and identification_self_review_cfg.llm is not None:
         review_llm = _build_llm(identification_self_review_cfg.llm, config)
 
+    resolution_review_llm = None
+    resolution_self_review_cfg = config.extraction.resolution_self_review
+    if resolution_self_review_cfg.enabled and resolution_self_review_cfg.llm is not None:
+        resolution_review_llm = _build_llm(resolution_self_review_cfg.llm, config)
+
     identification_registry = IdentificationAgentRegistry(
         llm=identification_llm, config=config.extraction, review_llm=review_llm
     )
-    resolution_registry = ResolutionRegistry(llm=resolution_llm, config=config.extraction.resolution)
+    resolution_registry = ResolutionRegistry(
+        llm=resolution_llm, config=config.extraction, review_llm=resolution_review_llm
+    )
     node_retriever = NodeRetriever(rag_config=config.rag, kb_store=kb_store, vector_store=vector_store)
 
     grounding_agent = None

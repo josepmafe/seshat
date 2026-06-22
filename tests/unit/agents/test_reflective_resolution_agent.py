@@ -3,10 +3,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
-from seshat.agents.identification.reflective import NodeReview, SelfReviewResult
 from seshat.agents.resolution.base import ResolvedRelationship
 from seshat.agents.resolution.reflective import (
     ReflectiveResolutionAgent,
+    RelationReview,
+    SelfReviewResult,
     _SelfReviewRetryExhaustedError,
 )
 from seshat.agents.resolution.same_type.decision import DecisionResolutionAgent
@@ -29,12 +30,12 @@ def _rel(src_id=None, tgt_id=None, rel_type=RelationshipType.SUPERSEDES) -> Reso
 
 
 def _all_pass(n: int) -> SelfReviewResult:
-    return SelfReviewResult(reviews=[NodeReview(passed=True) for _ in range(n)])
+    return SelfReviewResult(reviews=[RelationReview(passed=True) for _ in range(n)])
 
 
 def _mixed(passed: list[bool], rationales: list[str | None] | None = None) -> SelfReviewResult:
     rationales = rationales or [None] * len(passed)
-    reviews = [NodeReview(passed=p, rationale=r) for p, r in zip(passed, rationales, strict=True)]
+    reviews = [RelationReview(passed=p, rationale=r) for p, r in zip(passed, rationales, strict=True)]
     return SelfReviewResult(reviews=reviews)
 
 

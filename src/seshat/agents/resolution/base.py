@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
     from seshat.config.settings import ResolutionLLMConfig
+    from seshat.models.enums import ConceptType
     from seshat.models.nodes import KBNode
 
 logger = get_logger(__name__)
@@ -277,6 +278,10 @@ class BaseCrossTypeResolutionAgent(_BaseResolutionAgent[E]):
       open_question → action_item:      { blocks }
       action_item   → risk:             { mitigates }
     """
+
+    def __init__(self, llm: BaseChatModel, config: ResolutionLLMConfig, target_type: ConceptType):
+        super().__init__(llm=llm, config=config)
+        self._target_type = target_type
 
     def _validate_relationships(
         self,
