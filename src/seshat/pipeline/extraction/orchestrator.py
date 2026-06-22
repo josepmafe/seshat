@@ -247,7 +247,7 @@ class ExtractionOrchestrator:
         pending = builder.build_all(raw)
         elapsed_ms = round((time.perf_counter() - t0) * 1000)
         logger.info(
-            "Identified %d concepts for %s (elapsed: %dms)",
+            "Identified %d %r node(s) (elapsed: %dms)",
             len(pending),
             concept_type.value,
             elapsed_ms,

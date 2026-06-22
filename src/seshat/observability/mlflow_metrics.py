@@ -2,6 +2,10 @@ import statistics
 
 import mlflow
 
+from seshat.utils.log import get_logger
+
+logger = get_logger(__name__)
+
 
 def log_token_metrics(
     stage: str,
@@ -18,6 +22,7 @@ def log_token_metrics(
     before MLflow is wired there.
     """
     if not mlflow.active_run():
+        logger.debug("No active MLflow run: skipping log_token_metrics for stage %s", stage)
         return
 
     if stage:
@@ -41,7 +46,11 @@ def log_latency_metrics(stage: str, durations: list[float], metrics_prefix: str 
     No-ops when no run is active so it is safe to call from the production pipeline
     before MLflow is wired there.
     """
-    if not mlflow.active_run() or not durations:
+    if not mlflow.active_run():
+        logger.debug("No active MLflow run: skipping log_latency_metrics for stage %s", stage)
+        return
+    if not durations:
+        logger.debug("No LLM calls duration: skipping log_latency_metrics for stage %s", stage)
         return
 
     sorted_d = sorted(durations)
