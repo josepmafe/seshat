@@ -79,6 +79,9 @@ class KBNode(SeshatModel):
     state: NodeState = NodeState.CURRENT
     metadata: NodeMetadata
 
+    def __str__(self) -> str:
+        return f"KBNode(id={self.id}, type={self.type}, title={self.title!r}, status={self.status})"
+
 
 class IdentificationResult(SeshatModel):
     job_id: str
