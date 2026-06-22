@@ -34,8 +34,16 @@ class _BaseAgent(ABC):
         self._llm = llm
         self._max_retries = config.max_retries
 
+    def __str__(self) -> str:
+        return f"{self.name}(model={self._llm})"
+
+    @property
+    def name(self) -> str:
+        return type(self).__name__
+
     def fingerprint(self) -> str:
-        return fingerprint(self._system_prompt)
+        combined_prompts = "".join(self.prompt_texts().values())
+        return fingerprint(combined_prompts)
 
     def prompt_texts(self) -> dict[str, str]:
         return {"system": self._system_prompt}

@@ -10,7 +10,7 @@ from seshat.blob_store.factory import get_blob_store
 from seshat.knowledge_store.factory import get_kb_store
 from seshat.pipeline.extraction.node_retriever import NodeRetriever
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
-from seshat.pipeline.llm_factory import get_grounding_llm, get_identification_llm, get_resolution_llm
+from seshat.pipeline.llm_factory import _build_llm, get_grounding_llm, get_identification_llm, get_resolution_llm
 from seshat.vector_store.factory import get_vector_store
 
 if TYPE_CHECKING:
@@ -46,7 +46,15 @@ def _build_orchestrator(
 ) -> ExtractionOrchestrator:
     identification_llm = get_identification_llm(config)
     resolution_llm = get_resolution_llm(config)
-    identification_registry = IdentificationAgentRegistry(llm=identification_llm, config=config.extraction)
+
+    review_llm = None
+    identification_self_review_cfg = config.extraction.identification_self_review
+    if identification_self_review_cfg.enabled and identification_self_review_cfg.llm is not None:
+        review_llm = _build_llm(identification_self_review_cfg.llm, config)
+
+    identification_registry = IdentificationAgentRegistry(
+        llm=identification_llm, config=config.extraction, review_llm=review_llm
+    )
     resolution_registry = ResolutionRegistry(llm=resolution_llm, config=config.extraction.resolution)
     node_retriever = NodeRetriever(rag_config=config.rag, kb_store=kb_store, vector_store=vector_store)
 
