@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from seshat.models.enums import SearchMode
+
 if TYPE_CHECKING:
     from seshat.models.api import NodeFilter, SearchResult
 
@@ -25,6 +27,7 @@ class AbstractVectorStore(ABC):
         node_filter: NodeFilter | None = None,
         exclude_job_id: str | None = None,
         score_threshold: float | None = None,
+        mode: SearchMode = SearchMode.SEMANTIC,
     ) -> list[SearchResult]:
         # RAG contract (spec §5): callers SHOULD set node_filter.node_type before calling
         # search to restrict results to one concept type and avoid over-broad context.
