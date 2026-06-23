@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from seshat.agents.resolution.reflective import ReflectiveResolutionAgent
 from seshat.agents.resolution.same_type.action_item import ActionItemResolutionAgent
 from seshat.agents.resolution.same_type.decision import DecisionResolutionAgent
 from seshat.agents.resolution.same_type.open_question import OpenQuestionResolutionAgent
+from seshat.agents.resolution.same_type.reflective import ReflectiveResolutionAgent
 from seshat.agents.resolution.same_type.risk import RiskResolutionAgent
 from seshat.models.enums import ConceptType
 from seshat.utils.log import get_logger

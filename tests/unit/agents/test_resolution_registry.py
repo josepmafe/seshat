@@ -5,8 +5,8 @@ import pytest
 
 from seshat.agents.resolution.base import ResolvedRelationship
 from seshat.agents.resolution.cross_type.registry import CrossTypeResolutionRegistry
-from seshat.agents.resolution.reflective import ReflectiveResolutionAgent
 from seshat.agents.resolution.registry import ResolutionRegistry
+from seshat.agents.resolution.same_type.reflective import ReflectiveResolutionAgent
 from seshat.agents.resolution.same_type.registry import SameTypeResolutionRegistry
 from seshat.config.settings import ExtractionConfig
 from seshat.models.enums import ConceptType, RelationshipType
@@ -228,14 +228,8 @@ class TestReflectiveWrappingInRegistry:
         for agent in registry._agents.values():
             assert not isinstance(agent, ReflectiveResolutionAgent)
 
-    def test_cross_type_registry_wraps_agents_when_review_llm_provided(self):
-        review_llm = MagicMock()
+    def test_cross_type_registry_never_wraps_agents(self):
         config = ExtractionConfig(resolution_self_review={"enabled": True})
-        registry = CrossTypeResolutionRegistry(llm=MagicMock(), config=config, review_llm=review_llm)
-        for agent in registry._agents_mapping.values():
-            assert isinstance(agent, ReflectiveResolutionAgent)
-
-    def test_cross_type_registry_does_not_wrap_when_no_review_llm(self):
-        registry = CrossTypeResolutionRegistry(llm=MagicMock(), config=ExtractionConfig(), review_llm=None)
+        registry = CrossTypeResolutionRegistry(llm=MagicMock(), config=config)
         for agent in registry._agents_mapping.values():
             assert not isinstance(agent, ReflectiveResolutionAgent)

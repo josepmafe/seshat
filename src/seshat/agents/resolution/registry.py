@@ -36,7 +36,7 @@ _INVALID_ON_SUPERSEDED = {
 class ResolutionRegistry:
     def __init__(self, llm: BaseChatModel, config: ExtractionConfig, review_llm: BaseChatModel | None = None) -> None:
         self._same_type = SameTypeResolutionRegistry(llm, config, review_llm=review_llm)
-        self._cross_type = CrossTypeResolutionRegistry(llm, config, review_llm=review_llm)
+        self._cross_type = CrossTypeResolutionRegistry(llm, config)
 
     def fingerprint(self) -> str:
         """8-char hex digest of all same-type and cross-type agent prompts.

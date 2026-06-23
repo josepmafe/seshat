@@ -7,7 +7,6 @@ from seshat.agents.resolution.cross_type.action_item import ActionItemCrossTypeR
 from seshat.agents.resolution.cross_type.decision import DecisionCrossTypeResolutionAgent
 from seshat.agents.resolution.cross_type.open_question import OpenQuestionCrossTypeResolutionAgent
 from seshat.agents.resolution.cross_type.risk import RiskCrossTypeResolutionAgent
-from seshat.agents.resolution.reflective import ReflectiveResolutionAgent
 from seshat.agents.resolution.same_type.registry import _scope_targets
 from seshat.models.enums import ConceptType
 from seshat.utils.log import get_logger
@@ -26,9 +25,9 @@ if TYPE_CHECKING:
 
 
 class CrossTypeResolutionRegistry:
-    def __init__(self, llm: BaseChatModel, config: ExtractionConfig, review_llm: BaseChatModel | None = None) -> None:
+    def __init__(self, llm: BaseChatModel, config: ExtractionConfig) -> None:
         self._agents_mapping: dict[tuple[ConceptType, ConceptType], _BaseResolutionAgent] = {
-            (source_type, target_type): _make_agent(agent_cls, target_type, llm, config, review_llm)
+            (source_type, target_type): _make_agent(agent_cls, target_type, llm, config)
             for (source_type, target_type), agent_cls in (
                 ((ConceptType.DECISION, ConceptType.RISK), DecisionCrossTypeResolutionAgent),
                 ((ConceptType.DECISION, ConceptType.OPEN_QUESTION), DecisionCrossTypeResolutionAgent),
@@ -103,11 +102,5 @@ def _make_agent(
     target_type: ConceptType,
     llm: BaseChatModel,
     config: ExtractionConfig,
-    review_llm: BaseChatModel | None,
 ) -> _BaseResolutionAgent:
-    inner = agent_cls(llm=llm, config=config.resolution, target_type=target_type)
-    if not config.resolution_self_review.enabled:
-        return inner
-
-    logger.debug("Using ReflectiveCrossTypeResolutionAgent for %s", type(inner).__name__)
-    return ReflectiveResolutionAgent(inner=inner, review_llm=review_llm or llm)
+    return agent_cls(llm=llm, config=config.resolution, target_type=target_type)
