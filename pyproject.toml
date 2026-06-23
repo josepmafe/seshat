@@ -13,7 +13,7 @@ dependencies = [
     "psycopg[binary]>=3.3.4",
     # Config & validation
     "pydantic>=2.13.4",
-    "pydantic-settings>=2.14",
+    "pydantic-settings>=2.14.2",
     # AI / NLP
     # en_core_web_sm pinned as a direct URL so no manual download step is needed
     "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
