@@ -7,6 +7,7 @@ from seshat.models.enums import (
     EmbeddingProvider,
     LLMProvider,
     RelationshipType,
+    SearchMode,
     SecretsProvider,
     TranscriptionProvider,
     VectorStoreProvider,
@@ -191,6 +192,16 @@ class RAGConfig(BaseConfig):
     )
     max_concurrent_retrievals: int = Field(
         default=20, gt=0, description="Maximum number of simultaneous RAG retrieval calls."
+    )
+    search_mode: SearchMode = Field(
+        default=SearchMode.SEMANTIC,
+        description=(
+            "Search strategy for node retrieval. "
+            "SEMANTIC: vector cosine similarity via pgvector ANN index. "
+            "KEYWORD: full-text search via GIN tsvector index (no embedding inference). "
+            "HYBRID: combines both legs via Reciprocal Rank Fusion for higher recall. "
+            "Can be toggled per-request via SeshatConfigOverride."
+        ),
     )
 
 

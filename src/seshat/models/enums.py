@@ -95,3 +95,9 @@ class GraphDirection(StrEnum):
     INBOUND = auto()
     OUTBOUND = auto()
     BOTH = auto()
+
+
+class SearchMode(StrEnum):
+    SEMANTIC = auto()
+    KEYWORD = auto()
+    HYBRID = auto()
