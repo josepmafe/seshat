@@ -14,6 +14,7 @@ agents/
 │   ├── open_question.py        # OpenQuestion model + OpenQuestionIdentificationAgent
 │   ├── risk.py                 # Risk model + RiskIdentificationAgent
 │   ├── grouping.py             # GroupingAgent (optional post-identification clustering)
+│   ├── reflective.py           # ReflectiveIdentificationAgent (extract→validate→filter wrapper)
 │   └── registry.py             # IdentificationAgentRegistry
 ├── resolution/
 │   ├── base.py                 # _BaseResolutionAgent, BaseSameTypeResolutionAgent,
@@ -24,6 +25,7 @@ agents/
 │   │   ├── decision.py         # DecisionResolutionAgent
 │   │   ├── open_question.py    # OpenQuestionResolutionAgent
 │   │   ├── risk.py             # RiskResolutionAgent
+│   │   ├── reflective.py       # ReflectiveResolutionAgent (competing-hypothesis tiebreaker wrapper)
 │   │   └── registry.py         # SameTypeResolutionRegistry
 │   └── cross_type/
 │       ├── action_item.py      # ActionItemCrossTypeResolutionAgent (→ Risk)
@@ -96,6 +98,26 @@ Each source agent class covers one source type and potentially multiple target t
 
 `ResolutionRegistry` is a thin facade that owns both sub-registries and runs them in parallel via `asyncio.gather`. This is the only entry point the orchestrator needs.
 
+## Reflective agents
+
+Both the identification and same-type resolution families have an optional *reflective* mode that wraps the base agent with a second LLM pass to catch mistakes the first pass tends to make.
+
+### `ReflectiveIdentificationAgent` (`identification/reflective.py`)
+
+Wraps any `_BaseIdentificationAgent` in an **extract → validate → filter** pass. After the inner agent extracts nodes from the transcript, a single validation call checks each item against the same extraction rules (logical compliance and semantic compliance with the quote). Items that fail are discarded. If the validation call itself exhausts retries or returns a count mismatch, all extracted nodes are returned as-is so the agent degrades gracefully to shallow behaviour.
+
+This closes a known gap where the base identification agents occasionally extract items that contradict their own extraction rules — borderline nodes that pass the structured-output schema but fail the rule system.
+
+### `ReflectiveResolutionAgent` (`resolution/same_type/reflective.py`)
+
+Wraps any same-type resolution agent with a **competing-hypothesis tiebreaker**. Rather than reviewing all output, the inner agent signals its own uncertainty via an optional `alt_rel_type` field: it is populated only when two specific relationship types are genuinely competing for the same pair. Entries where `alt_rel_type` is null bypass the tiebreaker entirely; only contested entries are sent to a single tiebreaker call that adjudicates between the two candidates.
+
+This design targets the main failure mode of a blanket validate-and-filter approach, which over-rejected unambiguous entries and degraded recall without improving precision. By restricting the second pass to borderline cases only, the reflective agent matches or beats the shallow baseline on all concept types while adding only marginal token overhead.
+
+On any tiebreaker failure (retries exhausted, count mismatch, invalid `chosen` value), the agent falls back to the extractor's original `rel_type` for the affected entries.
+
+Cross-type resolution agents are not wrapped: eval results showed F1 = 1.000 for cross-type under both shallow and reflective modes, so there is no gap to close there.
+
 ## Prompt structure
 
 All resolution agent prompts (both same-type and cross-type) follow a standard layout:
@@ -116,7 +138,7 @@ Definitions appear before guard rails so the LLM grounds its understanding of ea
 
 ### Known limitations
 
-The `GroundingAgent` performs a **grounding check** only: does the supporting quote substantiate the node's claim? It does not check **type correctness** (is this node actually a Decision, or a preference?) or **structural correctness** (does it satisfy the extraction rules in the identification agent's system prompt?). A node can pass grounding with a high confidence score and still be a misclassification. The same gap exists in resolution.
+The `GroundingAgent` performs a **grounding check** only: does the supporting quote substantiate the node's claim? It does not check **type correctness** (is this node actually a Decision, or a preference?) or **structural correctness** (does it satisfy the extraction rules in the identification agent's system prompt?). A node can pass grounding with a high confidence score and still be a misclassification. This structural compliance gap is addressed in reflective mode by `ReflectiveIdentificationAgent`.
 
 ## Concept taxonomy and relationship ontology
 
