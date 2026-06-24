@@ -14,6 +14,10 @@ _NOISY_LOGGERS = (
     "langchain_aws",
     "langchain_openai",
     "mlflow",
+    # mlflow.genai.evaluate fans out rows in parallel threads; suppress urllib3's cosmetic
+    # "connection pool is full" warnings that fire when concurrent MLflow trace POSTs exceed
+    # the default pool size of 10.
+    ("urllib3.connectionpool", logging.ERROR),
 )
 
 
@@ -51,5 +55,10 @@ def configure_logging(level: int = logging.INFO) -> None:
     logging.root.addHandler(handler)
     logging.root.setLevel(level)
 
-    for name in _NOISY_LOGGERS:
-        logging.getLogger(name).setLevel(logging.WARNING)
+    for record in _NOISY_LOGGERS:
+        if isinstance(record, tuple):
+            name, level = record
+        else:
+            name, level = record, logging.WARNING
+
+        logging.getLogger(name).setLevel(level)

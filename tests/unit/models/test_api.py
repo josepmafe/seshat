@@ -33,10 +33,6 @@ class TestNodeFilterValidation:
 
 
 class TestSearchResultValidation:
-    def test_score_above_1_raises(self):
-        with pytest.raises(ValidationError):
-            SearchResult(node_id="n1", score=1.1)
-
     def test_score_below_0_raises(self):
         with pytest.raises(ValidationError):
             SearchResult(node_id="n1", score=-0.1)

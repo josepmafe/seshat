@@ -39,6 +39,7 @@ class _CapturingVectorStore(AbstractVectorStore):
         node_filter: NodeFilter | None = None,
         exclude_job_id: str | None = None,
         score_threshold: float | None = None,
+        mode: object = None,
     ) -> list[SearchResult]:
         self.captured_filters.append(node_filter)
         self.captured_queries.append(query)

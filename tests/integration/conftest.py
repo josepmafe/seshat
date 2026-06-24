@@ -163,6 +163,7 @@ async def pg_test_url():
     await admin.execute(f"CREATE DATABASE {_PG_TEST_DB} OWNER {_PG_USER}")
     await admin.close()
 
+    await _init_langchain_tables(_PG_TEST_URL)
     _run_alembric_migrations(database_url=_PG_TEST_URL)
 
     yield _PG_TEST_URL
@@ -171,6 +172,27 @@ async def pg_test_url():
     await admin.execute(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='{_PG_TEST_DB}'")
     await admin.execute(f"DROP DATABASE IF EXISTS {_PG_TEST_DB}")
     await admin.close()
+
+
+async def _init_langchain_tables(database_url: str) -> None:
+    """Create langchain_pg_* tables before Alembic runs.
+
+    Migration 004 adds a column to langchain_pg_embedding; LangChain creates
+    that table lazily, so it must be initialised before Alembic touches it.
+    """
+    from langchain_core.embeddings.fake import DeterministicFakeEmbedding
+    from langchain_postgres import PGVector
+
+    from seshat.utils.db import ensure_psycopg_scheme
+
+    pg_url = ensure_psycopg_scheme(database_url)
+    store = PGVector(
+        embeddings=DeterministicFakeEmbedding(size=1536),
+        collection_name="_init",
+        connection=pg_url,
+        async_mode=True,
+    )
+    await store.acreate_collection()
 
 
 def _run_alembric_migrations(database_url: str):
