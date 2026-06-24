@@ -388,12 +388,16 @@ class ExtractionConfig(BaseModel):
 class RAGConfig(BaseModel):
     enabled: bool = True
     top_k: int = 5        # candidates retained from vector search (fed to graph traversal)
-    min_similarity_score: float = 0.5  # minimum similarity score [0, 1]; set by RetrievalMetaScorer.sweep_threshold() (argmax macro-F2 over the retrieval corpus)
+    min_similarity_score: float = 0.5  # minimum similarity score [0, 1]; only applied to the SEMANTIC dense leg — forwarded as score_threshold to AbstractVectorStore.search(); set by RetrievalMetaScorer (argmax macro-F2)
     max_context_tokens: int = 4000
     traversal_max_depth: int = 1                            # direct neighbours only for MVP
     traversal_rel_types: list[RelationshipType] | None = None  # None = all relationship types
     max_concurrent_retrievals: int = 20                     # maximum number of simultaneous RAG retrieval calls
+    search_mode: SearchMode = SearchMode.SEMANTIC           # SEMANTIC | KEYWORD | HYBRID
+    keyword_extraction_llm: LLMConfig | None = None         # required for KEYWORD and HYBRID modes; None disables sparse leg
 ```
+
+`keyword_extraction_llm` controls whether the sparse leg is active. When `None`, any call to `KEYWORD` or `HYBRID` mode logs a warning and returns no results from the sparse leg — `HYBRID` degrades to pure semantic. When set, the LLM extracts 3–6 discriminating keywords from the query before sparse search (see **Sparse leg design** below).
 
 Metadata filters for retrieval are **not** config — they are passed per-job in the request payload.
 
@@ -835,8 +839,30 @@ The `top_k=5` default must be justified against a measured baseline before MVP s
 sweeps `score_threshold` across [0, 1] and selects the value that maximises **macro-F2**
 (beta=2) — a recall-weighted metric that prevents the degenerate threshold=0 solution.
 Positive corpus examples contribute F2; negative examples (no expected matches) contribute
-specificity (1 if nothing returned, 0 otherwise). Both feed the macro average. The
-suggested threshold is written back to `RAGConfig.min_similarity_score`.
+specificity (1 if nothing returned, 0 otherwise). Both feed the macro average.
+
+Calibration is **per search mode** — each mode uses a different score scale (cosine
+similarity for `SEMANTIC`, `ts_rank_cd` for `KEYWORD`, RRF `1/(60+rank)` for `HYBRID`),
+so thresholds are not portable across modes. `EvalConfig.retrieval_score_thresholds` is
+a `dict[SearchMode, float]`; absent keys default to 0.0. The `SEMANTIC` threshold is also
+set as `RAGConfig.min_similarity_score` for the production pipeline; `KEYWORD` and `HYBRID`
+suggest 0.0 because their score distributions have no exploitable gap.
+
+**Sparse leg design:** The sparse leg requires a `keyword_extraction_llm` — raw natural
+language fed directly to a tsquery function uses implicit AND semantics, which filters out
+short KB nodes that contain only some query terms. The LLM extractor produces a tight set
+of 3–6 discriminating keywords (proper nouns, named tools, specific technical terms); these
+are joined with `|` and passed to `to_tsquery("english", ...)`, so any matching keyword is
+sufficient. The `ts_content` column (`tsvector GENERATED ALWAYS AS (to_tsvector('english',
+document)) STORED`) is created lazily on first sparse or hybrid search and backed by a GIN
+index for index-speed lookups. Ranking uses `ts_rank_cd` (cover density), which rewards
+documents where query terms cluster together. The extractor model ID is included in the
+eval cache fingerprint so cached results are invalidated when the extractor changes.
+
+**Hybrid eval pre-filter:** The eval runner applies the calibrated `SEMANTIC` threshold as
+a dense pre-filter for `HYBRID` mode, matching production behaviour where `min_similarity_score`
+is forwarded to the dense leg before RRF fusion. The cache key embeds this threshold, so
+clearing the hybrid cache is required if the semantic threshold is recalibrated.
 
 `seshat eval` runs this retrieval baseline as an independent pass — each pass produces its own MLflow run, linked to the same experiment.
 
@@ -1577,7 +1603,7 @@ class EvalConfig(BaseConfig):
     run_resolution: bool = True
     run_retrieval: bool = True
     nli_scorer_enabled: bool = False          # NLI model not yet available; stub only
-    retrieval_score_threshold: float = 0.0    # 0.0 = no filtering during calibration runs
+    retrieval_score_thresholds: dict[SearchMode, float] = {}  # per-mode; absent = 0.0; set by RetrievalMetaScorer per mode
 
     # Computed from corpus_base_dir:
     identification_corpus_dir: Path   # corpus_base_dir / "identification"
