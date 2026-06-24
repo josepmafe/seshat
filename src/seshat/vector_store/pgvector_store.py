@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, Any
 
-import sqlalchemy
+import sqlalchemy as sa
 from langchain_core.documents import Document
 from langchain_postgres import PGVector
-from sqlalchemy import Float, cast, func, select
+from sqlalchemy import Float, cast, func, select, text
 from sqlalchemy.dialects.postgresql import TSVECTOR
 
 from seshat.models.api import SearchResult
@@ -24,104 +23,21 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# ts_content is our generated column (migration 004) — not declared on the ORM model,
-# so we reference it as a bare column expression.
-_TS_CONTENT = sqlalchemy.column("ts_content", TSVECTOR)
+# langchain_pg_embedding is created lazily by LangChain on first connection, so
+# we cannot rely on Alembic running this before the table exists.  The DDL is
+# idempotent (ADD COLUMN IF NOT EXISTS / CREATE INDEX IF NOT EXISTS) and applied
+# lazily before the first sparse or hybrid search.
+_ENSURE_TS_CONTENT = text("""
+    ALTER TABLE langchain_pg_embedding
+    ADD COLUMN IF NOT EXISTS ts_content tsvector
+    GENERATED ALWAYS AS (to_tsvector('english', document)) STORED;
+
+    CREATE INDEX IF NOT EXISTS langchain_pg_embedding_ts_content_gin
+    ON langchain_pg_embedding USING gin(ts_content);
+""")
 
 
-class KeywordSearchMixin:
-    """FTS keyword search over langchain_pg_embedding via SQLAlchemy.
-
-    Assumes the concrete class exposes:
-      - self._engine: AsyncEngine
-      - self._collection_name: str
-      - self._embedding_store: the EmbeddingStore ORM class from PGVector
-      - self._collection_store: the CollectionStore ORM class from PGVector
-    and initializes self._collection_id to None.
-    """
-
-    _engine: AsyncEngine
-    _collection_name: str
-    _collection_id: str | None
-    _embedding_store: Any
-    _collection_store: Any
-
-    async def _keyword_search(
-        self,
-        query: str,
-        top_k: int,
-        node_filter: NodeFilter | None,
-        exclude_job_id: str | None,
-    ) -> list[SearchResult]:
-        sparse = await self._sparse_search(query, top_k=top_k, node_filter=node_filter, exclude_job_id=exclude_job_id)
-        return [SearchResult(node_id=nid, score=score) for nid, score in sparse]
-
-    async def _sparse_search(
-        self,
-        query: str,
-        top_k: int,
-        node_filter: NodeFilter | None,
-        exclude_job_id: str | None,
-    ) -> list[tuple[str, float]]:
-        ts_query_str = " | ".join(re.findall(r"\w+", query))
-        if not ts_query_str:
-            return []
-
-        collection_id = await self._get_collection_id()
-        ts_query_expr = func.to_tsquery("english", ts_query_str)
-        ts_rank = func.ts_rank_cd(_TS_CONTENT, ts_query_expr)
-
-        stmt = (
-            select(
-                self._embedding_store.cmetadata["node_id"].as_string().label("node_id"),
-                ts_rank.label("rank"),
-            )
-            .where(
-                self._embedding_store.collection_id == collection_id,
-                _TS_CONTENT.op("@@")(ts_query_expr),
-            )
-            .order_by(ts_rank.desc())
-            .limit(top_k)
-        )
-        stmt = self._apply_sparse_filter(stmt, node_filter, exclude_job_id)
-
-        async with self._engine.connect() as conn:
-            rows = (await conn.execute(stmt)).fetchall()
-
-        return [(row.node_id, float(row.rank)) for row in rows]
-
-    async def _get_collection_id(self) -> str:
-        if self._collection_id is None:
-            CS = self._collection_store
-            stmt = select(CS.uuid).where(CS.name == self._collection_name)
-            async with self._engine.connect() as conn:
-                row = (await conn.execute(stmt)).fetchone()
-            if row is None:
-                raise RuntimeError(f"Collection '{self._collection_name}' not found in langchain_pg_collection")
-            self._collection_id = str(row.uuid)
-
-        return self._collection_id
-
-    def _apply_sparse_filter(self, stmt: Any, node_filter: NodeFilter | None, exclude_job_id: str | None) -> Any:
-        self._embedding_store = self._embedding_store
-        if node_filter is not None:
-            if node_filter.node_type:
-                stmt = stmt.where(self._embedding_store.cmetadata["node_type"].as_string() == node_filter.node_type)
-            if node_filter.min_confidence is not None:
-                stmt = stmt.where(
-                    cast(self._embedding_store.cmetadata["confidence"].as_string(), Float) >= node_filter.min_confidence
-                )
-            if node_filter.ingestion_source:
-                stmt = stmt.where(
-                    self._embedding_store.cmetadata["ingestion_source"].as_string() == node_filter.ingestion_source
-                )
-        if exclude_job_id is not None:
-            stmt = stmt.where(self._embedding_store.cmetadata["job_id"].as_string() != exclude_job_id)
-
-        return stmt
-
-
-class PGVectorStore(AbstractVectorStore, KeywordSearchMixin):
+class PGVectorStore(AbstractVectorStore):
     def __init__(
         self, config: VectorStoreConfig, index: VectorIndexConfig, embeddings: Embeddings, connection_string: str
     ) -> None:
@@ -132,22 +48,17 @@ class PGVectorStore(AbstractVectorStore, KeywordSearchMixin):
             embeddings=embeddings, collection_name=index.collection, connection=self._connection_string, async_mode=True
         )
         self._collection_id: str | None = None
+        self._ts_content_ready = False
 
     @property
     def _engine(self) -> AsyncEngine:
+        assert self._store._async_engine is not None, "PGVector async engine is not initialized"
         return self._store._async_engine
 
     @property
-    def _collection_name(self) -> str:
-        return self._index.collection
-
-    @property
-    def _embedding_store(self) -> Any:
-        return self._store.EmbeddingStore
-
-    @property
-    def _collection_store(self) -> Any:
-        return self._store.CollectionStore
+    def _ts_content(self) -> sa.ColumnClause[str]:
+        # ts_content is a generated column not in the LangChain ORM model.
+        return sa.column("ts_content", TSVECTOR)
 
     @staticmethod
     def _validate_connection_string(connection_string: str) -> str:
@@ -162,6 +73,15 @@ class PGVectorStore(AbstractVectorStore, KeywordSearchMixin):
     @staticmethod
     def get_supported_filter_fields() -> frozenset[str]:
         return frozenset({"node_type", "min_confidence", "ingestion_source"})
+
+    async def _ensure_ts_content(self) -> None:
+        if self._ts_content_ready:
+            return
+
+        async with self._engine.begin() as conn:
+            await conn.execute(_ENSURE_TS_CONTENT)
+
+        self._ts_content_ready = True
 
     async def upsert(self, node_id: str, text: str, metadata: dict) -> None:
         # TODO: assert metadata keys are a subset of get_supported_filter_fields()
@@ -185,6 +105,16 @@ class PGVectorStore(AbstractVectorStore, KeywordSearchMixin):
                 return await self._semantic_search(query, top_k, node_filter, exclude_job_id, score_threshold)
             case SearchMode.HYBRID:
                 return await self._hybrid_search(query, top_k, node_filter, exclude_job_id, score_threshold)
+
+    async def _keyword_search(
+        self,
+        query: str,
+        top_k: int,
+        node_filter: NodeFilter | None,
+        exclude_job_id: str | None,
+    ) -> list[SearchResult]:
+        sparse = await self._sparse_search(query, top_k=top_k, node_filter=node_filter, exclude_job_id=exclude_job_id)
+        return [SearchResult(node_id=nid, score=score) for nid, score in sparse]
 
     async def _semantic_search(
         self,
@@ -210,7 +140,55 @@ class PGVectorStore(AbstractVectorStore, KeywordSearchMixin):
         search_kwargs = {"top_k": top_k, "node_filter": node_filter, "exclude_job_id": exclude_job_id}
         dense = await self._similarity_search(query, score_threshold=score_threshold, **search_kwargs)
         sparse = await self._sparse_search(query, **search_kwargs)
+        logger.debug(
+            "hybrid_search: query=%r dense=%d sparse=%d",
+            query[:60],
+            len(dense),
+            len(sparse),
+        )
         return _rrf(dense, sparse, top_k=top_k)
+
+    async def _sparse_search(
+        self,
+        query: str,
+        top_k: int,
+        node_filter: NodeFilter | None,
+        exclude_job_id: str | None,
+    ) -> list[tuple[str, float]]:
+        if not query.strip():
+            return []
+
+        await self._ensure_ts_content()
+        collection_id = await self._get_collection_id()
+
+        ts_query_expr = func.plainto_tsquery("english", query)
+        ts_rank = func.ts_rank_cd(self._ts_content, ts_query_expr)
+
+        stmt = (
+            select(
+                self._store.EmbeddingStore.cmetadata["node_id"].as_string().label("node_id"),
+                ts_rank.label("rank"),
+            )
+            .where(
+                self._store.EmbeddingStore.collection_id == collection_id,
+                self._ts_content.op("@@")(ts_query_expr),
+            )
+            .order_by(ts_rank.desc())
+            .limit(top_k)
+        )
+        stmt = self._apply_sparse_filter(stmt, node_filter, exclude_job_id)
+
+        async with self._engine.connect() as conn:
+            result = await conn.execute(stmt)
+            rows = result.fetchall()
+
+        logger.debug(
+            "sparse_search: query=%r collection_id=%s rows=%d",
+            query[:60],
+            collection_id,
+            len(rows),
+        )
+        return [(row.node_id, float(row.rank)) for row in rows]
 
     async def _similarity_search(
         self,
@@ -220,9 +198,53 @@ class PGVectorStore(AbstractVectorStore, KeywordSearchMixin):
         exclude_job_id: str | None,
         score_threshold: float | None,
     ) -> list[tuple[Document, float]]:
-        return await self._store.asimilarity_search_with_relevance_scores(
-            query, k=top_k, filter=_build_semantic_filter(node_filter, exclude_job_id), score_threshold=score_threshold
+        semantic_filter = _build_semantic_filter(node_filter, exclude_job_id)
+        logger.debug(
+            "similarity_search: query=%r top_k=%d score_threshold=%s filter=%r",
+            query[:60],
+            top_k,
+            score_threshold,
+            semantic_filter,
         )
+        results = await self._store.asimilarity_search_with_relevance_scores(
+            query, k=top_k, filter=semantic_filter, score_threshold=score_threshold
+        )
+        logger.debug("similarity_search: returned %d results", len(results))
+        return results
+
+    async def _get_collection_id(self) -> str:
+        if self._collection_id is None:
+            stmt = select(self._store.CollectionStore).where(self._store.CollectionStore.name == self._index.collection)
+            async with self._engine.connect() as conn:
+                result = await conn.execute(stmt)
+                row = result.fetchone()
+
+            if row is None:
+                raise RuntimeError(f"Collection '{self._index.collection}' not found in langchain_pg_collection")
+
+            self._collection_id = str(row.uuid)
+
+        return self._collection_id
+
+    def _apply_sparse_filter(self, stmt: Any, node_filter: NodeFilter | None, exclude_job_id: str | None) -> Any:
+        if node_filter is not None:
+            if node_filter.node_type:
+                stmt = stmt.where(
+                    self._store.EmbeddingStore.cmetadata["node_type"].as_string() == node_filter.node_type
+                )
+            if node_filter.min_confidence is not None:
+                stmt = stmt.where(
+                    cast(self._store.EmbeddingStore.cmetadata["confidence"].as_string(), Float)
+                    >= node_filter.min_confidence
+                )
+            if node_filter.ingestion_source:
+                stmt = stmt.where(
+                    self._store.EmbeddingStore.cmetadata["ingestion_source"].as_string() == node_filter.ingestion_source
+                )
+        if exclude_job_id is not None:
+            stmt = stmt.where(self._store.EmbeddingStore.cmetadata["job_id"].as_string() != exclude_job_id)
+
+        return stmt
 
     async def delete(self, node_id: str) -> None:
         await self._store.adelete(ids=[node_id])
