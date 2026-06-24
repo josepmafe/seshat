@@ -10,7 +10,9 @@ from seshat.eval.models import RetrievalScoredResult
 from seshat.eval.retrieval.corpus_loader import load_corpus
 from seshat.eval.retrieval.scorers import TOP_K
 from seshat.models.api import SearchResult
+from seshat.models.enums import SearchMode
 from seshat.observability.usage_tracker import track_eval_usage
+from seshat.utils.hashing import fingerprint
 
 if TYPE_CHECKING:
     from seshat.config.eval_settings import EvalConfig
@@ -25,10 +27,13 @@ class RetrievalMetaScorer:
         self,
         vector_store: AbstractVectorStore,
         config: EvalConfig,
+        search_mode: SearchMode = SearchMode.SEMANTIC,
         step: float = 0.01,
     ) -> None:
         self._vs = vector_store
         self._config = config
+        self._search_mode = search_mode
+        self._search_mode_hash = fingerprint(search_mode.value)
         self._step = step
 
     async def sweep_threshold(self) -> RetrievalSweepResult:
@@ -68,12 +73,12 @@ class RetrievalMetaScorer:
         from seshat.eval.retrieval.runner import RetrievalEvalRunner
 
         examples = load_corpus(self._config.retrieval_corpus_dir)
-        runner = RetrievalEvalRunner(self._vs, self._config)
+        runner = RetrievalEvalRunner(self._vs, self._config, search_mode=self._search_mode)
         cache: _Cache = {}
         touched = set()
 
         for ex in examples:
-            cache_fp = build_cache_fp(self._config.retrieval_cache_dir, ex)
+            cache_fp = build_cache_fp(self._config.retrieval_cache_dir, ex, agent_hash=self._search_mode_hash)
             scored, used = await read_or_run(
                 cache_fp,
                 RetrievalScoredResult,
@@ -87,6 +92,7 @@ class RetrievalMetaScorer:
             self._config.retrieval_cache_dir,
             corpus_ids=[ex.corpus_id for ex in examples],
             touched=touched,
+            agent_hash=self._search_mode_hash,
         )
         return cache
 

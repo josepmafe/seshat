@@ -16,7 +16,9 @@ from seshat.eval.models import RetrievalScoredResult
 from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.retrieval.scorers import TOP_K, scorer
 from seshat.models.api import NodeFilter
+from seshat.models.enums import SearchMode
 from seshat.observability.usage_tracker import track_eval_usage
+from seshat.utils.hashing import fingerprint
 from seshat.utils.log import get_logger, set_task_num
 from seshat.utils.retry import async_retry
 
@@ -42,16 +44,24 @@ class RetrievalEvalRunner:
     Any pre-existing nodes in the collection will appear in search results and corrupt scores.
     """
 
-    def __init__(self, vector_store: AbstractVectorStore, config: EvalConfig) -> None:
+    def __init__(
+        self,
+        vector_store: AbstractVectorStore,
+        config: EvalConfig,
+        search_mode: SearchMode = SearchMode.SEMANTIC,
+    ) -> None:
         self._vs = vector_store
         self._config = config
+        self._search_mode = search_mode
+        self._search_mode_hash = fingerprint(search_mode.value)
 
     async def run(self, tag_filter: CorpusTagFilter | None = None, model_id: str | None = None) -> GateResult:
         examples = load_corpus(self._config.retrieval_corpus_dir, tag_filter=tag_filter)
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="retrieval-no-corpus")
 
-        result_cache, touched = await self._run_all_predictions(examples)
+        threshold = self._config.retrieval_score_thresholds.get(self._search_mode, 0.0)
+        result_cache, touched = await self._run_all_predictions(examples, threshold)
 
         expected_by_id = {ex.corpus_id: ex.expected_relevant_ids for ex in examples}
 
@@ -85,12 +95,17 @@ class RetrievalEvalRunner:
             corpus_examples=examples,
             breakdown_artifact=_build_breakdown(eval_result, examples, result_cache),
             tag_filter=tag_filter,
+            extra_params={
+                "retrieval.search_mode": self._search_mode.value,
+                "retrieval.score_threshold": str(threshold),
+            },
         )
 
         sweep_stale_entries(
             self._config.retrieval_cache_dir,
             corpus_ids=[ex.corpus_id for ex in examples],
             touched=touched,
+            agent_hash=self._search_mode_hash,
         )
         return gate
 
@@ -98,14 +113,14 @@ class RetrievalEvalRunner:
     async def _run_all_predictions(
         self,
         examples: list[RetrievalCorpusExample],
+        threshold: float,
     ) -> tuple[dict[str, list[str]], set[Path]]:
         result_cache: dict[str, list[str]] = {}
         touched: set[Path] = set()
         for task_idx, ex in enumerate(examples):
             set_task_num(task_idx)
-            cache_fp = build_cache_fp(self._config.retrieval_cache_dir, ex)
+            cache_fp = build_cache_fp(self._config.retrieval_cache_dir, ex, agent_hash=self._search_mode_hash)
             scored, used = await read_or_run(cache_fp, RetrievalScoredResult, self._fetch_example(ex))
-            threshold = self._config.retrieval_score_threshold or 0.0
             retrieved_ids = [slug for slug, score in scored.results if score >= threshold]
             result_cache[ex.corpus_id] = retrieved_ids[:TOP_K]
             touched.add(used)
@@ -131,10 +146,17 @@ class RetrievalEvalRunner:
         # score_threshold=None: full unfiltered results are cached so both the runner
         # (applies retrieval_score_threshold + top-5 at read time) and the meta-scorer
         # (sweeps all thresholds) can reuse the same cache file.
-        return await self._vs.search(query, top_k=top_k, node_filter=node_filter, score_threshold=None)
+        return await self._vs.search(
+            query, top_k=top_k, node_filter=node_filter, score_threshold=None, mode=self._search_mode
+        )
 
     async def _seed_candidates(self, nodes: list[KBNode]) -> bool:
-        """Upsert candidate nodes. Returns False if all nodes failed (example should be skipped)."""
+        """Upsert candidate nodes. Returns False if all nodes failed (example should be skipped).
+
+        Note: upsert always calls the embedding model (LangChain's PGVector has no embed-free
+        insert path), so embedding_input_tokens will be non-zero even for KEYWORD mode.
+        This is seeding cost, not search cost — the search step itself makes no embedding call.
+        """
         failures = 0
 
         async def _upsert(node: KBNode) -> None:

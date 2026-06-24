@@ -5,6 +5,7 @@ from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from seshat.config.settings import ObservabilityConfig
+from seshat.models.enums import SearchMode
 
 _ROOT_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
 _DEFAULT_CORPUS_BASE_DIR: Path = _ROOT_DIR / "data" / "eval" / "corpora"
@@ -69,13 +70,13 @@ class EvalConfig(BaseSettings):
         gt=0,
         description="Maximum number of prediction coroutines that may run in parallel during eval.",
     )
-    # 0.0 virtually disables score filtering, so all candidates rank.
-    # we recommend to calibrate it using the retrieval meta-scorer and set via EVAL__RETRIEVAL_SCORE_THRESHOLD
-    retrieval_score_threshold: float = Field(
-        default=0.0,
-        ge=0,
-        le=1,
-        description="Minimum similarity score [0, 1] forwarded to the vector store during retrieval eval.",
+    # Per-mode score thresholds calibrated by the retrieval meta-scorer (argmax macro-F2).
+    # Absent keys default to 0.0 (no filtering). Each mode has its own score scale
+    # (cosine similarity for SEMANTIC, ts_rank_cd for KEYWORD, RRF for HYBRID), so thresholds
+    # must be calibrated independently. Set via EVAL__RETRIEVAL_SCORE_THRESHOLDS__SEMANTIC=0.77 etc.
+    retrieval_score_thresholds: dict[SearchMode, float] = Field(
+        default_factory=dict,
+        description="Per-mode minimum score thresholds [0, 1] applied during retrieval eval.",
     )
 
     _identification_subdir: ClassVar[str] = "identification"

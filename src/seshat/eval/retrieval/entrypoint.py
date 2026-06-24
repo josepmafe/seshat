@@ -25,7 +25,10 @@ async def run(eval_config: EvalConfig, seshat_config: SeshatConfig, tag_filter: 
     vector_store, index_config = _ensure_clean_vector_store(seshat_config)
     model_id = log_retrieval_model("seshat-retrieval", index_config)
 
-    runner = RetrievalEvalRunner(vector_store=vector_store, config=eval_config)
+    search_mode = seshat_config.rag.search_mode
+    logger.info("retrieval eval: search_mode=%r, model_id=%s", search_mode.value, model_id)
+
+    runner = RetrievalEvalRunner(vector_store=vector_store, config=eval_config, search_mode=search_mode)
     gate = await runner.run(tag_filter=tag_filter, model_id=model_id)
 
     logger.info("retrieval eval: passed=%s", gate.passed)
