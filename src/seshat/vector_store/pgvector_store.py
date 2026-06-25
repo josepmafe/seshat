@@ -146,9 +146,8 @@ class PGVectorStore(AbstractVectorStore):
         exclude_job_id: str | None,
         score_threshold: float | None,
     ) -> list[SearchResult]:
-        search_kwargs = {"top_k": top_k, "node_filter": node_filter, "exclude_job_id": exclude_job_id}
-        dense = await self._similarity_search(query, score_threshold=score_threshold, **search_kwargs)
-        sparse = await self._sparse_search(query, **search_kwargs)
+        dense = await self._similarity_search(query, top_k, node_filter, exclude_job_id, score_threshold)
+        sparse = await self._sparse_search(query, top_k, node_filter, exclude_job_id)
         logger.debug(
             "hybrid_search: query=%r dense=%d sparse=%d",
             query[:60],
