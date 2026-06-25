@@ -109,3 +109,15 @@ class ResolutionResult(SeshatModel):
         default_factory=list,
         description="Sources whose resolution task failed entirely after all retries.",
     )
+
+
+class ExtractionResult(SeshatModel):
+    """Combined result of identification + resolution, used as the unit that flows through the job state machine."""
+
+    job_id: str
+    nodes: list[KBNode]
+    relationships: list[KBRelationship] = Field(default_factory=list)
+    confidence_breakdowns: dict[str, ConfidenceBreakdown] = Field(
+        default_factory=dict,
+        description="Keyed by str(node.id). Populated from IdentificationResult.",
+    )
