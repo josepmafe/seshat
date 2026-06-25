@@ -157,6 +157,18 @@ class TestGateResultPassed:
         )
         assert gate_result.passed is True
 
+    def test_retrieval_mrr_at_5_below_threshold_fails(self):
+        gate_result = GateResult(
+            run_id="r", retrieval_metrics=retrieval_entries({"recall_at_5": 0.75, "mrr_at_5": 0.50})
+        )
+        assert gate_result.passed is False
+
+    def test_retrieval_mrr_at_5_above_threshold_passes(self):
+        gate_result = GateResult(
+            run_id="r", retrieval_metrics=retrieval_entries({"recall_at_5": 0.75, "mrr_at_5": 0.80})
+        )
+        assert gate_result.passed is True
+
     def test_none_blocks_not_gated(self):
         gate_result = GateResult(
             run_id="r",

@@ -13,6 +13,7 @@ from seshat.eval.thresholds import (
     IDENTIFICATION_SPURIOUS_RATE,
     RESOLUTION_PRECISION,
     RESOLUTION_RECALL,
+    RETRIEVAL_MRR_AT_5,
     RETRIEVAL_RECALL_AT_5,
 )
 from seshat.models.enums import ConceptType
@@ -112,7 +113,13 @@ def resolution_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:
 
 def retrieval_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:
     def passes(key: str, value: float) -> bool:
-        return value >= RETRIEVAL_RECALL_AT_5 if key == "recall_at_5" else True
+        match key:
+            case "recall_at_5":
+                return value >= RETRIEVAL_RECALL_AT_5
+            case "mrr_at_5":
+                return value >= RETRIEVAL_MRR_AT_5
+            case _:
+                return True
 
     return {k: MetricEntry(value=round(v, 3), passed=passes(k, v)) for k, v in metrics.items()}
 

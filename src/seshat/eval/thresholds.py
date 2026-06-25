@@ -39,6 +39,7 @@ RESOLUTION_RECALL: dict[ConceptType, float] = {
 }
 
 RETRIEVAL_RECALL_AT_5: float = 0.70
+RETRIEVAL_MRR_AT_5: float = 0.75
 
 GROUNDING_PRECISION: float = 0.85
 GROUNDING_RECALL: float = 0.80

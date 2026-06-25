@@ -69,3 +69,49 @@ class TestRetrievalScorer:
         )
         by_name = {f.name: f.value for f in feedbacks}
         assert by_name["recall_at_5"] == pytest.approx(0.0)
+
+    def test_mrr_first_hit_at_rank_1(self):
+        feedbacks = retrieval_scorer(
+            inputs={},
+            outputs={"retrieved_ids": ["id-1", "id-2"]},
+            expectations={"expected_relevant_ids": ["id-1"]},
+        )
+        by_name = {f.name: f.value for f in feedbacks}
+        assert by_name["mrr_at_5"] == pytest.approx(1.0)
+
+    def test_mrr_first_hit_at_rank_2(self):
+        feedbacks = retrieval_scorer(
+            inputs={},
+            outputs={"retrieved_ids": ["id-x", "id-1"]},
+            expectations={"expected_relevant_ids": ["id-1"]},
+        )
+        by_name = {f.name: f.value for f in feedbacks}
+        assert by_name["mrr_at_5"] == pytest.approx(0.5)
+
+    def test_mrr_zero_when_no_hit_in_top_k(self):
+        feedbacks = retrieval_scorer(
+            inputs={},
+            outputs={"retrieved_ids": ["id-x", "id-y", "id-z", "id-w", "id-v", "id-1"]},
+            expectations={"expected_relevant_ids": ["id-1"]},
+        )
+        by_name = {f.name: f.value for f in feedbacks}
+        assert by_name["mrr_at_5"] == pytest.approx(0.0)
+
+    def test_mrr_uses_first_hit_when_multiple_relevant(self):
+        # id-2 is at rank 1, id-1 at rank 2 — MRR should use rank 1
+        feedbacks = retrieval_scorer(
+            inputs={},
+            outputs={"retrieved_ids": ["id-2", "id-1"]},
+            expectations={"expected_relevant_ids": ["id-1", "id-2"]},
+        )
+        by_name = {f.name: f.value for f in feedbacks}
+        assert by_name["mrr_at_5"] == pytest.approx(1.0)
+
+    def test_mrr_not_emitted_for_negative_case(self):
+        feedbacks = retrieval_scorer(
+            inputs={},
+            outputs={"retrieved_ids": []},
+            expectations={"expected_relevant_ids": []},
+        )
+        by_name = {f.name: f.value for f in feedbacks}
+        assert "mrr_at_5" not in by_name
