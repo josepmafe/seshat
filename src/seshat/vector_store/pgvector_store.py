@@ -214,7 +214,7 @@ class PGVectorStore(AbstractVectorStore):
         exclude_job_id: str | None,
         score_threshold: float | None,
     ) -> list[tuple[Document, float]]:
-        semantic_filter = _build_semantic_filter(node_filter, exclude_job_id)
+        semantic_filter = self._build_semantic_filter(node_filter, exclude_job_id)
         logger.debug(
             "similarity_search: query=%r top_k=%d score_threshold=%s filter=%r",
             query[:60],
@@ -262,6 +262,31 @@ class PGVectorStore(AbstractVectorStore):
 
         return stmt
 
+    def _build_semantic_filter(self, node_filter: NodeFilter | None, exclude_job_id: str | None = None) -> dict | None:
+        if node_filter is None and exclude_job_id is None:
+            return None
+
+        result: dict[str, Any] = {}
+
+        if node_filter is not None:
+            unsupported = {f for f in node_filter.model_fields_set if f not in self.get_supported_filter_fields()}
+            if unsupported:
+                raise NotImplementedError(
+                    f"PGVector metadata filter does not support: {sorted(unsupported)}. "
+                    "Use PostgresKBStore.query() for full NodeFilter support."
+                )
+            if node_filter.node_type:
+                result["node_type"] = node_filter.node_type.value
+            if node_filter.min_confidence is not None:
+                result["confidence"] = {"$gte": node_filter.min_confidence}
+            if node_filter.ingestion_source:
+                result["ingestion_source"] = node_filter.ingestion_source.value
+
+        if exclude_job_id is not None:
+            result["job_id"] = {"$ne": exclude_job_id}
+
+        return result
+
     async def delete(self, node_id: str) -> None:
         await self._store.adelete(ids=[node_id])
 
@@ -292,29 +317,3 @@ def _rrf(
 
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     return [SearchResult(node_id=nid, score=score) for nid, score in ranked[:top_k]]
-
-
-def _build_semantic_filter(node_filter: NodeFilter | None, exclude_job_id: str | None = None) -> dict | None:
-    if node_filter is None and exclude_job_id is None:
-        return None
-
-    result: dict[str, Any] = {}
-
-    if node_filter is not None:
-        unsupported = {f for f in node_filter.model_fields_set if f not in PGVectorStore.get_supported_filter_fields()}
-        if unsupported:
-            raise NotImplementedError(
-                f"PGVector metadata filter does not support: {sorted(unsupported)}. "
-                "Use PostgresKBStore.query() for full NodeFilter support."
-            )
-        if node_filter.node_type:
-            result["node_type"] = node_filter.node_type.value
-        if node_filter.min_confidence is not None:
-            result["confidence"] = {"$gte": node_filter.min_confidence}
-        if node_filter.ingestion_source:
-            result["ingestion_source"] = node_filter.ingestion_source.value
-
-    if exclude_job_id is not None:
-        result["job_id"] = {"$ne": exclude_job_id}
-
-    return result
