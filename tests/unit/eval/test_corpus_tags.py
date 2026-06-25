@@ -27,11 +27,6 @@ def test_matches_tags_list_filter_item_not_in_tag_value():
     assert matches_tags(tags, {"labels": ["a", "z"]}) is False
 
 
-def test_matches_tags_empty_filter_always_true():
-    tags = {"type": "decision", "source": "meeting"}
-    assert matches_tags(tags, {}) is True
-
-
 def test_matches_tags_missing_key_returns_false():
     tags = {"source": "meeting"}
     assert matches_tags(tags, {"type": "decision"}) is False

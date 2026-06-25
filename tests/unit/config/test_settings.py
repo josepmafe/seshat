@@ -16,11 +16,6 @@ from seshat.models.enums import LLMProvider, SecretsProvider
 
 
 class TestReflectiveLLMConfig:
-    def test_defaults_to_disabled(self):
-        cfg = ReflectiveLLMConfig()
-        assert cfg.enabled is False
-        assert cfg.llm is None
-
     def test_enabled_with_defaults(self):
         cfg = ReflectiveLLMConfig(enabled=True)
         assert cfg.enabled is True

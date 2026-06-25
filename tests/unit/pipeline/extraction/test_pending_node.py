@@ -103,14 +103,7 @@ class TestDeduplicate:
             _deduplicate(nodes)
         mock_logger.warning.assert_called_once()
 
-    def test_collision_keeps_higher_heuristics_score(self):
-        low = _make_pending("Use PostgreSQL", heuristics=0.3)
-        high = _make_pending("Use PostgreSQL", heuristics=0.8)
-        result = _deduplicate([low, high])
-        assert len(result) == 1
-        assert result[0].heuristics == 0.8
-
-    def test_collision_result_is_order_independent(self):
+    def test_collision_keeps_higher_heuristics_score_regardless_of_order(self):
         low = _make_pending("Use PostgreSQL", heuristics=0.3)
         high = _make_pending("Use PostgreSQL", heuristics=0.8)
         result_a = _deduplicate([low, high])

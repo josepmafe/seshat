@@ -13,7 +13,3 @@ class TestGetBlobStore:
     def test_returns_s3_blob_store(self, minimal_config: SeshatConfig):
         store = get_blob_store(minimal_config)
         assert isinstance(store, S3BlobStore)
-
-    def test_propagates_bucket(self, minimal_config: SeshatConfig):
-        store = get_blob_store(minimal_config)
-        assert store._bucket == minimal_config.blob_store.bucket

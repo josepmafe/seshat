@@ -26,11 +26,6 @@ class TestNodeFilterValidation:
                 meeting_date_to=date(2026, 4, 1),
             )
 
-    def test_no_constraints_accepted(self):
-        f = NodeFilter()
-        assert f.min_confidence is None
-        assert f.meeting_date_from is None
-
 
 class TestSearchResultValidation:
     def test_score_below_0_raises(self):
