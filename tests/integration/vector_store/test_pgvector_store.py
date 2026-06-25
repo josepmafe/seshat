@@ -26,12 +26,26 @@ class _DummyEmbeddings(Embeddings):
         return [0.0] * 1536
 
 
-@pytest.fixture
-async def keyword_store(pg_test_url):
+async def _make_store_with_extractor(pg_test_url, collection: str) -> PGVectorStore:
     from seshat.config.settings import VectorIndexConfig, VectorStoreConfig
 
-    index = VectorIndexConfig().model_copy(update={"collection": "test_keyword_search"})
-    store = PGVectorStore(VectorStoreConfig(), index, _DummyEmbeddings(), pg_test_url)
+    async def _passthrough_extractor(query: str) -> str:
+        return query
+
+    index = VectorIndexConfig().model_copy(update={"collection": collection})
+    return PGVectorStore(VectorStoreConfig(), index, _DummyEmbeddings(), pg_test_url, _passthrough_extractor)
+
+
+@pytest.fixture
+async def keyword_store(pg_test_url):
+    store = await _make_store_with_extractor(pg_test_url, "test_keyword_search")
+    yield store
+    await store._store.adelete_collection()
+
+
+@pytest.fixture
+async def hybrid_store(pg_test_url):
+    store = await _make_store_with_extractor(pg_test_url, "test_hybrid_search")
     yield store
     await store._store.adelete_collection()
 
@@ -135,21 +149,19 @@ class TestKeywordSearch:
 
 
 class TestHybridSearch:
-    pytestmark = _EMBEDDING_MARKS
-
-    async def test_finds_node_present_in_both_legs(self, vector_store: PGVectorStore):
+    async def test_finds_node_present_in_both_legs(self, hybrid_store: PGVectorStore):
         text = f"Use Redis for caching sessions {_DISTINCTIVE_TERM}"
-        await vector_store.upsert(_TEST_NODE_ID, text, {"node_type": "decision", "confidence": 0.9})
-        results = await vector_store.search(text, top_k=5, mode=SearchMode.HYBRID)
+        await hybrid_store.upsert(_TEST_NODE_ID, text, {"node_type": "decision", "confidence": 0.9})
+        results = await hybrid_store.search(text, top_k=5, mode=SearchMode.HYBRID)
         assert any(r.node_id == _TEST_NODE_ID for r in results)
 
-    async def test_node_in_both_legs_ranks_first(self, vector_store: PGVectorStore):
+    async def test_node_in_both_legs_ranks_first(self, hybrid_store: PGVectorStore):
         node_b = "test-node-2"
         shared_text = f"Use Redis for caching {_DISTINCTIVE_TERM}"
-        await vector_store.upsert(_TEST_NODE_ID, shared_text, {"node_type": "decision", "confidence": 0.9})
+        await hybrid_store.upsert(_TEST_NODE_ID, shared_text, {"node_type": "decision", "confidence": 0.9})
         # node_b text is semantically similar but lacks the distinctive term
-        await vector_store.upsert(node_b, "Use Redis for caching", {"node_type": "decision", "confidence": 0.9})
+        await hybrid_store.upsert(node_b, "Use Redis for caching", {"node_type": "decision", "confidence": 0.9})
 
-        results = await vector_store.search(shared_text, top_k=5, mode=SearchMode.HYBRID)
+        results = await hybrid_store.search(shared_text, top_k=5, mode=SearchMode.HYBRID)
 
         assert results[0].node_id == _TEST_NODE_ID

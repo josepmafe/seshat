@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
@@ -15,6 +16,8 @@ from seshat.utils.log import get_logger
 from seshat.vector_store.base_store import AbstractVectorStore
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from langchain_core.embeddings import Embeddings
     from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -39,7 +42,12 @@ _ENSURE_TS_CONTENT = text("""
 
 class PGVectorStore(AbstractVectorStore):
     def __init__(
-        self, config: VectorStoreConfig, index: VectorIndexConfig, embeddings: Embeddings, connection_string: str
+        self,
+        config: VectorStoreConfig,
+        index: VectorIndexConfig,
+        embeddings: Embeddings,
+        connection_string: str,
+        keyword_extractor: Callable[[str], Awaitable[str]] | None = None,
     ) -> None:
         self._config = config
         self._index = index
@@ -49,6 +57,7 @@ class PGVectorStore(AbstractVectorStore):
         )
         self._collection_id: str | None = None
         self._ts_content_ready = False
+        self._keyword_extractor = keyword_extractor
 
     @property
     def _engine(self) -> AsyncEngine:
@@ -158,10 +167,18 @@ class PGVectorStore(AbstractVectorStore):
         if not query.strip():
             return []
 
+        if self._keyword_extractor is None:
+            logger.warning("sparse_search called without a keyword_extractor; returning empty results")
+            return []
+
         await self._ensure_ts_content()
         collection_id = await self._get_collection_id()
 
-        ts_query_expr = func.plainto_tsquery("english", query)
+        query_keywords = await self._keyword_extractor(query)
+        if not query_keywords.strip():
+            return []
+
+        ts_query_expr = func.to_tsquery("english", " | ".join(re.findall(r"\w+", query_keywords)))
         ts_rank = func.ts_rank_cd(self._ts_content, ts_query_expr)
 
         stmt = (

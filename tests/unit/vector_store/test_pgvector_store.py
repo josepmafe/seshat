@@ -39,6 +39,35 @@ class TestRrf:
         assert results[0].score > 0
 
 
+class TestSparseSearchGuard:
+    @pytest.mark.asyncio
+    async def test_no_extractor_logs_warning_and_returns_empty(self, caplog):
+        store = PGVectorStore.__new__(PGVectorStore)
+        store._keyword_extractor = None
+
+        with caplog.at_level(logging.WARNING, logger="seshat.vector_store.pgvector_store"):
+            result = await store._sparse_search("some query", top_k=5, node_filter=None, exclude_job_id=None)
+
+        assert result == []
+        assert "keyword_extractor" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_empty_query_returns_empty_without_hitting_extractor(self):
+        called = []
+
+        async def extractor(q):
+            called.append(q)
+            return "keywords"
+
+        store = PGVectorStore.__new__(PGVectorStore)
+        store._keyword_extractor = extractor
+
+        result = await store._sparse_search("   ", top_k=5, node_filter=None, exclude_job_id=None)
+
+        assert result == []
+        assert called == []
+
+
 class TestSearchModeRouting:
     def test_score_threshold_not_in_rrf_signature(self):
         import inspect
