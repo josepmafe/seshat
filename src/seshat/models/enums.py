@@ -101,3 +101,16 @@ class SearchMode(StrEnum):
     SEMANTIC = auto()
     KEYWORD = auto()
     HYBRID = auto()
+
+
+class UserRole(StrEnum):
+    # Ordered lowest to highest — definition order determines rank.
+    VIEWER = auto()
+    REVIEWER = auto()
+    OPERATOR = auto()
+    ADMIN = auto()
+
+    def is_at_least(self, minimum: "UserRole") -> bool:
+        """Return True if this role meets or exceeds minimum."""
+        members = list(UserRole)
+        return members.index(self) >= members.index(minimum)
