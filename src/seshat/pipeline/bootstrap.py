@@ -8,6 +8,7 @@ from seshat.agents.identification.registry import IdentificationAgentRegistry
 from seshat.agents.resolution.registry import ResolutionRegistry
 from seshat.blob_store.factory import get_blob_store
 from seshat.knowledge_store.factory import get_kb_store
+from seshat.pipeline.extraction.keyword_extractor import build_keyword_extractor
 from seshat.pipeline.extraction.node_retriever import NodeRetriever
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 from seshat.pipeline.llm_factory import _build_llm, get_grounding_llm, get_identification_llm, get_resolution_llm
@@ -24,10 +25,11 @@ if TYPE_CHECKING:
 
 @asynccontextmanager
 async def build_orchestrator(seshat_config: SeshatConfig) -> AsyncIterator[ExtractionOrchestrator]:
+    vector_store = build_vector_store(seshat_config)
+
     kb_store = get_kb_store(seshat_config)
     await kb_store.connect()
 
-    vector_store = get_vector_store(seshat_config)
     blob_store = get_blob_store(seshat_config)
     await blob_store.connect()
 
@@ -36,6 +38,14 @@ async def build_orchestrator(seshat_config: SeshatConfig) -> AsyncIterator[Extra
     finally:
         await kb_store.close()
         await blob_store.close()
+
+
+def build_vector_store(seshat_config: SeshatConfig) -> AbstractVectorStore:
+    keyword_extractor = None
+    if seshat_config.rag.keyword_extraction_llm is not None:
+        llm = _build_llm(seshat_config.rag.keyword_extraction_llm, seshat_config)
+        keyword_extractor = build_keyword_extractor(llm)
+    return get_vector_store(seshat_config, keyword_extractor=keyword_extractor)
 
 
 def _build_orchestrator(
