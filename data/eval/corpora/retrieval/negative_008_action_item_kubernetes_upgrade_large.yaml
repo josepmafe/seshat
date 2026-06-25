@@ -1,0 +1,192 @@
+corpus_id: negative-action-item-kubernetes-upgrade-large-pool
+description: >
+  Negative case with a large Kubernetes/container/infra jargon pool. The query is an action
+  item to upgrade production Kubernetes clusters to v1.28 before the v1.25 API deprecation
+  deadline. All 27 candidate nodes use Kubernetes, container, pod, cluster, namespace, or
+  related vocabulary, but none address this specific version upgrade task. A correct
+  retrieval system must return nothing above threshold.
+
+tags:
+  tier: negative
+  source_type: action_item
+  polarity: negative
+  difficulty: hard
+  keyword_signal: strong
+  pool_size: large
+  sparse_saves: false
+
+query_node:
+  id: k8s-upgrade-action
+  type: action_item
+  title: "Upgrade all production Kubernetes clusters to v1.28 before the v1.25 API deprecation deadline"
+  description: "The platform team must upgrade all production Kubernetes clusters from v1.25 to v1.28 before the upstream API deprecation deadline. The team owns the upgrade runbook and will execute a cluster-by-cluster rollout plan with validation gates between each cluster."
+  quote: "Platform team owns this — all production clusters need to be on v1.28 before v1.25 hits end-of-life. Write the runbook, do it cluster by cluster, validate as you go."
+
+candidate_nodes:
+  # --- Decisions: Kubernetes/container/infra domain, none address v1.25→v1.28 upgrade ---
+  - id: adopt-kubernetes
+    type: decision
+    title: "Adopt Kubernetes for container orchestration"
+    description: "The team decided to use Kubernetes as the container orchestration platform for all production workloads, replacing the current manually-managed VM fleet."
+    quote: "We're going with Kubernetes, it's the right choice for our scale."
+
+  - id: use-helm-charts
+    type: decision
+    title: "Use Helm charts as the standard packaging format for all Kubernetes workloads"
+    description: "All Kubernetes workloads must be packaged and deployed using Helm charts. Direct kubectl apply of raw manifests is no longer permitted for production deployments."
+    quote: "Everything gets Helmified — no more raw kubectl apply in production."
+
+  - id: alpine-base-image
+    type: decision
+    title: "Standardise on a minimal Alpine-based container image for all services"
+    description: "All service container images must use a minimal Alpine Linux base image to reduce image size and attack surface. Non-Alpine base images require a security review exception."
+    quote: "Alpine base for everything — smaller images, smaller attack surface. Exceptions need sign-off from security."
+
+  - id: enable-k8s-rbac
+    type: decision
+    title: "Enable RBAC for all Kubernetes namespaces"
+    description: "Role-based access control must be enabled and enforced across all Kubernetes namespaces. Default service account permissions are revoked; all pods must use explicitly scoped service accounts."
+    quote: "RBAC on everywhere, default service account permissions gone. Every pod gets a scoped account — that's the rule."
+
+  - id: adopt-istio
+    type: decision
+    title: "Adopt Istio as the service mesh for all inter-service communication"
+    description: "Istio is adopted as the service mesh for all inter-service communication in the Kubernetes cluster. Istio replaces ad-hoc mTLS implementations in individual services."
+    quote: "Istio is the service mesh — mTLS handled at the mesh layer, not per service. Agree."
+
+  - id: hpa-for-stateless
+    type: decision
+    title: "Use Horizontal Pod Autoscaler for all stateless services"
+    description: "All stateless Kubernetes deployments must be configured with a Horizontal Pod Autoscaler based on CPU and memory utilisation metrics. Manual scaling of stateless services is not permitted."
+    quote: "HPA on all stateless services — we don't manually scale those any more."
+
+  - id: enforce-resource-limits
+    type: decision
+    title: "Enforce CPU and memory resource limits on all Kubernetes pods"
+    description: "No pod may be deployed to production without explicit CPU and memory resource requests and limits. The admission controller will reject pods without these fields set."
+    quote: "No pod goes to production without resource limits. We're adding an admission controller check — no limits, no deploy."
+
+  - id: gitops-flux
+    type: decision
+    title: "Adopt GitOps with Flux for all Kubernetes deployments"
+    description: "Flux CD is adopted as the continuous delivery mechanism for all Kubernetes deployments. All changes to cluster state must flow through Git; direct imperative changes to the cluster are prohibited outside of break-glass procedures."
+    quote: "GitOps with Flux — all cluster state changes go through Git. Direct imperative changes are break-glass only."
+
+  # --- Risks: Kubernetes/container domain, none address the v1.25→v1.28 upgrade ---
+  - id: no-pdb-risk
+    type: risk
+    title: "No pod disruption budgets defined for critical services"
+    description: "Critical services have no pod disruption budgets configured. Rolling updates or node drains can cause full service outages by simultaneously terminating all pod replicas."
+    quote: "No PDBs on the critical services — a rolling update or a node drain can take the whole thing down at once."
+
+  - id: autoscaler-overprovision-risk
+    type: risk
+    title: "Cluster autoscaler may over-provision nodes during traffic spikes, causing cost overrun"
+    description: "The cluster autoscaler is configured with aggressive scale-up thresholds and no scale-down delay, which may cause rapid node over-provisioning during short traffic spikes that resolve before scale-down triggers."
+    quote: "The autoscaler is too eager — short traffic spikes get us a bunch of nodes that don't scale down fast enough. The cost tail is ugly."
+
+  - id: shared-namespace-risk
+    type: risk
+    title: "Shared namespace for all services increases blast radius of misconfigurations"
+    description: "All services run in a single shared Kubernetes namespace. A misconfigured RBAC policy or resource quota applied to the namespace affects all services simultaneously, increasing the blast radius of configuration errors."
+    quote: "Everything in one namespace means one bad RBAC rule hits everything. We need namespace isolation."
+
+  - id: missing-network-policy-risk
+    type: risk
+    title: "Missing network policies allow unrestricted pod-to-pod traffic"
+    description: "No Kubernetes NetworkPolicy objects are defined in the cluster. All pods can communicate with all other pods on any port, allowing unrestricted lateral movement in the event of a pod compromise."
+    quote: "No network policies at all — any compromised pod can reach any other pod on any port. That's a flat network with no segmentation."
+
+  - id: unpinned-image-risk
+    type: risk
+    title: "Container images not pinned to digest — supply chain risk from mutable tags"
+    description: "Container image references use mutable version tags rather than immutable digest pins. An upstream image change can silently alter what runs in production after the next pod restart without a deployment event."
+    quote: "We're using tags, not digests — the upstream image can change under us silently. That's a supply chain risk."
+
+  - id: no-readiness-probe-risk
+    type: risk
+    title: "No readiness probes defined means traffic hits unready pods during rollouts"
+    description: "Several services have no readiness probes configured in their Kubernetes deployment manifests. During rolling updates, Kubernetes routes traffic to pods that are still initialising, causing user-facing errors."
+    quote: "Services with no readiness probes get traffic while they're still starting up. Users hit errors during every rollout."
+
+  - id: etcd-backup-risk
+    type: risk
+    title: "etcd backup schedule untested — recovery time from cluster state loss is unknown"
+    description: "The Kubernetes cluster runs automated etcd backups, but the restore procedure has never been tested in a controlled scenario. Recovery time in the event of cluster state loss is unknown and may exceed operational tolerances."
+    quote: "We have backups but we've never tested the restore. If we lose the etcd state we don't know how long recovery takes."
+
+  - id: namespace-proliferation-risk
+    type: risk
+    title: "Namespace proliferation makes resource quota enforcement difficult across teams"
+    description: "Teams have created a large number of Kubernetes namespaces without governance over naming or resource quotas. Enforcing cluster-wide resource policies across all namespaces is increasingly difficult and error-prone."
+    quote: "We've got namespaces everywhere with no quotas — enforcing resource policies at this point is a manual mess."
+
+  # --- Action items: Kubernetes/container domain, none address the version upgrade ---
+  - id: helm-lint-ci
+    type: action_item
+    title: "Add Helm chart linting to the CI pipeline for all services"
+    description: "The CI pipeline has no Helm chart linting step. Malformed Helm charts currently reach staging before the error is caught. A helm lint check must be added to the CI pipeline for all services that own Helm charts."
+    quote: "Add helm lint to CI — we're catching chart errors in staging instead of at commit time."
+
+  - id: payments-resource-limits
+    type: action_item
+    title: "Define resource requests and limits for all payments service containers"
+    description: "The payments service containers are deployed without CPU or memory resource requests and limits, violating the cluster resource policy. The payments team must define and apply appropriate resource constraints before the next production deploy."
+    quote: "Payments containers have no resource limits — payments team needs to fix that before the next prod deploy."
+
+  - id: autoscaler-grafana
+    type: action_item
+    title: "Set up cluster autoscaler metrics dashboard in Grafana"
+    description: "There is no visibility into cluster autoscaler decisions. A Grafana dashboard for node pool size, scale-up events, and scale-down events must be created before the HPA rollout begins."
+    quote: "We're rolling out HPA with no visibility into what the autoscaler is doing — build the Grafana dashboard first."
+
+  - id: prune-namespaces
+    type: action_item
+    title: "Review and prune unused Kubernetes namespaces across dev and staging clusters"
+    description: "Dev and staging clusters have accumulated namespaces from old feature branches and abandoned experiments. These must be reviewed and unused namespaces removed as a quarterly hygiene task."
+    quote: "Dev and staging are littered with stale namespaces — quarterly cleanup, someone own it."
+
+  - id: rotate-service-account-tokens
+    type: action_item
+    title: "Rotate Kubernetes service account tokens for all external integrations"
+    description: "Service account tokens used by external integrations were issued more than 12 months ago, exceeding the 90-day rotation policy. All tokens must be rotated and the new tokens distributed to the relevant integrations."
+    quote: "Those service account tokens for external integrations are way past the 90-day rotation policy — rotate them all."
+
+  - id: document-rollback-runbook
+    type: action_item
+    title: "Document the rollback runbook for failed Helm chart deployments"
+    description: "There is no documented rollback procedure for failed Helm chart deployments in production. The platform team must produce a runbook covering the helm rollback procedure and post-rollback validation steps."
+    quote: "If a Helm deploy goes bad in prod we don't have a written rollback procedure. Platform team, write the runbook."
+
+  # --- Open questions: Kubernetes/container domain, none address the version upgrade ---
+  - id: karpenter-vs-autoscaler-oq
+    type: open_question
+    title: "Should we adopt Karpenter or the cluster autoscaler for node provisioning?"
+    description: "The team is evaluating whether to replace the cluster autoscaler with Karpenter for node provisioning. Karpenter offers faster scale-up and more flexible node selection, but adds operational complexity."
+    quote: "Karpenter or the cluster autoscaler? Karpenter is faster but more to operate — we haven't decided."
+
+  - id: pdb-stateful-oq
+    type: open_question
+    title: "What is the right pod disruption budget for stateful services?"
+    description: "The team has not defined a policy for pod disruption budgets on stateful services. For stateless services, zero voluntary disruptions is acceptable; for stateful services the right balance between availability and maintenance flexibility is unclear."
+    quote: "For stateful services, what's the right PDB? Zero disruptions is too conservative but we don't have a policy."
+
+  - id: consolidate-clusters-oq
+    type: open_question
+    title: "Should we consolidate dev and staging to a single cluster to reduce cost?"
+    description: "Running separate dev and staging Kubernetes clusters incurs meaningful infrastructure cost. The question is whether consolidating them onto a single multi-tenant cluster with namespace isolation would reduce costs without introducing unacceptable risk."
+    quote: "Dev and staging as separate clusters is pricey — do we consolidate to one cluster with namespace isolation or keep them separate?"
+
+  - id: service-mesh-oq
+    type: open_question
+    title: "Is Istio the right service mesh or should we evaluate Linkerd?"
+    description: "Istio was adopted as the service mesh but several engineers have raised concerns about its operational complexity and resource overhead. The question of whether Linkerd would be a better fit has not been formally evaluated."
+    quote: "Istio is complex and heavy — is Linkerd worth evaluating as an alternative? No one's done that comparison yet."
+
+  - id: multi-tenancy-oq
+    type: open_question
+    title: "Should we move to a multi-tenant cluster model or keep per-team clusters?"
+    description: "The team currently operates per-team Kubernetes clusters. A multi-tenant model would reduce infrastructure cost and platform overhead but introduces harder isolation boundaries and more complex RBAC management."
+    quote: "Per-team clusters are expensive to run. Multi-tenant would be cheaper but isolation is harder — is the trade-off worth it?"
+
+expected_relevant_ids: []

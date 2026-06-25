@@ -11,6 +11,9 @@ tags:
   source_type: open_question
   polarity: positive
   difficulty: medium
+  keyword_signal: absent
+  pool_size: small
+  sparse_saves: false
 
 query_node:
   id: which-caching-layer

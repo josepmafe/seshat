@@ -11,6 +11,9 @@ tags:
   source_type: risk
   polarity: positive
   difficulty: medium
+  keyword_signal: absent
+  pool_size: small
+  sparse_saves: false
 
 query_node:
   id: no-feature-flag-risk

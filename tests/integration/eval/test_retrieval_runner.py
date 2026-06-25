@@ -26,4 +26,5 @@ class TestRetrievalEvalRunner:
         assert result.retrieval_metrics is not None
         assert "recall_at_5" in result.retrieval_metrics
         assert "precision_at_5" in result.retrieval_metrics
+        assert "mrr_at_5" in result.retrieval_metrics
         assert (tmp_path / "eval_gate.json").exists()

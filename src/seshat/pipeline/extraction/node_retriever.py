@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from seshat.models.api import NodeFilter
 from seshat.models.enums import GraphDirection
@@ -18,16 +18,22 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class Reranker(Protocol):
+    async def rerank(self, query: str, results: list[SearchResult]) -> list[SearchResult]: ...
+
+
 class NodeRetriever:
     def __init__(
         self,
         rag_config: RAGConfig,
         kb_store: PostgresKBStore,
         vector_store: AbstractVectorStore,
+        reranker: Reranker | None = None,
     ) -> None:
         self._config = rag_config
         self._kb = kb_store
         self._vs = vector_store
+        self._reranker = reranker
 
     @property
     def max_concurrent_retrievals(self) -> int:
@@ -57,6 +63,9 @@ class NodeRetriever:
             query, node_filter=NodeFilter(**filter_kwargs), exclude_job_id=exclude_job_id
         )
         logger.debug("Vector search returned %d results for node id=%s", len(results), node.id)
+
+        if self._reranker is not None:
+            results = await self._reranker.rerank(query, results)
 
         budget = _ContextBudget(self._config.max_context_tokens)
         node_id = str(node.id)
@@ -148,6 +157,7 @@ class NodeRetriever:
             node_filter=node_filter,
             exclude_job_id=exclude_job_id,
             score_threshold=self._config.min_similarity_score,
+            mode=self._config.search_mode,
         )
 
 

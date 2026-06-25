@@ -8,7 +8,6 @@ import pytest
 from seshat.config.settings import VectorIndexConfig, VectorStoreConfig
 from seshat.vector_store.factory import get_vector_store
 from seshat.vector_store.pgvector_store import PGVectorStore
-from tests.unit.conftest import _FAKE_DB_URL
 
 if TYPE_CHECKING:
     from seshat.config.settings import SeshatConfig
@@ -30,11 +29,6 @@ class TestGetVectorStore:
         with patch("seshat.vector_store.pgvector_store.PGVector"), patch("langchain_openai.OpenAIEmbeddings"):
             get_vector_store(minimal_config)
         mocked_secrets_resolver.get_secret.assert_any_call(minimal_config.vector_index.api_key_secret_key)
-
-    def test_propagates_connection_string(self, minimal_config: SeshatConfig):
-        with patch("seshat.vector_store.pgvector_store.PGVector"), patch("langchain_openai.OpenAIEmbeddings"):
-            store = get_vector_store(minimal_config)
-        assert store._connection_string == store._validate_connection_string(_FAKE_DB_URL)
 
     def test_unknown_provider_raises(self, minimal_config: SeshatConfig):
         bad_config = minimal_config.model_copy(

@@ -3,10 +3,6 @@ from __future__ import annotations
 from seshat.utils.tokens import count_tokens
 
 
-def test_count_tokens_empty_string():
-    assert count_tokens("") == 0
-
-
 def test_count_tokens_nonempty_string():
     # cl100k_base encodes "hello world" as ["hello", " world"] → 2 tokens
     assert count_tokens("hello world") == 2

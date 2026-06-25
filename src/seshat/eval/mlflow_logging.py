@@ -75,8 +75,7 @@ def log_retrieval_model(model_name: str, config: VectorIndexConfig) -> str:
         "embedding.model": config.embedding_model,
         "embedding.collection": config.collection,
     }
-    model_info = _set_active_model_with_params(model_name, params)
-    return model_info.model_id
+    return _set_active_model_with_params(model_name, params).model_id
 
 
 def log_eval_run_metadata(
@@ -87,6 +86,7 @@ def log_eval_run_metadata(
     corpus_examples: list,
     breakdown_artifact: dict | None = None,
     tag_filter: CorpusTagFilter | None = None,
+    extra_params: dict[str, str] | None = None,
 ) -> None:
     """Log standard eval run params, metrics, tags and artifacts to the MLflow run.
 
@@ -99,6 +99,8 @@ def log_eval_run_metadata(
     }
     if tag_filter:
         params.update({f"corpus.tag_filter.{k}": str(v) for k, v in tag_filter.items()})
+    if extra_params:
+        params.update(extra_params)
     mlflow.log_params(params, run_id=run_id)
 
     mlflow.log_metrics({"gate.passed": float(gate_passed)}, run_id=run_id)

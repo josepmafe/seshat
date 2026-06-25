@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 
 from seshat.eval.mlflow_logging import log_retrieval_model
 from seshat.eval.retrieval.runner import RetrievalEvalRunner
+from seshat.pipeline.bootstrap import build_vector_store
 from seshat.utils.log import get_logger
-from seshat.vector_store.factory import get_vector_store
 
 if TYPE_CHECKING:
     from seshat.config.eval_settings import EvalConfig
@@ -25,7 +25,16 @@ async def run(eval_config: EvalConfig, seshat_config: SeshatConfig, tag_filter: 
     vector_store, index_config = _ensure_clean_vector_store(seshat_config)
     model_id = log_retrieval_model("seshat-retrieval", index_config)
 
-    runner = RetrievalEvalRunner(vector_store=vector_store, config=eval_config)
+    search_mode = seshat_config.rag.search_mode
+    logger.info("retrieval eval: search_mode=%r, model_id=%s", search_mode.value, model_id)
+
+    llm_cfg = seshat_config.rag.keyword_extraction_llm
+    runner = RetrievalEvalRunner(
+        vector_store=vector_store,
+        config=eval_config,
+        search_mode=search_mode,
+        extractor_model_id=llm_cfg.model if llm_cfg is not None else None,
+    )
     gate = await runner.run(tag_filter=tag_filter, model_id=model_id)
 
     logger.info("retrieval eval: passed=%s", gate.passed)
@@ -34,5 +43,10 @@ async def run(eval_config: EvalConfig, seshat_config: SeshatConfig, tag_filter: 
 def _ensure_clean_vector_store(seshat_config: SeshatConfig) -> tuple[AbstractVectorStore, VectorIndexConfig]:
     """Ensure the vector store is clean before starting eval, to prevent test contamination from previous runs."""
     vector_index_cfg = seshat_config.vector_index.model_copy(update={"collection": _EVAL_COLLECTION})
-    vector_store = get_vector_store(seshat_config.model_copy(update={"vector_index": vector_index_cfg}))
-    return vector_store, vector_index_cfg
+
+    llm_cfg = seshat_config.rag.keyword_extraction_llm
+    if llm_cfg is not None:
+        logger.info("retrieval eval: keyword extractor llm=%s, provider=%s", llm_cfg.model, llm_cfg.provider)
+
+    eval_config = seshat_config.model_copy(update={"vector_index": vector_index_cfg})
+    return build_vector_store(eval_config), vector_index_cfg

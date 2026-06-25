@@ -10,6 +10,8 @@ from seshat.secrets.factory import get_secrets_resolver
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from langchain_core.embeddings import Embeddings
 
     from seshat.config.settings import SeshatConfig, VectorIndexConfig
@@ -39,7 +41,10 @@ def _build_embeddings(index: VectorIndexConfig, config: SeshatConfig) -> Embeddi
     return TrackingEmbeddings(raw)
 
 
-def get_vector_store(config: SeshatConfig) -> AbstractVectorStore:
+def get_vector_store(
+    config: SeshatConfig,
+    keyword_extractor: Callable[[str], Awaitable[str]] | None = None,
+) -> AbstractVectorStore:
     secrets = get_secrets_resolver(config)
     connection_string = secrets.get_secret(config.vector_store.connection_secret_key)
 
@@ -51,6 +56,8 @@ def get_vector_store(config: SeshatConfig) -> AbstractVectorStore:
         case VectorStoreProvider.PGVECTOR:
             from seshat.vector_store.pgvector_store import PGVectorStore
 
-            return PGVectorStore(config.vector_store, config.vector_index, embeddings, connection_string)
+            return PGVectorStore(
+                config.vector_store, config.vector_index, embeddings, connection_string, keyword_extractor
+            )
         case _:
             raise ValueError(f"Unknown vector store provider: {config.vector_store.provider!r}")

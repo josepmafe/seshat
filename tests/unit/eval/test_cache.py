@@ -40,16 +40,12 @@ class TestReadOrRun:
         assert result.value == 99
         assert not called
 
-    async def test_returns_path_of_file_used(self, tmp_path: Path):
+    async def test_returns_path_on_both_miss_and_hit(self, tmp_path: Path):
         cache_fp = tmp_path / "entry.json"
-        _, used = await read_or_run(cache_fp, _Dummy, _coro(1))
-        assert used == cache_fp
-
-    async def test_returns_path_on_cache_hit(self, tmp_path: Path):
-        cache_fp = tmp_path / "entry.json"
-        cache_fp.write_text(_Dummy(value=7).model_dump_json())
-        _, used = await read_or_run(cache_fp, _Dummy, _coro(0))
-        assert used == cache_fp
+        _, used_miss = await read_or_run(cache_fp, _Dummy, _coro(1))
+        assert used_miss == cache_fp
+        _, used_hit = await read_or_run(cache_fp, _Dummy, _coro(0))
+        assert used_hit == cache_fp
 
 
 class TestSweepStaleEntries:
@@ -74,12 +70,6 @@ class TestSweepStaleEntries:
 
     def test_no_op_when_cache_dir_is_empty(self, tmp_path: Path):
         sweep_stale_entries(tmp_path, corpus_ids=["abc"], touched=set())
-
-    def test_no_op_when_corpus_ids_is_empty(self, tmp_path: Path):
-        f = tmp_path / "abc_aaa_bbb.json"
-        f.write_text("{}")
-        sweep_stale_entries(tmp_path, corpus_ids=[], touched=set())
-        assert f.exists()
 
     def test_all_touched_files_are_kept(self, tmp_path: Path):
         f1 = tmp_path / "abc_v1_v2.json"

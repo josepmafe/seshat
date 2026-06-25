@@ -273,12 +273,49 @@ results for a given query node?
 
 1. Loads YAML corpus fixtures from `EvalConfig.retrieval_corpus_dir`.
 2. For each fixture, seeds the `AbstractVectorStore` collection with the candidate
-   nodes, issues a `search(title + description, top_k=5)` query, then tears down
-   (delete) the candidates — all within a try/finally to avoid leaving stale data.
+   nodes, issues a `search(title + description, top_k=5, mode=search_mode)` query,
+   then tears down (delete) the candidates — all within a try/finally to avoid leaving
+   stale data.
 3. `build_kb_nodes` generates UUIDs via `uuid4()` — random per call. It must be called
    **once** per fixture per run; calling it twice produces different UUIDs and breaks
    the slug→UUID mapping used to resolve `expected_relevant_ids`.
 4. The `scorer` computes recall@5 and precision@5 against the `expected_relevant_ids`.
+
+**Search mode** is read from `RAGConfig.search_mode` (env var `RAG__SEARCH_MODE`).
+All three modes are supported: `semantic`, `keyword`, `hybrid`. The cache is scoped
+per mode — running keyword does not invalidate semantic cached results.
+
+**Score thresholds** are per-mode (`EvalConfig.retrieval_score_thresholds: dict[SearchMode, float]`).
+Each mode's score scale is incompatible with the others (cosine similarity for
+`SEMANTIC`, `ts_rank_cd` for `KEYWORD`, RRF `1/(60+rank)` for `HYBRID`), so they must
+be calibrated independently. Set via env vars:
+```
+EVAL__RETRIEVAL_SCORE_THRESHOLDS__SEMANTIC=0.81
+EVAL__RETRIEVAL_SCORE_THRESHOLDS__KEYWORD=0.0
+EVAL__RETRIEVAL_SCORE_THRESHOLDS__HYBRID=0.0
+```
+Absent keys default to `0.0` (no filtering). The threshold is logged as
+`retrieval.score_threshold` on every MLflow eval run.
+
+**Important:** the runner passes `score_threshold=None` to the vector store so cached
+results are unfiltered and reusable by the meta-scorer sweep. The post-RRF threshold
+is applied in-process at read time, not inside the store.
+
+**Hybrid exception — dense pre-filter:** for `HYBRID` mode the runner additionally
+passes `retrieval_score_thresholds[SEMANTIC]` as a dense pre-filter to `_similarity_search`
+before RRF fusion, matching production behaviour (`RAG__MIN_SIMILARITY_SCORE`). This
+threshold is baked into the cached RRF result. **If you recalibrate the semantic
+threshold, clear the hybrid retrieval cache before re-running hybrid eval**, otherwise
+stale cached results will silently reflect the old dense filter:
+
+```bash
+rm -rf .seshat/eval_cache/retrieval/hybrid_*.json
+# or clear all retrieval cache:
+rm -rf .seshat/eval_cache/retrieval/
+```
+
+If `EVAL__RETRIEVAL_SCORE_THRESHOLDS__SEMANTIC` is not set, no dense pre-filter is
+applied (equivalent to the old unfiltered behaviour).
 
 **Corpus fixture format:**
 
@@ -333,6 +370,9 @@ grouping and makes the fixture's role legible without opening the file:
 - Corpus fixtures use mixed-type candidate pools (decisions, risks, action items, open
   questions in the same pool) to simulate a realistic vector store. Single-type pools
   suppress false positives and produce misleadingly high precision scores.
+- **Hybrid eval applies the calibrated semantic threshold as a dense pre-filter** before
+  RRF fusion, matching production behaviour. See the Hybrid exception note above for the
+  cache invalidation requirement.
 
 ---
 

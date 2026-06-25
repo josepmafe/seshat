@@ -37,7 +37,7 @@ class NodeFilter(BaseModel):
 
 class SearchResult(BaseModel):
     node_id: str
-    score: float = Field(ge=0, le=1)
+    score: float = Field(ge=0)
 
 
 class KBNodeEdit(BaseModel):

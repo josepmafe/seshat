@@ -11,6 +11,9 @@ tags:
   source_type: decision
   polarity: positive
   difficulty: hard
+  keyword_signal: absent
+  pool_size: small
+  sparse_saves: false
 
 query_node:
   id: sdk-version-window-decision

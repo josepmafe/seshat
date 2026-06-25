@@ -12,6 +12,9 @@ tags:
   source_type: action_item
   polarity: positive
   difficulty: medium
+  keyword_signal: absent
+  pool_size: small
+  sparse_saves: false
 
 query_node:
   id: fix-ci-flakiness
