@@ -28,12 +28,14 @@ class RetrievalMetaScorer:
         vector_store: AbstractVectorStore,
         config: EvalConfig,
         search_mode: SearchMode = SearchMode.SEMANTIC,
-        step: float = 0.01,
+        step: float = 0.005,
+        extractor_model_id: str | None = None,
     ) -> None:
         self._vs = vector_store
         self._config = config
         self._search_mode = search_mode
-        self._search_mode_hash = fingerprint(search_mode.value)
+        self._extractor_model_id = extractor_model_id or "none"
+        self._search_mode_hash = fingerprint(f"{search_mode.value}:{self._extractor_model_id}")
         self._step = step
 
     async def sweep_threshold(self) -> RetrievalSweepResult:
@@ -73,7 +75,9 @@ class RetrievalMetaScorer:
         from seshat.eval.retrieval.runner import RetrievalEvalRunner
 
         examples = load_corpus(self._config.retrieval_corpus_dir)
-        runner = RetrievalEvalRunner(self._vs, self._config, search_mode=self._search_mode)
+        runner = RetrievalEvalRunner(
+            self._vs, self._config, search_mode=self._search_mode, extractor_model_id=self._extractor_model_id
+        )
         cache: _Cache = {}
         touched = set()
 

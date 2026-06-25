@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pandas as pd
+import pytest
 
 from seshat.config.eval_settings import EvalConfig
 from seshat.eval.models import RetrievalCorpusExample, RetrievalCorpusNode
@@ -189,6 +190,24 @@ class TestAggregateMetrics:
 
         assert result == {"recall_at_5": 0.8, "precision_at_5": 0.6}
 
+    def test_extracts_mrr_at_5(self):
+        eval_result = make_eval_result(
+            {
+                "recall_at_5/mean": 0.8,
+                "precision_at_5/mean": 0.6,
+                "mrr_at_5/mean": 0.9,
+            }
+        )
+        result = _aggregate_metrics(eval_result)
+
+        assert result["mrr_at_5"] == pytest.approx(0.9)
+
+    def test_absent_mrr_at_5_is_excluded(self):
+        eval_result = make_eval_result({"recall_at_5/mean": 1.0, "precision_at_5/mean": 0.5})
+        result = _aggregate_metrics(eval_result)
+
+        assert "mrr_at_5" not in result
+
     def test_absent_metrics_are_excluded(self):
         eval_result = make_eval_result(
             {
@@ -206,12 +225,14 @@ class TestAggregateMetrics:
             {
                 "recall_at_5/mean": 1,
                 "precision_at_5/mean": 0,
+                "mrr_at_5/mean": 1,
             }
         )
         result = _aggregate_metrics(eval_result)
 
         assert isinstance(result["recall_at_5"], float)
         assert isinstance(result["precision_at_5"], float)
+        assert isinstance(result["mrr_at_5"], float)
 
     def test_empty_metrics_returns_empty_dict(self):
         eval_result = make_eval_result({})

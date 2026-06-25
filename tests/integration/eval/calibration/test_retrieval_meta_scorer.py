@@ -33,6 +33,7 @@ class _StubVectorStore(AbstractVectorStore):
         node_filter: NodeFilter | None = None,
         exclude_job_id: str | None = None,
         score_threshold: float | None = None,
+        mode: object = None,
     ) -> list[SearchResult]:
         results = [SearchResult(node_id=nid, score=0.8) for nid in self._stored[:top_k]]
         self._stored.clear()

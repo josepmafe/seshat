@@ -49,11 +49,13 @@ class RetrievalEvalRunner:
         vector_store: AbstractVectorStore,
         config: EvalConfig,
         search_mode: SearchMode = SearchMode.SEMANTIC,
+        extractor_model_id: str | None = None,
     ) -> None:
         self._vs = vector_store
         self._config = config
         self._search_mode = search_mode
-        self._search_mode_hash = fingerprint(search_mode.value)
+        self._extractor_model_id = extractor_model_id or "none"
+        self._search_mode_hash = fingerprint(f"{search_mode.value}:{self._extractor_model_id}")
 
     async def run(self, tag_filter: CorpusTagFilter | None = None, model_id: str | None = None) -> GateResult:
         examples = load_corpus(self._config.retrieval_corpus_dir, tag_filter=tag_filter)
@@ -98,6 +100,7 @@ class RetrievalEvalRunner:
             extra_params={
                 "retrieval.search_mode": self._search_mode.value,
                 "retrieval.score_threshold": str(threshold),
+                "retrieval.keyword_extraction_llm": self._extractor_model_id,
             },
         )
 
@@ -143,11 +146,22 @@ class RetrievalEvalRunner:
 
     @async_retry(retryable_exceptions=(httpx.ReadError, openai.APIConnectionError))
     async def _search(self, query: str, node_filter: NodeFilter, top_k: int) -> list:
-        # score_threshold=None: full unfiltered results are cached so both the runner
-        # (applies retrieval_score_threshold + top-5 at read time) and the meta-scorer
-        # (sweeps all thresholds) can reuse the same cache file.
+        # score_threshold=None: full unfiltered results are cached so the meta-scorer can
+        # sweep post-RRF thresholds in memory without re-running searches.
+        # Exception: for hybrid, the calibrated semantic threshold is used as a dense
+        # pre-filter before RRF fusion, matching production behaviour (where
+        # RAG__MIN_SIMILARITY_SCORE filters the dense leg before fusion). This embeds
+        # the threshold in the cached result
+        # NOTE: the user must clear the hybrid cache if the semantic threshold is recalibrated.
+        # NOTE: If EVAL__RETRIEVAL_SCORE_THRESHOLDS__SEMANTIC is absent, .get() returns None
+        # and no dense pre-filter is applied (as with keyword and semantic).
+        score_threshold = (
+            self._config.retrieval_score_thresholds.get(SearchMode.SEMANTIC)
+            if self._search_mode == SearchMode.HYBRID
+            else None
+        )
         return await self._vs.search(
-            query, top_k=top_k, node_filter=node_filter, score_threshold=None, mode=self._search_mode
+            query, top_k=top_k, node_filter=node_filter, score_threshold=score_threshold, mode=self._search_mode
         )
 
     async def _seed_candidates(self, nodes: list[KBNode]) -> bool:
@@ -209,7 +223,7 @@ def _build_dataframe(examples: list[RetrievalCorpusExample]) -> pd.DataFrame:
 
 def _aggregate_metrics(eval_result: EvaluationResult) -> dict[str, float]:
     result: dict[str, float] = {}
-    for metric in ("recall_at_5", "precision_at_5"):
+    for metric in ("recall_at_5", "precision_at_5", "mrr_at_5"):
         v = eval_result.metrics.get(f"{metric}/mean")
         if v is not None:
             result[metric] = float(v)
@@ -225,7 +239,7 @@ def _build_breakdown(
     breakdown: dict[str, dict] = {}
     for ex, (_, row) in zip(examples, eval_result.result_df.iterrows(), strict=True):
         scores: dict[str, float | None] = {}
-        for metric in ("recall_at_5", "precision_at_5"):
+        for metric in ("recall_at_5", "precision_at_5", "mrr_at_5"):
             v = row.get(f"{metric}/value")
             scores[metric] = float(v) if not pd.isna(v) else None
 
