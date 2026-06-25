@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
 
 from seshat.models.enums import JobStatus
 from seshat.utils.log import get_logger
@@ -14,12 +13,10 @@ class AsyncioTaskQueue:
         self._statuses: dict[str, JobStatus] = {}
         self._tasks: dict[str, asyncio.Task] = {}
 
-    async def enqueue(self, fn, *args, **kwargs) -> str:
-        job_id = str(uuid.uuid4())
+    async def enqueue(self, job_id: str, fn, *args, **kwargs) -> None:
         self._statuses[job_id] = JobStatus.PENDING
         task = asyncio.create_task(self._run(job_id, fn, *args, **kwargs))
         self._tasks[job_id] = task
-        return job_id
 
     async def _run(self, job_id: str, fn, *args, **kwargs) -> None:
         try:

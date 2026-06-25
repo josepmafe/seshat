@@ -11,10 +11,10 @@ class TestAsyncioTaskQueue:
         async def noop():
             pass
 
-        job_id = await queue.enqueue(noop)
-        assert isinstance(job_id, str)
-        status = await queue.get_status(job_id)
-        assert status in (JobStatus.PENDING, JobStatus.DONE)
+        await queue.enqueue("job-1", noop)
+        await asyncio.sleep(0)
+        status = await queue.get_status("job-1")
+        assert status == JobStatus.DONE
 
     async def test_get_status_unknown_job(self):
         queue = AsyncioTaskQueue()
@@ -28,7 +28,7 @@ class TestAsyncioTaskQueue:
         async def slow():
             await gate.wait()
 
-        job_id = await queue.enqueue(slow)
-        cancelled = await queue.cancel(job_id)
+        await queue.enqueue("job-2", slow)
+        cancelled = await queue.cancel("job-2")
         gate.set()
         assert cancelled is True
