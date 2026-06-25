@@ -1,0 +1,99 @@
+from __future__ import annotations
+
+import json
+import logging
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import asyncpg
+
+    from seshat.models.enums import JobStatus
+
+logger = logging.getLogger(__name__)
+
+_RUNNING_STATUSES = ("transcribing", "extracting", "writing")
+
+
+class OpsLedger:
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self._pool = pool
+
+    async def create_job(
+        self,
+        job_id: str,
+        user_id: str,
+        source_type: str,
+        idempotency_key: str | None,
+        now: datetime,
+    ) -> None:
+        await self._pool.execute(
+            "INSERT INTO ops.jobs "
+            "(job_id, user_id, status, idempotency_key, source_type, created_at, updated_at) "
+            "VALUES ($1, $2, 'pending', $3, $4, $5, $5)",
+            job_id,
+            user_id,
+            idempotency_key,
+            source_type,
+            now,
+        )
+
+    async def get_job(self, job_id: str) -> asyncpg.Record | None:
+        return await self._pool.fetchrow("SELECT * FROM ops.jobs WHERE job_id=$1", job_id)
+
+    async def find_job_by_idempotency_key(self, key: str) -> asyncpg.Record | None:
+        return await self._pool.fetchrow("SELECT job_id, status FROM ops.jobs WHERE idempotency_key=$1", key)
+
+    async def update_job_status(self, job_id: str, status: JobStatus) -> None:
+        await self._pool.execute(
+            "UPDATE ops.jobs SET status=$1, updated_at=$2 WHERE job_id=$3",
+            status.value,
+            datetime.now(UTC),
+            job_id,
+        )
+
+    async def fail_job(
+        self,
+        job_id: str,
+        stage: str,
+        reason: str,
+        *,
+        recoverable: bool,
+    ) -> None:
+        payload = json.dumps({"stage": stage, "reason": reason, "recoverable": recoverable, "usage": {}})
+        await self._pool.execute(
+            "UPDATE ops.jobs SET status='failed', error_payload=$1, updated_at=$2 WHERE job_id=$3",
+            payload,
+            datetime.now(UTC),
+            job_id,
+        )
+
+    async def count_recent_jobs_for_user(self, user_id: str) -> int:
+        return await self._pool.fetchval(
+            "SELECT COUNT(*) FROM ops.jobs WHERE user_id=$1 AND created_at > NOW() - INTERVAL '1 hour'",
+            user_id,
+        )
+
+    async def count_running_jobs(self) -> int:
+        return await self._pool.fetchval(
+            "SELECT COUNT(*) FROM ops.jobs WHERE status = ANY($1::text[])",
+            list(_RUNNING_STATUSES),
+        )
+
+    async def get_api_keys(self) -> list[tuple[str, str, str]]:
+        rows = await self._pool.fetch("SELECT key_hash, user_id, role FROM ops.api_keys")
+        return [(row["key_hash"], row["user_id"], row["role"]) for row in rows]
+
+    async def reset_failed_job(self, job_id: str) -> None:
+        await self._pool.execute(
+            "UPDATE ops.jobs SET status='pending', error_payload=NULL, updated_at=$1 WHERE job_id=$2",
+            datetime.now(UTC),
+            job_id,
+        )
+
+    async def get_stranded_writing_jobs(self) -> list[str]:
+        rows = await self._pool.fetch("SELECT job_id FROM ops.jobs WHERE status='writing'")
+        return [row["job_id"] for row in rows]
+
+    async def close(self) -> None:
+        await self._pool.close()
