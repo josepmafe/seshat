@@ -1,0 +1,99 @@
+corpus_id: decision-grafana-dashboarding-sparse
+description: >
+  Sparse-saves positive: a high-level architectural decision naming Grafana as the standard
+  dashboarding layer should surface an operationally-framed Kibana migration action item and
+  a Grafana staleness risk. The kibana-migration-action candidate has high semantic distance
+  from the architectural query — it focuses on a contract expiry deadline and a migration
+  task rather than a platform standard — so a semantic-only retriever may miss it; keyword
+  signal ("Grafana") is the path that saves it in a hybrid retriever.
+
+tags:
+  tier: realistic
+  source_type: decision
+  polarity: positive
+  difficulty: hard
+  keyword_signal: strong
+  pool_size: small
+  sparse_saves: true
+
+query_node:
+  id: grafana-dashboarding-decision
+  type: decision
+  title: "Grafana is the standard dashboarding and visualization layer for all operational metrics and SLO tracking"
+  description: "Grafana is adopted as the single dashboarding and visualization standard across the platform. All operational metrics, SLO tracking dashboards, and capacity planning views must be built in Grafana. No other dashboarding tools are permitted for new work."
+  quote: "Grafana is the standard — all dashboards, all SLO tracking, all metrics visualization. One tool, full stop."
+
+candidate_nodes:
+  # --- Sparse-saves positive: operational migration task, high framing divergence from the architectural query ---
+  - id: kibana-migration-action
+    type: action_item
+    title: "Migrate all existing Kibana dashboards to Grafana before the Kibana contract expires in 30 days"
+    description: "The Kibana contract expires in 30 days and will not be renewed. All existing Kibana dashboards must be recreated in Grafana before the cutoff. The platform team owns the migration and must coordinate with each squad to validate dashboard parity."
+    quote: "The Kibana contract is up in 30 days and we're not renewing — platform team, get all those dashboards moved to Grafana before the cutoff."
+
+  # --- Weak positive: shares Grafana keyword, related failure mode ---
+  - id: grafana-staleness-risk
+    type: risk
+    title: "Stale Grafana dashboard panels show incorrect p99 latency metrics after scale-out events"
+    description: "After horizontal scaling events, some Grafana dashboard panels continue to display pre-scale p99 latency metrics for up to 10 minutes due to a caching issue in the metrics aggregator. On-call engineers may act on incorrect data during this window."
+    quote: "After a scale-out the Grafana panels lie for ages — p99 still showing the old numbers. On-call can't trust the dashboards."
+
+  # --- Hard negatives: same observability domain, not linked to this decision ---
+  - id: configure-rotations-action
+    type: action_item
+    title: "Configure PagerDuty on-call rotations for all backend services"
+    description: "The platform team needs to configure the on-call rotation schedules in PagerDuty for all backend services."
+    quote: "Platform team, configure the backend on-call rotations in PagerDuty before next sprint ends."
+
+  - id: adopt-datadog-apm-decision
+    type: decision
+    title: "Adopt Datadog APM as the distributed tracing layer for all backend services"
+    description: "The team standardised on Datadog APM as the distributed tracing solution for all backend services."
+    quote: "We're going with Datadog APM for all tracing — one place for traces across the whole backend."
+
+  - id: no-slo-risk
+    type: risk
+    title: "No SLOs defined for the public API"
+    description: "Without agreed service-level objectives for availability and latency, there is no objective basis for measuring whether the service is meeting user expectations."
+    quote: "We don't have SLOs, so we don't know if we're actually meeting customer expectations."
+
+  - id: prometheus-scrape-oq
+    type: open_question
+    title: "Should we run Prometheus scrape intervals at 15 seconds or 30 seconds?"
+    description: "The current Prometheus scrape interval is 30 seconds. The observability team is evaluating whether reducing it to 15 seconds would meaningfully improve alerting latency or just increase storage costs."
+    quote: "Do we scrape at 15s or 30s? Lower is better for alert latency but the storage cost goes up — we haven't made a call."
+
+  - id: audit-alert-rules-action
+    type: action_item
+    title: "Audit and prune low-fidelity alert rules"
+    description: "Many alert rules fire too frequently on transient conditions; an audit to remove or raise thresholds on low-fidelity rules is needed."
+    quote: "Audit the alert rules and kill the noisy ones."
+
+  - id: missing-tracing-risk
+    type: risk
+    title: "Lack of distributed tracing makes cross-service debugging slow"
+    description: "Without distributed tracing, diagnosing latency issues that cross multiple services requires manually correlating logs from each service."
+    quote: "We have no tracing, debugging cross-service latency is a nightmare."
+
+  # --- Easy negatives: completely different domain ---
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: crm-migration-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team will migrate from the legacy CRM to Salesforce over the next two quarters."
+    quote: "We're moving to Salesforce — the legacy CRM is holding the sales team back."
+
+  - id: logo-redesign-action
+    type: action_item
+    title: "Commission external agency for company logo redesign"
+    description: "The executive team approved an external brand agency commission for a full logo redesign."
+    quote: "Get an agency brief together for the rebrand by end of next week."
+
+expected_relevant_ids:
+  - kibana-migration-action
+  - grafana-staleness-risk

@@ -1,0 +1,193 @@
+corpus_id: negative-risk-kafka-partition-lag-large-pool
+description: >
+  Negative case with a large Kafka/streaming/data platform jargon pool. The query is a
+  risk about under-partitioned Kafka topics causing consumer lag spikes during peak load.
+  All 27 candidate nodes use Kafka, topics, consumers, producers, partitions, brokers,
+  consumer groups, offsets, or streaming vocabulary, but none address this specific
+  partition strategy or lag risk. A correct retrieval system must return nothing above
+  threshold.
+
+tags:
+  tier: negative
+  source_type: risk
+  polarity: negative
+  difficulty: hard
+  keyword_signal: strong
+  pool_size: large
+  sparse_saves: false
+
+query_node:
+  id: kafka-partition-lag-risk
+  type: risk
+  title: "Under-partitioned Kafka topics in the events ingestion pipeline will cause consumer lag spikes during peak load"
+  description: "The events ingestion pipeline Kafka topics were provisioned with 4 partitions each. At current peak load growth projections, consumer throughput will be bottlenecked by partition count, causing consumer lag to spike above the 30-second SLA for downstream processing within two quarters."
+  quote: "Those topics are only 4 partitions each and the ingestion volume is climbing fast. When peak load hits, consumer lag is going to spike well past the 30-second SLA we've committed to downstream."
+
+candidate_nodes:
+  # --- Decisions: Kafka/streaming domain, none address partition count or lag ---
+  - id: adopt-kafka
+    type: decision
+    title: "Adopt Kafka as the event streaming backbone for all async communication"
+    description: "Kafka is adopted as the event streaming backbone for all asynchronous service-to-service communication. Direct synchronous calls for non-latency-critical paths will be replaced with Kafka-mediated events."
+    quote: "Kafka for all async communication — we're replacing the direct calls with events. Agreed."
+
+  - id: confluent-schema-registry
+    type: decision
+    title: "Use Confluent Schema Registry for all Kafka topic schemas"
+    description: "All Kafka topics must have their message schemas registered in the Confluent Schema Registry before use in production. Unregistered topics are blocked by the producer configuration policy."
+    quote: "Schema Registry is mandatory — every topic needs its schema registered before it goes to production."
+
+  - id: avro-serialisation
+    type: decision
+    title: "Standardise on Avro for all Kafka message serialisation"
+    description: "Avro is the standard serialisation format for all Kafka messages. JSON serialisation is not permitted for new topics due to lack of schema evolution support and higher payload overhead."
+    quote: "Avro for all Kafka messages — JSON is banned for new topics. Schema evolution and payload size are both better."
+
+  - id: kafka-streams-decision
+    type: decision
+    title: "Adopt Kafka Streams for all stateful stream processing"
+    description: "Kafka Streams is adopted as the standard library for all stateful stream processing workloads. The team chose Kafka Streams over Apache Flink based on operational simplicity and reduced infrastructure overhead."
+    quote: "Kafka Streams for stateful processing — we don't want to operate Flink. Kafka Streams is enough for our use cases."
+
+  - id: compacted-topics
+    type: decision
+    title: "Use compacted topics for the customer profile event stream"
+    description: "The customer profile event stream uses log compaction to retain only the latest record per customer key, keeping the topic size manageable and enabling consumers to bootstrap from a compacted snapshot."
+    quote: "Customer profile stream uses compacted topics — log compaction keeps only the latest per key, so consumers can bootstrap cleanly."
+
+  - id: topic-naming-conventions
+    type: decision
+    title: "Establish and enforce naming conventions for all Kafka topics"
+    description: "All Kafka topics must follow the pattern <domain>.<entity>.<event>. The platform team will enforce this convention via a topic creation policy in the Schema Registry. Existing non-compliant topics will be migrated over the next quarter."
+    quote: "Topic names follow domain-dot-entity-dot-event from now on. Platform will enforce it at creation time."
+
+  - id: dead-letter-topics
+    type: decision
+    title: "Use dead-letter topics for all consumer error handling"
+    description: "All Kafka consumers must route failed messages to a dedicated dead-letter topic rather than silently dropping or endlessly retrying them. DLT monitoring and alerting is mandatory for all consumer groups."
+    quote: "Dead-letter topics for all consumer error handling — no silent drops, no infinite retry loops. Failed messages go to the DLT."
+
+  - id: retention-policy
+    type: decision
+    title: "Set retention policy to 7 days for all operational event topics"
+    description: "All operational event Kafka topics are set to a 7-day retention policy. Topics that require longer replay windows must request an exception with a storage cost justification."
+    quote: "Seven days retention for all operational topics. Anything longer needs a cost justification and an exception."
+
+  # --- Risks: Kafka/streaming domain, none address partition count or lag ---
+  - id: schema-evolution-risk
+    type: risk
+    title: "No schema evolution strategy risks breaking consumers on schema changes"
+    description: "The team has not defined a schema compatibility policy. Producers may add or remove fields without coordinating with consumers, and there is no enforcement of backwards or forwards compatibility in the Schema Registry configuration."
+    quote: "Producers are changing schemas without telling consumers. No compatibility policy, no enforcement — consumers break silently."
+
+  - id: producer-retry-risk
+    type: risk
+    title: "Kafka producer retries without idempotency may cause duplicate messages"
+    description: "Kafka producers are configured with retry counts but without idempotent producer mode enabled. Network transients that cause retries may result in duplicate messages being committed to topics."
+    quote: "Producers retry but idempotency isn't on — transient network errors mean we get duplicate messages in the topic."
+
+  - id: rebalance-pause-risk
+    type: risk
+    title: "Consumer group rebalances cause processing pauses during rolling deployments"
+    description: "Consumer group rebalances triggered by rolling deployments cause all consumers in the group to pause processing for the rebalance duration. This has caused downstream processing delays of up to 90 seconds in staging during deploy windows."
+    quote: "Every rolling deploy triggers a rebalance and the whole consumer group pauses. We're seeing 90-second processing gaps in staging."
+
+  - id: missing-dlt-monitoring-risk
+    type: risk
+    title: "Missing dead-letter queue monitoring means silent message loss goes undetected"
+    description: "Dead-letter topics exist for several consumer groups but are not monitored. Messages routed to DLTs accumulate without alerting, meaning business-critical event processing failures can go undetected for extended periods."
+    quote: "DLTs are silently filling up and nobody knows. No monitoring, no alerts — messages just disappear into the DLT and stay there."
+
+  - id: broker-disk-risk
+    type: risk
+    title: "Broker disk exhaustion risk if retention is not enforced uniformly across all topics"
+    description: "Several Kafka topics were created before the 7-day retention policy was established and have no retention configuration. These topics will grow unboundedly and may exhaust broker disk capacity without warning."
+    quote: "Old topics with no retention set are going to fill the broker disks eventually. We need to audit and fix all the pre-policy topics."
+
+  - id: schema-registry-unavailability-risk
+    type: risk
+    title: "Schema Registry unavailability would block all Kafka producers"
+    description: "All Kafka producers are configured to require Schema Registry connectivity before publishing. A Schema Registry outage would immediately block all event production, cascading to all downstream consumers."
+    quote: "If Schema Registry goes down, every producer stops. We have a single point of failure for the whole event pipeline."
+
+  - id: no-circuit-breaker-risk
+    type: risk
+    title: "No circuit breaker on Kafka consumers risks cascading failure under backpressure"
+    description: "Consumer services have no circuit breaker configuration to limit retry rates when downstream dependencies are unhealthy. Retry storms have been observed when the database becomes slow, resulting in unbounded consumer thread exhaustion."
+    quote: "When the database gets slow the consumers go into a retry storm — no circuit breaker means they just spin and exhaust their thread pool."
+
+  - id: duplicate-processing-risk
+    type: risk
+    title: "Exactly-once semantics not configured — duplicate processing possible in the payments event stream"
+    description: "The payments event stream consumer is not configured for exactly-once semantics. In the event of a consumer restart or rebalance, messages may be re-processed, potentially causing duplicate payment records."
+    quote: "EOS isn't configured on the payments consumer — a restart during a rebalance can cause duplicate payment processing."
+
+  # --- Action items: Kafka/streaming domain, none address partition count or lag ---
+  - id: consumer-lag-dashboard
+    type: action_item
+    title: "Add consumer lag monitoring to the Kafka Grafana dashboard for all consumer groups"
+    description: "There is currently no visibility into consumer group lag across the Kafka cluster. A Grafana dashboard panel showing per-consumer-group lag must be added and an alert configured for lag exceeding the SLA threshold."
+    quote: "We have no consumer lag visibility right now — add the lag panels to the Kafka dashboard and wire up an alert."
+
+  - id: topic-naming-audit
+    type: action_item
+    title: "Audit all existing Kafka topics against the new naming convention and rename non-compliant ones"
+    description: "The new <domain>.<entity>.<event> naming convention leaves approximately 40 existing topics non-compliant. These must be audited and renamed, with consumer group offsets migrated to the new topic names."
+    quote: "About 40 topics need renaming to match the new convention — audit them, rename, migrate the offsets. Not trivial but it needs doing."
+
+  - id: schema-registration-audit
+    type: action_item
+    title: "Audit all Kafka topics for missing schema registration in the Schema Registry"
+    description: "Several topics created before the Schema Registry mandate have no registered schemas. These must be identified and schemas registered to close the gap in schema governance coverage."
+    quote: "Some topics were created before the Schema Registry policy and have no schema registered. Find them and register schemas for all of them."
+
+  - id: broker-disk-alerting
+    type: action_item
+    title: "Set up alerting for broker disk usage above 80% per broker node"
+    description: "No disk usage alerts are configured on the Kafka broker nodes. An alert must be configured to fire when any broker node disk usage exceeds 80% to provide sufficient warning before retention enforcement or topic growth causes an outage."
+    quote: "No disk alerts on the brokers — configure an alert at 80% per broker before we have an outage."
+
+  - id: payments-offset-review
+    type: action_item
+    title: "Review consumer group offsets for the payments event stream after the last incident"
+    description: "Following the last incident, there is uncertainty about whether the payments consumer group offsets are correctly positioned. The team must review the current offsets and confirm no messages were skipped or duplicated during the incident recovery."
+    quote: "After the incident we need to confirm the payments consumer group offsets are clean — make sure nothing was skipped or double-processed."
+
+  - id: dlt-depth-alerting
+    type: action_item
+    title: "Configure alerting on dead-letter topic depth for all consumer groups"
+    description: "Dead-letter topics for all consumer groups must have depth monitoring and alerting configured. An alert must fire when DLT depth exceeds 100 messages for any consumer group to prevent silent message loss from going undetected."
+    quote: "Every consumer group's DLT needs an alert on depth — anything above 100 messages should be firing."
+
+  # --- Open questions: Kafka/streaming domain, none address partition count or lag ---
+  - id: confluent-cloud-oq
+    type: open_question
+    title: "Should we use Confluent Cloud or continue with self-managed Kafka?"
+    description: "The team is evaluating whether to migrate to Confluent Cloud to reduce operational overhead, or continue self-managing the Kafka cluster. Confluent Cloud adds per-message cost but eliminates broker management."
+    quote: "Confluent Cloud vs self-managed — we'd stop worrying about brokers but the per-message cost is real. No decision yet."
+
+  - id: replication-factor-oq
+    type: open_question
+    title: "What is the right replication factor for high-availability topics — 2 or 3 replicas?"
+    description: "High-availability topics are currently replicated to 2 brokers. The question of whether to increase replication to 3 for business-critical topics has not been resolved — it adds durability but increases storage cost."
+    quote: "Two replicas or three for the HA topics? Three is safer but costs more — we haven't made a call."
+
+  - id: kafka-connect-oq
+    type: open_question
+    title: "Should we adopt Kafka Connect or build custom consumers for the data warehouse feed?"
+    description: "The data warehouse ingestion pipeline currently uses custom Kafka consumer services. The team is evaluating whether to replace these with Kafka Connect to reduce engineering maintenance overhead."
+    quote: "Kafka Connect would replace the custom consumers for the data warehouse feed — less code to maintain, but another operational component. Worth it?"
+
+  - id: flink-vs-streams-oq
+    type: open_question
+    title: "Is Kafka Streams the right choice or should we evaluate Apache Flink for complex event processing?"
+    description: "Kafka Streams handles current stateful processing requirements, but the team expects more complex event processing needs to emerge. The question is whether to re-evaluate Flink before use cases become significantly more complex."
+    quote: "Kafka Streams is fine now but when the use cases get more complex it might not be enough. Should we at least evaluate Flink before we're locked in?"
+
+  - id: topic-per-event-oq
+    type: open_question
+    title: "Should we use one topic per event type or multiplex events on shared topics?"
+    description: "The current convention is one topic per event type. Some engineers have proposed multiplexing multiple event types on shared topics to reduce topic proliferation, but this complicates consumer filtering and schema management."
+    quote: "One topic per event type gives us clean schemas but we're getting a lot of topics. Multiplexing would help but consumer code gets messier — no decision."
+
+expected_relevant_ids: []

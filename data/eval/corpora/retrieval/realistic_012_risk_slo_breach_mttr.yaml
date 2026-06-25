@@ -1,0 +1,104 @@
+corpus_id: risk-slo-breach-mttr-mixed-pool
+description: >
+  Realistic mixed-pool positive: a risk about MTTR exceeding SLO commitments should surface
+  the open question about MTTR targets, the action item to define SLO targets, and the
+  related risk about undocumented services increasing resolution time. Keyword signal is
+  strong — "MTTR", "SLO", and "on-call" anchor all three positives.
+
+tags:
+  tier: realistic
+  source_type: risk
+  polarity: positive
+  difficulty: hard
+  keyword_signal: strong
+  pool_size: small
+  sparse_saves: false
+
+query_node:
+  id: mttr-slo-breach-risk
+  type: risk
+  title: "MTTR will exceed SLO commitments during high-incident periods due to runbook gaps and on-call coverage holes"
+  description: "Incident response runbooks are incomplete for several critical services and on-call rotation coverage has gaps during weekends and holidays. During high-incident periods, mean time to resolution is likely to exceed the SLO targets committed to enterprise customers."
+  quote: "Our runbooks are patchy and the on-call rota has gaps at weekends. If we get hit with a bad incident period our MTTR is going to blow the SLO commitments we've made."
+
+candidate_nodes:
+  # --- Strong positives: OQ and action item directly related to MTTR and SLO ---
+  - id: mttr-slo-framework-oq
+    type: open_question
+    title: "Have we defined MTTR targets per service tier as part of the SLO framework?"
+    description: "The SLO framework specifies availability and latency targets but does not yet include MTTR targets broken down by service tier. Without these, it is unclear whether current on-call performance meets commitments."
+    quote: "The SLO framework is missing MTTR targets per tier — do we have those defined anywhere or is that still open?"
+
+  - id: define-slo-targets-action
+    type: action_item
+    title: "Define and publish SLO targets for all Tier-1 services before Q3 planning"
+    description: "The platform lead will document availability, latency, and MTTR SLO targets for all Tier-1 services and publish them to the internal engineering wiki before Q3 planning kicks off."
+    quote: "Platform lead, can you get the SLO targets for Tier-1 services written up before Q3 planning? We need something concrete to point to."
+
+  # --- Weak positive: overlapping failure mode, shares on-call and MTTR concept ---
+  - id: mttr-undocumented-risk
+    type: risk
+    title: "Undocumented services in the on-call rotation increase mean time to resolution"
+    description: "Services added to the on-call rotation without runbooks increase the risk of prolonged incidents because on-call engineers have no structured guidance for diagnosis and remediation."
+    quote: "Every undocumented service we add to on-call is a liability — the on-call engineer is flying blind."
+
+  # --- Hard negatives: same alerting/observability domain, not linked to this risk ---
+  - id: audit-alert-rules-action
+    type: action_item
+    title: "Audit and prune low-fidelity alert rules"
+    description: "Many alert rules fire too frequently on transient conditions; an audit to remove or raise thresholds on low-fidelity rules is needed."
+    quote: "Audit the alert rules and kill the noisy ones."
+
+  - id: pagerduty-decision
+    type: decision
+    title: "PagerDuty is the single alerting and on-call management tool for all teams"
+    description: "The team standardised on PagerDuty as the sole alerting and on-call rotation management tool, replacing the mix of OpsGenie and homegrown scripts."
+    quote: "PagerDuty is it — one tool, all teams. OpsGenie is out, the scripts are out. Agreed."
+
+  - id: alert-fatigue-risk
+    type: risk
+    title: "Alert fatigue from low-fidelity alerts reduces on-call responsiveness"
+    description: "A high volume of low-priority or duplicate alerts desensitises on-call engineers, increasing the risk that critical alerts are missed or responded to slowly."
+    quote: "Too many noisy alerts and on-call starts ignoring them — that's how critical pages get missed."
+
+  - id: oncall-ownership-oq
+    type: open_question
+    title: "Should the backend on-call rotation absorb the data team on-call responsibilities?"
+    description: "The team has been debating whether to consolidate on-call ownership by merging the data team rotation into the backend rotation."
+    quote: "Do we merge the data team into the backend on-call rota, or keep them separate?"
+
+  - id: configure-rotations-action
+    type: action_item
+    title: "Configure PagerDuty on-call rotations for all backend services"
+    description: "The platform team needs to configure the on-call rotation schedules in PagerDuty for all backend services."
+    quote: "Platform team, configure the backend on-call rotations in PagerDuty before next sprint ends."
+
+  # --- Easy negatives: completely different domain ---
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: office-lease-oq
+    type: open_question
+    title: "Should we renew the downtown office lease or relocate?"
+    description: "The current downtown office lease expires in eight months and no decision has been made."
+    quote: "The lease is up soon — do we renew or start looking for a new space?"
+
+  - id: crm-migration-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team will migrate from the legacy CRM to Salesforce over the next two quarters."
+    quote: "We're moving to Salesforce — the legacy CRM is holding the sales team back."
+
+  - id: logo-redesign-action
+    type: action_item
+    title: "Commission external agency for company logo redesign"
+    description: "The executive team approved an external brand agency commission for a full logo redesign."
+    quote: "Get an agency brief together for the rebrand by end of next week."
+
+expected_relevant_ids:
+  - mttr-slo-framework-oq
+  - define-slo-targets-action
+  - mttr-undocumented-risk

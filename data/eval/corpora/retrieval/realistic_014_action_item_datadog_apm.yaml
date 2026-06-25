@@ -1,0 +1,104 @@
+corpus_id: action-item-datadog-apm-sampling-mixed-pool
+description: >
+  Realistic mixed-pool positive: an action item to configure Datadog APM sampling rates
+  should surface the architectural decision it implements, the cost risk it directly
+  mitigates, and the open question about Datadog vs Jaeger that motivated the tooling
+  choice. Keyword signal is strong — "Datadog" and "APM" appear in all three positives.
+
+tags:
+  tier: realistic
+  source_type: action_item
+  polarity: positive
+  difficulty: hard
+  keyword_signal: strong
+  pool_size: small
+  sparse_saves: false
+
+query_node:
+  id: datadog-apm-sampling-action
+  type: action_item
+  title: "Configure Datadog APM sampling rate to 0.1% for high-cardinality trace sources in payments and orders"
+  description: "The platform team will configure the Datadog APM head-based sampling rate to 0.1% for the payments and orders services, which produce the highest-cardinality traces. This must be done before the Q3 billing cycle closes to avoid budget overrun on observability ingestion costs."
+  quote: "Payments and orders are killing our Datadog APM bill — configure the sampling rate down to 0.1% for those services before Q3 closes."
+
+candidate_nodes:
+  # --- Strong positive: architectural decision this action implements ---
+  - id: adopt-datadog-apm-decision
+    type: decision
+    title: "Adopt Datadog APM as the distributed tracing layer for all backend services"
+    description: "The team decided to standardise on Datadog APM as the distributed tracing solution for all backend services. All services must instrument with the Datadog APM agent and ship traces to the shared Datadog organisation."
+    quote: "We're going with Datadog APM for all tracing — one place for traces across the whole backend."
+
+  # --- Weak positives: risk this action mitigates and OQ that motivated the tooling choice ---
+  - id: datadog-cost-risk
+    type: risk
+    title: "Uncapped Datadog APM ingestion costs will exceed the observability budget"
+    description: "Current Datadog APM ingestion is running without sampling rate limits. At current trace volume growth, Q3 costs are projected to exceed the observability budget by 40%."
+    quote: "We have no sampling caps on APM and the ingestion costs are going to blow the observability budget by Q3 if we don't act."
+
+  - id: datadog-vs-jaeger-oq
+    type: open_question
+    title: "Should Datadog APM replace the existing Jaeger tracing setup or run alongside it?"
+    description: "The team is running both Datadog APM and Jaeger in parallel during the migration period. A decision is needed on whether Jaeger will be decommissioned once Datadog APM coverage is complete."
+    quote: "Are we running Datadog APM alongside Jaeger permanently, or is Jaeger getting decommissioned? We need a call on that."
+
+  # --- Hard negatives: same observability domain, not linked to this action ---
+  - id: audit-alert-rules-action
+    type: action_item
+    title: "Audit and prune low-fidelity alert rules"
+    description: "Many alert rules fire too frequently on transient conditions; an audit to remove or raise thresholds on low-fidelity rules is needed."
+    quote: "Audit the alert rules and kill the noisy ones."
+
+  - id: pagerduty-decision
+    type: decision
+    title: "PagerDuty is the single alerting and on-call management tool for all teams"
+    description: "The team standardised on PagerDuty as the sole alerting and on-call rotation management tool, replacing the mix of OpsGenie and homegrown scripts."
+    quote: "PagerDuty is it — one tool, all teams. OpsGenie is out, the scripts are out. Agreed."
+
+  - id: missing-tracing-risk
+    type: risk
+    title: "Lack of distributed tracing makes cross-service debugging slow"
+    description: "Without distributed tracing, diagnosing latency issues that cross multiple services requires manually correlating logs from each service, which is slow and error-prone."
+    quote: "We have no tracing, debugging cross-service latency is a nightmare."
+
+  - id: configure-rotations-action
+    type: action_item
+    title: "Configure PagerDuty on-call rotations for all backend services"
+    description: "The platform team needs to configure the on-call rotation schedules in PagerDuty for all backend services."
+    quote: "Platform team, configure the backend on-call rotations in PagerDuty before next sprint ends."
+
+  - id: no-slo-risk
+    type: risk
+    title: "No SLOs defined for the public API"
+    description: "Without agreed service-level objectives for availability and latency, there is no objective basis for measuring whether the service is meeting user expectations."
+    quote: "We don't have SLOs, so we don't know if we're actually meeting customer expectations."
+
+  # --- Easy negatives: completely different domain ---
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: office-lease-oq
+    type: open_question
+    title: "Should we renew the downtown office lease or relocate?"
+    description: "The current downtown office lease expires in eight months and no decision has been made."
+    quote: "The lease is up soon — do we renew or start looking for a new space?"
+
+  - id: crm-migration-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team will migrate from the legacy CRM to Salesforce over the next two quarters."
+    quote: "We're moving to Salesforce — the legacy CRM is holding the sales team back."
+
+  - id: logo-redesign-action
+    type: action_item
+    title: "Commission external agency for company logo redesign"
+    description: "The executive team approved an external brand agency commission for a full logo redesign."
+    quote: "Get an agency brief together for the rebrand by end of next week."
+
+expected_relevant_ids:
+  - adopt-datadog-apm-decision
+  - datadog-cost-risk
+  - datadog-vs-jaeger-oq

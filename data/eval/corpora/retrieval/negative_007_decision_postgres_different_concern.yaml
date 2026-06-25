@@ -13,6 +13,9 @@ tags:
   source_type: decision
   polarity: negative
   difficulty: hard
+  keyword_signal: absent
+  pool_size: small
+  sparse_saves: false
 
 query_node:
   id: postgres-encrypt-at-rest
