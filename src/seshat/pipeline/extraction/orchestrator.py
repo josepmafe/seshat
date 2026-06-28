@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 from seshat.agents.grounding import GroundingRetryExhaustedError
-from seshat.models.api import NodeFilter
+from seshat.models.api_graph import NodeFilter
 from seshat.models.enums import ConceptType, NodeStatus
 from seshat.models.nodes import (
     ConfidenceBreakdown,

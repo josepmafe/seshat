@@ -9,7 +9,7 @@ from langchain_postgres import PGVector
 from sqlalchemy import Float, cast, func, select, text
 from sqlalchemy.dialects.postgresql import TSVECTOR
 
-from seshat.models.api import SearchResult
+from seshat.models.api_graph import SearchResult
 from seshat.models.enums import SearchMode
 from seshat.utils.db import ensure_psycopg_scheme
 from seshat.utils.log import get_logger
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
 
     from seshat.config.settings import VectorIndexConfig, VectorStoreConfig
-    from seshat.models.api import NodeFilter
+    from seshat.models.api_graph import NodeFilter
 
 logger = get_logger(__name__)
 

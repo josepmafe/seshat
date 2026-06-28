@@ -4,14 +4,16 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from seshat.models.api import BulkFailure, BulkNodeCreate, BulkNodeDelete, BulkResult
+from seshat.models.api_graph import BulkFailure, BulkNodeCreate, BulkNodeDelete, BulkResult
 from seshat.models.enums import ApprovalMethod, IngestionSource, NodeState, NodeStatus
 from seshat.models.nodes import KBRelationship
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
+    import asyncpg
+
     from seshat.knowledge_store.pg_store import PostgresKBStore
-    from seshat.models.api import ManualNodeCreate, ManualNodeUpdate, NodeOverride
+    from seshat.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
     from seshat.models.nodes import KBNode
     from seshat.vector_store.base_store import AbstractVectorStore
 
@@ -181,7 +183,15 @@ class ManualIngestionService:
 
         return updated_node
 
-    async def _write_relationships(self, source_id: UUID, relationships, now: datetime, *, job_id: str, conn) -> None:
+    async def _write_relationships(
+        self,
+        source_id: UUID,
+        relationships: list[RelationshipInput],
+        now: datetime,
+        *,
+        job_id: str,
+        conn: asyncpg.Connection | asyncpg.pool.PoolConnectionProxy,
+    ) -> None:
         for r in relationships:
             rel = KBRelationship(
                 source_id=source_id,

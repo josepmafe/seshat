@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from seshat.api.app import create_app
 from seshat.api.dependencies import CurrentUser, _get_current_user, get_app_state
 from seshat.api.state import AppState
-from seshat.models.api import BulkFailure, BulkResult
+from seshat.models.api_graph import BulkFailure, BulkResult
 from seshat.models.enums import NodeState, UserRole
 from seshat.worker.manual_ingestion import NodeNotFoundError, NodePreconditionError
 from tests.helpers import make_node

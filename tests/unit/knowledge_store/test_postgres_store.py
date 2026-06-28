@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from seshat.knowledge_store.pg_store import PostgresKBStore
-from seshat.models.api import NodeFilter
+from seshat.models.api_graph import NodeFilter
 from seshat.models.enums import (
     ConceptType,
     NodeState,

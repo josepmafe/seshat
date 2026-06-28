@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seshat.models.api import (
+from seshat.models.api_graph import (
     BulkNodeCreate,
     BulkNodeDelete,
     ManualNodeCreate,

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from seshat.config.settings import KBStoreConfig
-    from seshat.models.api import NodeFilter
+    from seshat.models.api_graph import NodeFilter
 
 logger = get_logger(__name__)
 

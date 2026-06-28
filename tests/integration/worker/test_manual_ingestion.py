@@ -7,7 +7,7 @@ import pytest
 
 from seshat.config.settings import KBStoreConfig
 from seshat.knowledge_store.pg_store import PostgresKBStore
-from seshat.models.api import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
+from seshat.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
 from seshat.models.enums import (
     ApprovalMethod,
     ConceptType,

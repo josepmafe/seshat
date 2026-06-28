@@ -1,18 +1,25 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from seshat.api.dependencies import CurrentUser, get_app_state, require_role
 from seshat.api.state import AppState
-from seshat.models.api import (
+from seshat.models.api_graph import (
     BulkNodeCreate,
     BulkNodeDelete,
+    BulkResult,
     ManualNodeCreate,
     ManualNodeUpdate,
     NodeFilter,
     NodeOverride,
+)
+from seshat.models.api_responses import (
+    ImpactNode,
+    ImpactResponse,
+    NodeDetailResponse,
+    NodeListResponse,
 )
 from seshat.models.enums import (
     ApprovalMethod,
@@ -23,11 +30,8 @@ from seshat.models.enums import (
     RelationshipType,
     UserRole,
 )
+from seshat.models.nodes import KBNode
 from seshat.worker.manual_ingestion import NodeNotFoundError, NodePreconditionError
-
-if TYPE_CHECKING:
-    from seshat.models.nodes import KBNode
-
 
 router = APIRouter(prefix="/graph", tags=["graph"], dependencies=[Depends(require_role(UserRole.VIEWER))])
 
@@ -42,7 +46,7 @@ async def query_graph(
     ingestion_source: IngestionSource | None = None,
     min_confidence: float | None = None,
     node_state: NodeState | None = None,
-):
+) -> NodeListResponse:
     node_filter = NodeFilter(
         node_type=node_type,
         team=team,
@@ -53,21 +57,21 @@ async def query_graph(
         state=node_state,
     )
     nodes = await state.kb_store.query(node_filter)
-    return {"nodes": [n.model_dump() for n in nodes]}
+    return NodeListResponse(nodes=nodes)
 
 
 @router.get("/{node_id}")
 async def get_node(
     node_id: str,
     state: Annotated[AppState, Depends(get_app_state)],
-):
+) -> NodeDetailResponse:
     node = await state.kb_store.get_node(node_id)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
 
     neighbours = await state.kb_store.get_neighbours(node_id, direction=GraphDirection.BOTH)
     active_neighbours = [n for n in neighbours if _both_current(node, n)]
-    return {"node": node.model_dump(), "neighbours": [n.model_dump() for n in active_neighbours]}
+    return NodeDetailResponse(node=node, neighbours=active_neighbours)
 
 
 @router.get("/{node_id}/impact")
@@ -77,7 +81,7 @@ async def impact_traversal(
     depth: Annotated[int, Query(ge=1, le=3)] = 2,
     rel_types: str | None = None,
     min_confidence: float = 0.0,
-):
+) -> ImpactResponse:
     rel_type_filter = [RelationshipType(r.strip()) for r in rel_types.split(",")] if rel_types else None
 
     visited: dict[str, int] = {}
@@ -95,13 +99,13 @@ async def impact_traversal(
 
         frontier = next_frontier
 
-    nodes = []
+    impact_nodes: list[ImpactNode] = []
     for nid, hop in visited.items():
         n = await state.kb_store.get_node(nid)
         if n:
-            nodes.append({**n.model_dump(), "traversal_depth": hop})
+            impact_nodes.append(ImpactNode(node=n, traversal_depth=hop))
 
-    return {"nodes": nodes}
+    return ImpactResponse(nodes=impact_nodes)
 
 
 @router.post("/bulk")
@@ -109,9 +113,9 @@ async def bulk_create_nodes(
     payload: BulkNodeCreate,
     state: Annotated[AppState, Depends(get_app_state)],
     user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
-):
+) -> BulkResult:
     result = await state.manual_ingestion.bulk_create(payload, user.user_id)
-    return result.model_dump()
+    return result
 
 
 @router.post("", status_code=201)
@@ -119,9 +123,9 @@ async def create_node(
     payload: ManualNodeCreate,
     state: Annotated[AppState, Depends(get_app_state)],
     user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
-):
+) -> KBNode:
     node = await state.manual_ingestion.create(payload, user.user_id)
-    return node.model_dump()
+    return node
 
 
 @router.put("/{node_id}")
@@ -130,7 +134,7 @@ async def update_node(
     payload: ManualNodeUpdate,
     state: Annotated[AppState, Depends(get_app_state)],
     user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
-):
+) -> KBNode:
     try:
         node = await state.manual_ingestion.update(node_id, payload, user.user_id)
     except NodeNotFoundError:
@@ -138,7 +142,7 @@ async def update_node(
     except NodePreconditionError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
-    return node.model_dump()
+    return node
 
 
 @router.put("/{node_id}/override")
@@ -147,7 +151,7 @@ async def override_node(
     payload: NodeOverride,
     state: Annotated[AppState, Depends(get_app_state)],
     user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
-):
+) -> KBNode:
     minimum_method = None if user.role.is_at_least(UserRole.ADMIN) else ApprovalMethod.AUTO
     try:
         node = await state.manual_ingestion.override(node_id, payload, user.user_id, minimum_method=minimum_method)
@@ -156,7 +160,7 @@ async def override_node(
     except NodePreconditionError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
-    return node.model_dump()
+    return node
 
 
 @router.delete("/bulk")
@@ -165,9 +169,9 @@ async def bulk_delete_nodes(
     state: Annotated[AppState, Depends(get_app_state)],
     _user: Annotated[CurrentUser, Depends(require_role(UserRole.ADMIN))],
     cascade: bool = True,
-):
+) -> BulkResult:
     result = await state.manual_ingestion.bulk_delete(payload, cascade=cascade)
-    return result.model_dump()
+    return result
 
 
 @router.delete("/{node_id}", status_code=204)

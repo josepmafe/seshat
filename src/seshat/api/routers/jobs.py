@@ -3,35 +3,36 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
 
 from seshat.api.dependencies import CurrentUser, get_app_state, require_role
 from seshat.api.state import AppState
-from seshat.models.api import ApproveRequest, BulkApproveRule, NodeDecision, RateLimitError
+from seshat.models.api_jobs import ApproveRequest, BulkApproveRule, NodeDecision, RateLimitError
+from seshat.models.api_responses import JobActionResponse, JobSubmitResponse
 from seshat.models.enums import ApprovalMethod, JobStatus, NodeStatus, UserRole
 from seshat.models.jobs import JobResponse
-from seshat.models.nodes import KBNode
+from seshat.models.nodes import ExtractionResult, KBNode
 from seshat.models.submission import JobSubmissionRequest
 
 router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_role(UserRole.VIEWER))])
 
 
-@router.post("", status_code=status.HTTP_202_ACCEPTED)
+@router.post("", status_code=status.HTTP_202_ACCEPTED, response_model=None)
 async def submit_job(
     state: Annotated[AppState, Depends(get_app_state)],
     user: Annotated[CurrentUser, Depends(require_role(UserRole.REVIEWER))],
     file: Annotated[UploadFile, ...],
     body: Annotated[str, Form()],
-):
+) -> JobSubmitResponse | JSONResponse:
     submission = JobSubmissionRequest.model_validate_json(body)
 
     if submission.idempotency_key:
         existing = await state.ops.find_job_by_idempotency_key(submission.idempotency_key)
         if existing and existing["status"] != "failed":
-            return {"job_id": existing["job_id"]}
+            return JobSubmitResponse(job_id=existing["job_id"])
 
     if await state.ops.count_recent_jobs_for_user(user.user_id) >= state.config.max_jobs_per_user_per_hour:
         return JSONResponse(
@@ -55,14 +56,14 @@ async def submit_job(
     file_bytes = await file.read()
     await state.queue.enqueue(job_id, state.runner.run, job_id, file_bytes, submission)
 
-    return {"job_id": job_id}
+    return JobSubmitResponse(job_id=job_id)
 
 
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(
     job_id: str,
     state: Annotated[AppState, Depends(get_app_state)],
-):
+) -> JobResponse:
     row = await state.ops.get_job(job_id)
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -85,7 +86,7 @@ async def get_job(
 async def get_job_results(
     job_id: str,
     state: Annotated[AppState, Depends(get_app_state)],
-):
+) -> ExtractionResult:
     row = await state.ops.get_job(job_id)
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -105,7 +106,7 @@ async def approve_job(
     approve_request: ApproveRequest,
     state: Annotated[AppState, Depends(get_app_state)],
     user: Annotated[CurrentUser, Depends(require_role(UserRole.REVIEWER))],
-):
+) -> JobActionResponse:
     row = await state.ops.get_job(job_id)
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -129,7 +130,7 @@ async def approve_job(
 
     await state.queue.enqueue(job_id, state.runner.run_post_approval, job_id)
 
-    return {"status": "accepted"}
+    return JobActionResponse(status="accepted")
 
 
 @router.post("/{job_id}/retry")
@@ -137,7 +138,7 @@ async def retry_job(
     job_id: str,
     state: Annotated[AppState, Depends(get_app_state)],
     _user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
-):
+) -> JobActionResponse:
     row = await state.ops.get_job(job_id)
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -145,7 +146,7 @@ async def retry_job(
         raise HTTPException(status_code=409, detail="Only failed jobs can be retried")
 
     await state.ops.reset_failed_job(job_id)
-    return {"status": "queued"}
+    return JobActionResponse(status="queued")
 
 
 def _apply_bulk_rule(nodes: list[KBNode], rule: BulkApproveRule, user_id: str, now: datetime) -> list[KBNode]:
@@ -168,8 +169,8 @@ def _apply_decisions(nodes: list[KBNode], decisions: list[NodeDecision], user_id
             continue
 
         if decision.action == "approve":
-            node_kwargs = {}
-            meta_kwargs: dict = {
+            node_kwargs: dict[str, Any] = {}
+            meta_kwargs: dict[str, Any] = {
                 "approval_method": ApprovalMethod.INDIVIDUAL,
                 "approved_by": user_id,
                 "approved_at": now,
