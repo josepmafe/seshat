@@ -8,6 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from seshat.api.app import create_app
 from seshat.api.dependencies import CurrentUser, _get_current_user, get_app_state
 from seshat.api.state import AppState
+from seshat.models.api import BulkFailure, BulkResult
 from seshat.models.enums import NodeState, UserRole
 from seshat.worker.manual_ingestion import NodeNotFoundError, NodePreconditionError
 from tests.helpers import make_node
@@ -24,6 +25,8 @@ def _make_app_state() -> AppState:
     manual_ingestion.update = AsyncMock()
     manual_ingestion.override = AsyncMock()
     manual_ingestion.delete = AsyncMock()
+    manual_ingestion.bulk_create = AsyncMock()
+    manual_ingestion.bulk_delete = AsyncMock()
 
     return AppState(
         ops=MagicMock(),
@@ -380,3 +383,97 @@ class TestDeleteNode:
         _clear(app)
         assert resp.status_code == 409
         assert "has inbound" in resp.json()["detail"]
+
+
+class TestBulkCreateNodes:
+    async def test_requires_auth(self, app, client):
+        _override(app, _make_app_state())
+        async with client as ac:
+            resp = await ac.post(
+                "/graph/bulk", json={"nodes": [{"type": "decision", "title": "T", "description": "D"}]}
+            )
+        _clear(app)
+        assert resp.status_code == 401
+
+    async def test_viewer_cannot_bulk_create(self, app, client):
+        state = _make_app_state()
+        _override(app, state, _make_current_user(role=UserRole.VIEWER))
+        async with client as ac:
+            resp = await ac.post(
+                "/graph/bulk", json={"nodes": [{"type": "decision", "title": "T", "description": "D"}]}
+            )
+        _clear(app)
+        assert resp.status_code == 403
+
+    async def test_returns_bulk_result(self, app, client):
+        state = _make_app_state()
+        state.manual_ingestion.bulk_create = AsyncMock(return_value=BulkResult(succeeded=["uuid-1"], failed=[]))
+        _override(app, state, _make_current_user())
+        async with client as ac:
+            resp = await ac.post(
+                "/graph/bulk", json={"nodes": [{"type": "decision", "title": "T", "description": "D"}]}
+            )
+        _clear(app)
+        assert resp.status_code == 200
+        assert resp.json()["succeeded"] == ["uuid-1"]
+        assert resp.json()["failed"] == []
+
+    async def test_passes_user_id_to_service(self, app, client):
+        state = _make_app_state()
+        state.manual_ingestion.bulk_create = AsyncMock(return_value=BulkResult(succeeded=[], failed=[]))
+        _override(app, state, _make_current_user())
+        async with client as ac:
+            await ac.post("/graph/bulk", json={"nodes": [], "on_error": "continue"})
+        _clear(app)
+        state.manual_ingestion.bulk_create.assert_called_once()
+        assert state.manual_ingestion.bulk_create.call_args.args[1] == "alice"
+
+
+class TestBulkDeleteNodes:
+    async def test_requires_auth(self, app, client):
+        _override(app, _make_app_state())
+        async with client as ac:
+            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": ["id-1"]})
+        _clear(app)
+        assert resp.status_code == 401
+
+    async def test_operator_cannot_bulk_delete(self, app, client):
+        state = _make_app_state()
+        _override(app, state, _make_current_user(role=UserRole.OPERATOR))
+        async with client as ac:
+            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": ["id-1"]})
+        _clear(app)
+        assert resp.status_code == 403
+
+    async def test_returns_bulk_result(self, app, client):
+        state = _make_app_state()
+        state.manual_ingestion.bulk_delete = AsyncMock(return_value=BulkResult(succeeded=["id-1"], failed=[]))
+        _override(app, state, _make_current_user(role=UserRole.ADMIN))
+        async with client as ac:
+            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": ["id-1"]})
+        _clear(app)
+        assert resp.status_code == 200
+        assert resp.json()["succeeded"] == ["id-1"]
+
+    async def test_cascade_passed_to_service(self, app, client):
+        state = _make_app_state()
+        state.manual_ingestion.bulk_delete = AsyncMock(return_value=BulkResult(succeeded=[], failed=[]))
+        _override(app, state, _make_current_user(role=UserRole.ADMIN))
+        async with client as ac:
+            await ac.request("DELETE", "/graph/bulk?cascade=false", json={"node_ids": []})
+        _clear(app)
+        assert state.manual_ingestion.bulk_delete.call_args.kwargs.get("cascade") is False
+
+    async def test_partial_failure_in_result(self, app, client):
+        state = _make_app_state()
+        state.manual_ingestion.bulk_delete = AsyncMock(
+            return_value=BulkResult(
+                succeeded=["id-1"],
+                failed=[BulkFailure(node_id="id-2", error="not found")],
+            )
+        )
+        _override(app, state, _make_current_user(role=UserRole.ADMIN))
+        async with client as ac:
+            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": ["id-1", "id-2"]})
+        _clear(app)
+        assert resp.json()["failed"][0]["node_id"] == "id-2"

@@ -6,7 +6,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seshat.models.api import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
+from seshat.models.api import (
+    BulkNodeCreate,
+    BulkNodeDelete,
+    ManualNodeCreate,
+    ManualNodeUpdate,
+    NodeOverride,
+    RelationshipInput,
+)
 from seshat.models.enums import ApprovalMethod, ConceptType, IngestionSource, NodeState, NodeStatus, RelationshipType
 from seshat.models.nodes import KBNode, NodeMetadata
 from seshat.worker.manual_ingestion import ManualIngestionService, NodeNotFoundError, NodePreconditionError
@@ -48,16 +55,39 @@ def _auto_metadata() -> NodeMetadata:
     return NodeMetadata(job_id="job-1", ingestion_source=IngestionSource.JOB, approval_method=ApprovalMethod.AUTO)
 
 
-def _create_payload(**kwargs) -> ManualNodeCreate:
-    return ManualNodeCreate(type=ConceptType.DECISION, title="T", description="D", **kwargs)
+def _create_payload(
+    title: str = "T",
+    description: str = "D",
+    relationships=None,
+    source_quote: str | None = None,
+    blob_key: str | None = None,
+) -> ManualNodeCreate:
+    return ManualNodeCreate(
+        type=ConceptType.DECISION,
+        title=title,
+        description=description,
+        relationships=relationships,
+        source_quote=source_quote,
+        blob_key=blob_key,
+    )
 
 
-def _update_payload(**kwargs) -> ManualNodeUpdate:
-    return ManualNodeUpdate(title="T2", description="D2", reason=None, **kwargs)
+def _update_payload(
+    title: str = "T2",
+    description: str = "D2",
+    reason: str | None = None,
+    relationships=None,
+) -> ManualNodeUpdate:
+    return ManualNodeUpdate(title=title, description=description, reason=reason, relationships=relationships)
 
 
-def _override_payload(**kwargs) -> NodeOverride:
-    return NodeOverride(title="T3", description="D3", reason="Correction", **kwargs)
+def _override_payload(
+    title: str = "T3",
+    description: str = "D3",
+    reason: str = "Correction",
+    relationships=None,
+) -> NodeOverride:
+    return NodeOverride(title=title, description=description, reason=reason, relationships=relationships)
 
 
 class TestCreate:
@@ -239,3 +269,57 @@ class TestDelete:
             await svc.delete("node-id", cascade=False)
 
         kb.delete_node.assert_not_called()
+
+
+class TestBulkCreate:
+    async def test_returns_succeeded_ids(self):
+        svc, _, _ = _make_service()
+        payload = BulkNodeCreate(nodes=[_create_payload(), _create_payload(title="T2")])
+        result = await svc.bulk_create(payload, user_id="alice")
+
+        assert len(result.succeeded) == 2
+        assert result.failed == []
+
+    async def test_stop_on_error_propagates_exception(self):
+        svc, kb, _ = _make_service()
+        kb.write_node = AsyncMock(side_effect=RuntimeError("db down"))
+        payload = BulkNodeCreate(nodes=[_create_payload()], on_error="stop")
+
+        with pytest.raises(RuntimeError, match="db down"):
+            await svc.bulk_create(payload, user_id="alice")
+
+    async def test_continue_on_error_collects_failures(self):
+        svc, kb, _ = _make_service()
+        kb.write_node = AsyncMock(side_effect=RuntimeError("db down"))
+        payload = BulkNodeCreate(nodes=[_create_payload(), _create_payload(title="T2")], on_error="continue")
+        result = await svc.bulk_create(payload, user_id="alice")
+
+        assert result.succeeded == []
+        assert len(result.failed) == 2
+        assert "db down" in result.failed[0].error
+
+
+class TestBulkDelete:
+    async def test_returns_succeeded_ids(self):
+        svc, _, _ = _make_service()
+        payload = BulkNodeDelete(node_ids=["id-1", "id-2"])
+        result = await svc.bulk_delete(payload)
+
+        assert result.succeeded == ["id-1", "id-2"]
+        assert result.failed == []
+
+    async def test_stop_on_error_propagates_exception(self):
+        svc, _, _ = _make_service(inbound_count=1)
+        payload = BulkNodeDelete(node_ids=["id-1"], on_error="stop")
+
+        with pytest.raises(NodePreconditionError):
+            await svc.bulk_delete(payload, cascade=False)
+
+    async def test_continue_on_error_collects_failures(self):
+        svc, _, _ = _make_service(inbound_count=1)
+        payload = BulkNodeDelete(node_ids=["id-1", "id-2"], on_error="continue")
+        result = await svc.bulk_delete(payload, cascade=False)
+
+        assert result.succeeded == []
+        assert len(result.failed) == 2
+        assert result.failed[0].node_id == "id-1"

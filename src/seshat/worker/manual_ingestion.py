@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+from seshat.models.api import BulkFailure, BulkNodeCreate, BulkNodeDelete, BulkResult
 from seshat.models.enums import ApprovalMethod, IngestionSource, NodeState, NodeStatus
 from seshat.models.nodes import KBRelationship
 from seshat.utils.log import get_logger
@@ -101,6 +102,36 @@ class ManualIngestionService:
 
         return await self._edit(node, payload, user_id)
 
+    async def bulk_create(self, payload: BulkNodeCreate, user_id: str) -> BulkResult:
+        succeeded: list[str] = []
+        failed: list[BulkFailure] = []
+
+        for item in payload.nodes:
+            try:
+                node = await self.create(item, user_id)
+                succeeded.append(str(node.id))
+            except Exception as exc:
+                if payload.on_error == "stop":
+                    raise
+                failed.append(BulkFailure(node_id=f"<{item.type}:{item.title}>", error=str(exc)))
+
+        return BulkResult(succeeded=succeeded, failed=failed)
+
+    async def bulk_delete(self, payload: BulkNodeDelete, *, cascade: bool = True) -> BulkResult:
+        succeeded: list[str] = []
+        failed: list[BulkFailure] = []
+
+        for node_id in payload.node_ids:
+            try:
+                await self.delete(node_id, cascade=cascade)
+                succeeded.append(node_id)
+            except Exception as exc:
+                if payload.on_error == "stop":
+                    raise
+                failed.append(BulkFailure(node_id=node_id, error=str(exc)))
+
+        return BulkResult(succeeded=succeeded, failed=failed)
+
     async def delete(self, node_id: str, *, cascade: bool = True) -> None:
         if not cascade:
             n = await self._kb.count_inbound_relationships(node_id)
@@ -130,12 +161,10 @@ class ManualIngestionService:
             "correction_reason": payload.reason,
         }
 
-        updated_node = node.model_copy(
-            update={
-                "title": payload.title,
-                "description": payload.description,
-                "metadata": node.metadata.model_copy(update=meta_updates),
-            }
+        updated_node = node._with(
+            title=payload.title,
+            description=payload.description,
+            metadata=node.metadata._with(**meta_updates),
         )
 
         async with self._kb.transaction() as conn:

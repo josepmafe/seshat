@@ -47,18 +47,37 @@ def svc(kb_store, fake_vector_store):
     return ManualIngestionService(kb_store, fake_vector_store)
 
 
-def _create_payload(**kwargs) -> ManualNodeCreate:
+def _create_payload(
+    title: str = "T",
+    description: str = "D",
+    meeting_date: date = date(2026, 1, 15),
+    relationships=None,
+) -> ManualNodeCreate:
     return ManualNodeCreate(
-        type=ConceptType.DECISION, title="T", description="D", meeting_date=date(2026, 1, 15), **kwargs
+        type=ConceptType.DECISION,
+        title=title,
+        description=description,
+        meeting_date=meeting_date,
+        relationships=relationships,
     )
 
 
-def _update_payload(**kwargs) -> ManualNodeUpdate:
-    return ManualNodeUpdate(title="Updated", description="Updated desc", reason=None, **kwargs)
+def _update_payload(
+    title: str = "Updated",
+    description: str = "Updated desc",
+    reason: str | None = None,
+    relationships=None,
+) -> ManualNodeUpdate:
+    return ManualNodeUpdate(title=title, description=description, reason=reason, relationships=relationships)
 
 
-def _override_payload(**kwargs) -> NodeOverride:
-    return NodeOverride(title="Override", description="Override desc", reason="Correction reason", **kwargs)
+def _override_payload(
+    title: str = "Override",
+    description: str = "Override desc",
+    reason: str = "Correction reason",
+    relationships=None,
+) -> NodeOverride:
+    return NodeOverride(title=title, description=description, reason=reason, relationships=relationships)
 
 
 class TestCreateIntegration:

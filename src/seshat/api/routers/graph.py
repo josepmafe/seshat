@@ -6,7 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from seshat.api.dependencies import CurrentUser, get_app_state, require_role
 from seshat.api.state import AppState
-from seshat.models.api import ManualNodeCreate, ManualNodeUpdate, NodeFilter, NodeOverride
+from seshat.models.api import (
+    BulkNodeCreate,
+    BulkNodeDelete,
+    ManualNodeCreate,
+    ManualNodeUpdate,
+    NodeFilter,
+    NodeOverride,
+)
 from seshat.models.enums import (
     ApprovalMethod,
     ConceptType,
@@ -97,6 +104,16 @@ async def impact_traversal(
     return {"nodes": nodes}
 
 
+@router.post("/bulk")
+async def bulk_create_nodes(
+    payload: BulkNodeCreate,
+    state: Annotated[AppState, Depends(get_app_state)],
+    user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
+):
+    result = await state.manual_ingestion.bulk_create(payload, user.user_id)
+    return result.model_dump()
+
+
 @router.post("", status_code=201)
 async def create_node(
     payload: ManualNodeCreate,
@@ -140,6 +157,17 @@ async def override_node(
         raise HTTPException(status_code=409, detail=str(exc))
 
     return node.model_dump()
+
+
+@router.delete("/bulk")
+async def bulk_delete_nodes(
+    payload: BulkNodeDelete,
+    state: Annotated[AppState, Depends(get_app_state)],
+    _user: Annotated[CurrentUser, Depends(require_role(UserRole.ADMIN))],
+    cascade: bool = True,
+):
+    result = await state.manual_ingestion.bulk_delete(payload, cascade=cascade)
+    return result.model_dump()
 
 
 @router.delete("/{node_id}", status_code=204)

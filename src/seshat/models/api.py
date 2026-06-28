@@ -136,6 +136,11 @@ class BulkNodeDelete(BaseModel):
     on_error: Literal["stop", "continue"] = "stop"
 
 
+class BulkFailure(BaseModel):
+    node_id: str
+    error: str
+
+
 class BulkResult(BaseModel):
     succeeded: list[str]
-    failed: list[dict]
+    failed: list[BulkFailure]
