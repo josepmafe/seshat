@@ -1,9 +1,9 @@
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from seshat.models.enums import ConceptType, IngestionSource, NodeState, NodeStatus
+from seshat.models.enums import ConceptType, IngestionSource, NodeState, NodeStatus, RelationshipType
 
 
 class NodeFilter(BaseModel):
@@ -81,3 +81,61 @@ class ApproveRequest(BaseModel):
 class RateLimitError(BaseModel):
     limit_type: Literal["per_user_hourly_cap", "global_concurrency_cap"]
     retry_after_seconds: int | None = None
+
+
+class RelationshipInput(BaseModel):
+    target_id: str
+    rel_type: RelationshipType
+
+
+class ManualNodeCreate(BaseModel):
+    type: ConceptType
+    title: str
+    description: str
+    source_quote: str | None = None
+    blob_key: str | None = None
+    participants: list[str] | None = None
+    team: str | None = None
+    project: str | None = None
+    domain: str | None = None
+    meeting_date: date | None = None
+    concept_fields: dict[str, Any] | None = None
+    relationships: list[RelationshipInput] | None = None
+
+    @model_validator(mode="after")
+    def _co_required_quote_fields(self) -> "ManualNodeCreate":
+        if (self.source_quote is None) != (self.blob_key is None):
+            raise ValueError("source_quote and blob_key are co-required: provide both or neither")
+        return self
+
+
+class ManualNodeUpdate(BaseModel):
+    title: str
+    description: str
+    participants: list[str] | None = None
+    team: str | None = None
+    project: str | None = None
+    domain: str | None = None
+    meeting_date: date | None = None
+    concept_fields: dict[str, Any] | None = None
+    relationships: list[RelationshipInput] | None = None
+    reason: str | None = None
+
+
+class NodeOverride(ManualNodeUpdate):
+    reason: str = Field(...)  # type: ignore[override]
+
+
+class BulkNodeCreate(BaseModel):
+    nodes: list[ManualNodeCreate]
+    on_error: Literal["stop", "continue"] = "stop"
+
+
+class BulkNodeDelete(BaseModel):
+    node_ids: list[str]
+    on_error: Literal["stop", "continue"] = "stop"
+
+
+class BulkResult(BaseModel):
+    succeeded: list[str]
+    failed: list[dict]

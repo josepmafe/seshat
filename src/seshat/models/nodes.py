@@ -56,6 +56,9 @@ class NodeMetadata(SeshatModel):
     )
     corrected_by: str | None = None
     corrected_at: datetime | None = Field(default=None, description="UTC timestamp of the last correction.")
+    correction_reason: str | None = Field(
+        default=None, description="Human-provided justification for correcting or overriding this node."
+    )
     confidence_breakdown: ConfidenceBreakdown | None = Field(
         default=None, description="Per-signal confidence breakdown; persisted for UI display."
     )

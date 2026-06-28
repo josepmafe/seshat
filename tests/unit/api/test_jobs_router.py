@@ -42,6 +42,7 @@ def _make_app_state(**overrides) -> AppState:
         queue=queue,
         results={},
         runner=runner,
+        manual_ingestion=MagicMock(),
     )
     for k, v in overrides.items():
         object.__setattr__(state, k, v)

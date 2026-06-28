@@ -51,7 +51,7 @@ def _make_submission(source_type: str = "text") -> MagicMock:
 class TestPipelineRunnerPreApproval:
     async def test_text_job_sets_statuses_and_parks_result(self):
         runner, _, _, _, ops, _ = _make_runner()
-        ident = await runner.run_pre_approval("job-1", b"data", _make_submission())
+        ident = await runner._run_pre_approval("job-1", b"data", _make_submission())
 
         assert ident is not None
         assert "job-1" in runner._pending
@@ -61,7 +61,7 @@ class TestPipelineRunnerPreApproval:
 
     async def test_audio_job_calls_ingest_audio(self):
         runner, ingestion, _, _, _, _ = _make_runner()
-        await runner.run_pre_approval("job-1", b"audio", _make_submission("audio"))
+        await runner._run_pre_approval("job-1", b"audio", _make_submission("audio"))
         ingestion.ingest_audio.assert_called_once()
         ingestion.ingest_text.assert_not_called()
 
@@ -69,7 +69,7 @@ class TestPipelineRunnerPreApproval:
         runner, ingestion, _, _, ops, _ = _make_runner()
         ingestion.ingest_text.side_effect = RuntimeError("network error")
 
-        result = await runner.run_pre_approval("job-1", b"data", _make_submission())
+        result = await runner._run_pre_approval("job-1", b"data", _make_submission())
 
         assert result is None
         ops.fail_job.assert_called_once()

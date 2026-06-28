@@ -53,9 +53,10 @@ async def _lifespan(app: FastAPI):
         queue = AsyncioTaskQueue()
 
         app.state.app_state = AppState(
-            ops=ctx.ops,
-            kb_store=ctx.kb_store,
             config=config,
+            kb_store=ctx.kb_store,
+            manual_ingestion=ctx.manual_ingestion,
+            ops=ctx.ops,
             queue=queue,
             results=result_store,
             runner=runner,

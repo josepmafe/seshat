@@ -35,11 +35,13 @@ class ApprovalMethod(StrEnum):
     BULK = auto()
     AUTO = auto()
     THRESHOLD = auto()
+    MANUAL = auto()
 
 
 class IngestionSource(StrEnum):
     JOB = auto()
     INIT = auto()
+    MANUAL = auto()
 
 
 class JobStatus(StrEnum):

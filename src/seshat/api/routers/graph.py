@@ -4,10 +4,19 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from seshat.api.dependencies import get_app_state, require_role
+from seshat.api.dependencies import CurrentUser, get_app_state, require_role
 from seshat.api.state import AppState
-from seshat.models.api import NodeFilter
-from seshat.models.enums import ConceptType, GraphDirection, IngestionSource, NodeState, RelationshipType, UserRole
+from seshat.models.api import ManualNodeCreate, ManualNodeUpdate, NodeFilter, NodeOverride
+from seshat.models.enums import (
+    ApprovalMethod,
+    ConceptType,
+    GraphDirection,
+    IngestionSource,
+    NodeState,
+    RelationshipType,
+    UserRole,
+)
+from seshat.worker.manual_ingestion import NodeNotFoundError, NodePreconditionError
 
 if TYPE_CHECKING:
     from seshat.models.nodes import KBNode
@@ -86,6 +95,64 @@ async def impact_traversal(
             nodes.append({**n.model_dump(), "traversal_depth": hop})
 
     return {"nodes": nodes}
+
+
+@router.post("", status_code=201)
+async def create_node(
+    payload: ManualNodeCreate,
+    state: Annotated[AppState, Depends(get_app_state)],
+    user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
+):
+    node = await state.manual_ingestion.create(payload, user.user_id)
+    return node.model_dump()
+
+
+@router.put("/{node_id}")
+async def update_node(
+    node_id: str,
+    payload: ManualNodeUpdate,
+    state: Annotated[AppState, Depends(get_app_state)],
+    user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
+):
+    try:
+        node = await state.manual_ingestion.update(node_id, payload, user.user_id)
+    except NodeNotFoundError:
+        raise HTTPException(status_code=404, detail="Node not found")
+    except NodePreconditionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    return node.model_dump()
+
+
+@router.put("/{node_id}/override")
+async def override_node(
+    node_id: str,
+    payload: NodeOverride,
+    state: Annotated[AppState, Depends(get_app_state)],
+    user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
+):
+    minimum_method = None if user.role.is_at_least(UserRole.ADMIN) else ApprovalMethod.AUTO
+    try:
+        node = await state.manual_ingestion.override(node_id, payload, user.user_id, minimum_method=minimum_method)
+    except NodeNotFoundError:
+        raise HTTPException(status_code=404, detail="Node not found")
+    except NodePreconditionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    return node.model_dump()
+
+
+@router.delete("/{node_id}", status_code=204)
+async def delete_node(
+    node_id: str,
+    state: Annotated[AppState, Depends(get_app_state)],
+    _user: Annotated[CurrentUser, Depends(require_role(UserRole.ADMIN))],
+    cascade: bool = True,
+) -> None:
+    try:
+        await state.manual_ingestion.delete(node_id, cascade=cascade)
+    except NodePreconditionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
 
 def _both_current(source: KBNode, target: KBNode) -> bool:
