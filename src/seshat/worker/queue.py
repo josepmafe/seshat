@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from seshat.models.enums import JobStatus
 from seshat.utils.log import get_logger
@@ -13,12 +17,12 @@ class AsyncioTaskQueue:
         self._statuses: dict[str, JobStatus] = {}
         self._tasks: dict[str, asyncio.Task] = {}
 
-    async def enqueue(self, job_id: str, fn, *args, **kwargs) -> None:
+    async def enqueue(self, job_id: str, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
         self._statuses[job_id] = JobStatus.PENDING
         task = asyncio.create_task(self._run(job_id, fn, *args, **kwargs))
         self._tasks[job_id] = task
 
-    async def _run(self, job_id: str, fn, *args, **kwargs) -> None:
+    async def _run(self, job_id: str, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
         try:
             await fn(*args, **kwargs)
             self._statuses[job_id] = JobStatus.DONE

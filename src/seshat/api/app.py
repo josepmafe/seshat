@@ -18,6 +18,8 @@ from seshat.worker.pipeline_runner import PipelineRunner
 from seshat.worker.queue import AsyncioTaskQueue
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from seshat.models.nodes import ExtractionResult
 
 logger = get_logger(__name__)
@@ -36,7 +38,7 @@ def create_app() -> FastAPI:
 
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI):
+async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     _check_eval_gate()
 
     config = SeshatConfig()

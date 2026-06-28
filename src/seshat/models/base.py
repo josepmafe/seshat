@@ -1,4 +1,4 @@
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict
 
@@ -8,5 +8,5 @@ class SeshatModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    def _with(self, **kwargs) -> Self:
+    def _with(self, **kwargs: Any) -> Self:
         return self.model_copy(update=kwargs)

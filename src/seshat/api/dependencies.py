@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
@@ -9,6 +9,9 @@ from seshat.api.auth import AuthenticationError, verify_api_key
 from seshat.api.state import AppState
 from seshat.config.settings import SeshatConfig
 from seshat.models.enums import UserRole
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
 
 
 @lru_cache
@@ -41,7 +44,7 @@ async def _get_current_user(
     return CurrentUser(user_id=user_id, role=UserRole(role))
 
 
-def require_role(minimum: UserRole):
+def require_role(minimum: UserRole) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
     async def _check(user: Annotated[CurrentUser, Depends(_get_current_user)]) -> CurrentUser:
         if not user.role.is_at_least(minimum):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
