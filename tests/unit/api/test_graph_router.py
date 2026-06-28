@@ -91,6 +91,17 @@ class TestQueryGraph:
         assert resp.status_code == 200
         assert len(resp.json()["nodes"]) == 1
 
+    async def test_passes_status_filter(self, app, client):
+        state = _make_app_state()
+        state.kb_store.query = AsyncMock(return_value=[])
+        _override(app, state, _make_current_user())
+        async with client as ac:
+            resp = await ac.get("/graph?node_status=approved")
+        _clear(app)
+        assert resp.status_code == 200
+        called_filter = state.kb_store.query.call_args[0][0]
+        assert called_filter.status.value == "approved"
+
 
 class TestGetNode:
     async def test_requires_auth(self, app, client):

@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from seshat.api.app import create_app
 from seshat.api.dependencies import _get_current_user, get_app_state
 from seshat.api.state import AppState
-from seshat.models.enums import NodeStatus, UserRole
+from seshat.models.enums import JobStatus, NodeStatus, UserRole
 from seshat.models.nodes import ExtractionResult
 from tests.helpers import make_node
 
@@ -23,6 +23,7 @@ def _make_app_state(**overrides) -> AppState:
     ops.count_running_jobs = AsyncMock(return_value=0)
     ops.create_job = AsyncMock()
     ops.get_job = AsyncMock(return_value=None)
+    ops.update_job_status = AsyncMock()
     ops.reset_failed_job = AsyncMock()
     ops.fail_job = AsyncMock()
 
@@ -319,6 +320,25 @@ class TestApproveJob:
         assert resp.status_code == 200
         assert self._result_nodes(state)[str(node.id)].status == NodeStatus.PENDING_REVIEW
 
+    async def test_transitions_job_to_writing_before_enqueue(self, app, client):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
+        state = _make_app_state(results={"job-1": result})
+        state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
+        call_order = []
+        state.ops.update_job_status = AsyncMock(side_effect=lambda *_: call_order.append("status"))
+        state.queue.enqueue = AsyncMock(side_effect=lambda *_: call_order.append("enqueue"))
+        _override(app, state, _make_current_user())
+        async with client as ac:
+            resp = await ac.post(
+                "/jobs/job-1/approve",
+                json={"decisions": [{"node_id": str(node.id), "action": "approve"}]},
+            )
+        _clear(app)
+        assert resp.status_code == 200
+        assert call_order == ["status", "enqueue"]
+        state.ops.update_job_status.assert_called_once_with("job-1", JobStatus.WRITING)
+
 
 class TestRetryJob:
     async def test_requires_auth(self, app, client):
@@ -346,12 +366,12 @@ class TestRetryJob:
         _clear(app)
         assert resp.status_code == 409
 
-    async def test_resets_failed_job(self, app, client):
+    async def test_returns_501_not_implemented(self, app, client):
         state = _make_app_state()
         state.ops.get_job = AsyncMock(return_value=_make_job_row("failed"))
         _override(app, state, _make_current_user())
         async with client as ac:
             resp = await ac.post("/jobs/job-1/retry")
         _clear(app)
-        assert resp.status_code == 200
-        state.ops.reset_failed_job.assert_called_once_with("job-1")
+        assert resp.status_code == 501
+        state.ops.reset_failed_job.assert_not_called()

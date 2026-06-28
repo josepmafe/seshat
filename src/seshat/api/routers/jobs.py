@@ -95,7 +95,11 @@ async def get_job_results(
 
     result = state.results.get(job_id)
     if not result:
-        raise HTTPException(status_code=404, detail="Extraction result not found")
+        # TODO: fall back to reading curated/extraction.json from blob storage when in-memory
+        # result is absent (e.g. after server restart). Requires: (1) pipeline_runner writes
+        # the blob at the start of WRITING, (2) meeting_date is stored in ops.jobs so the
+        # blob key can be reconstructed from the job row alone. Deferred to a follow-up PR.
+        raise HTTPException(status_code=404, detail="Extraction result not found (server may have restarted)")
 
     return result
 
@@ -128,6 +132,7 @@ async def approve_job(
 
     state.results[job_id] = result.model_copy(update={"nodes": nodes})
 
+    await state.ops.update_job_status(job_id, JobStatus.WRITING)
     await state.queue.enqueue(job_id, state.runner.run_post_approval, job_id)
 
     return JobActionResponse(status="accepted")
@@ -145,8 +150,14 @@ async def retry_job(
     if row["status"] != "failed":
         raise HTTPException(status_code=409, detail="Only failed jobs can be retried")
 
-    await state.ops.reset_failed_job(job_id)
-    return JobActionResponse(status="queued")
+    # TODO: File bytes are not yet persisted to blob storage on submit, so re-running
+    # the full pipeline from just the job ID is not possible. Use POST /jobs with
+    # the original idempotency_key for now (creates a new job ID but achieves the
+    # same result). Tracked for implementation in a follow-up PR.
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Retry-by-job-id not yet implemented. Re-submit via POST /jobs with the original idempotency_key.",
+    )
 
 
 def _apply_bulk_rule(nodes: list[KBNode], rule: BulkApproveRule, user_id: str, now: datetime) -> list[KBNode]:

@@ -27,6 +27,7 @@ from seshat.models.enums import (
     GraphDirection,
     IngestionSource,
     NodeState,
+    NodeStatus,
     RelationshipType,
     UserRole,
 )
@@ -45,7 +46,8 @@ async def query_graph(
     domain: str | None = None,
     ingestion_source: IngestionSource | None = None,
     min_confidence: float | None = None,
-    node_state: NodeState | None = None,
+    node_state: Annotated[NodeState | None, Query()] = None,
+    node_status: Annotated[NodeStatus | None, Query()] = None,
 ) -> NodeListResponse:
     node_filter = NodeFilter(
         node_type=node_type,
@@ -55,6 +57,7 @@ async def query_graph(
         ingestion_source=ingestion_source,
         min_confidence=min_confidence,
         state=node_state,
+        status=node_status,
     )
     nodes = await state.kb_store.query(node_filter)
     return NodeListResponse(nodes=nodes)
