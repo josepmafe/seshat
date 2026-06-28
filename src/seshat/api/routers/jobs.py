@@ -49,11 +49,20 @@ async def submit_job(
     if submission.overrides is not None and not user.role.is_at_least(UserRole.OPERATOR):
         raise HTTPException(status_code=403, detail="Config overrides require operator role")
 
+    if not file.filename or "." not in file.filename:
+        raise HTTPException(status_code=400, detail="Uploaded file must have an extension.")
+
     job_id = str(uuid.uuid4())
     now = datetime.now(UTC)
     await state.ops.create_job(job_id, user.user_id, submission.source_type, submission.idempotency_key, now)
 
     file_bytes = await file.read()
+    meeting_date = submission.metadata.meeting_date
+    ext = file.filename.rsplit(".", 1)[-1]
+    raw_key = state.blob_store.raw_input_key(meeting_date, job_id, ext)
+    await state.blob_store.put(raw_key, file_bytes)
+    await state.ops.set_job_submission(job_id, meeting_date, submission.model_dump_json(), raw_key)
+
     await state.queue.enqueue(job_id, state.runner.run, job_id, file_bytes, submission)
 
     return JobSubmitResponse(job_id=job_id)
@@ -95,11 +104,14 @@ async def get_job_results(
 
     result = state.results.get(job_id)
     if not result:
-        # TODO: fall back to reading curated/extraction.json from blob storage when in-memory
-        # result is absent (e.g. after server restart). Requires: (1) pipeline_runner writes
-        # the blob at the start of WRITING, (2) meeting_date is stored in ops.jobs so the
-        # blob key can be reconstructed from the job row alone. Deferred to a follow-up PR.
-        raise HTTPException(status_code=404, detail="Extraction result not found (server may have restarted)")
+        # In-memory result is lost on server restart; reconstruct from the curated blob written at the start of WRITING.
+        meeting_date = row["meeting_date"]
+        if meeting_date is None:
+            raise HTTPException(status_code=404, detail="Job has no stored submission metadata")
+        raw = await state.blob_store.get(state.blob_store.curated_extraction_key(meeting_date, job_id))
+        if raw is None:
+            raise HTTPException(status_code=404, detail="Extraction result not found in storage")
+        result = ExtractionResult.model_validate_json(raw)
 
     return result
 
@@ -150,14 +162,18 @@ async def retry_job(
     if row["status"] != "failed":
         raise HTTPException(status_code=409, detail="Only failed jobs can be retried")
 
-    # TODO: File bytes are not yet persisted to blob storage on submit, so re-running
-    # the full pipeline from just the job ID is not possible. Use POST /jobs with
-    # the original idempotency_key for now (creates a new job ID but achieves the
-    # same result). Tracked for implementation in a follow-up PR.
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Retry-by-job-id not yet implemented. Re-submit via POST /jobs with the original idempotency_key.",
-    )
+    raw_blob_key = row["raw_blob_key"]
+    submission_json = row["submission"]
+    if not raw_blob_key or not submission_json:
+        raise HTTPException(status_code=409, detail="Job has no stored input; re-submit via POST /jobs")
+
+    file_bytes = await state.blob_store.get(raw_blob_key)
+    submission = JobSubmissionRequest.model_validate_json(submission_json)
+
+    await state.ops.reset_failed_job(job_id)
+    await state.queue.enqueue(job_id, state.runner.run, job_id, file_bytes, submission)
+
+    return JobActionResponse(status="accepted")
 
 
 def _apply_bulk_rule(nodes: list[KBNode], rule: BulkApproveRule, user_id: str, now: datetime) -> list[KBNode]:

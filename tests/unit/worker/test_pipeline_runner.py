@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
 from seshat.models.enums import JobStatus, NodeStatus
@@ -36,9 +37,14 @@ def _make_runner(
     ops = MagicMock()
     ops.update_job_status = AsyncMock()
     ops.fail_job = AsyncMock()
+    ops.get_job = AsyncMock(return_value=None)
+
+    blob_store = MagicMock()
+    blob_store.put = AsyncMock()
+    blob_store.curated_extraction_key = MagicMock(return_value="curated/key")
 
     result_store: dict = {}
-    runner = PipelineRunner(ingestion, extraction, writing, ops, result_store)
+    runner = PipelineRunner(ingestion, extraction, writing, ops, result_store, blob_store)
     return runner, ingestion, extraction, writing, ops, result_store
 
 
@@ -102,6 +108,24 @@ class TestPipelineRunnerPostApproval:
 
         _, kwargs = extraction.run_resolution.call_args
         assert kwargs["approved"] == [approved]
+
+    async def test_writes_extraction_json_before_writing_stage(self):
+        meeting_date = date(2026, 1, 1)
+        runner, _, extraction, writing, ops, _ = _make_runner()
+        ops.get_job = AsyncMock(return_value={"meeting_date": meeting_date})
+        runner._blob_store.curated_extraction_key = MagicMock(return_value="curated/2026-01-01/job-1/extraction.json")
+        runner._pending["job-1"] = await extraction.run_identification(MagicMock(), "job-1")
+
+        put_order = []
+        runner._blob_store.put = AsyncMock(side_effect=lambda *_: put_order.append("put"))
+        writing.write = AsyncMock(side_effect=lambda *_: put_order.append("write"))
+
+        await runner.run_post_approval("job-1")
+
+        assert put_order == ["put", "write"]
+        runner._blob_store.put.assert_called_once()
+        put_key = runner._blob_store.put.call_args[0][0]
+        assert put_key == "curated/2026-01-01/job-1/extraction.json"
 
     async def test_failure_calls_fail_job(self):
         runner, _, extraction, _, ops, _ = _make_runner()

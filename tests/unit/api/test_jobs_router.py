@@ -26,6 +26,7 @@ def _make_app_state(**overrides) -> AppState:
     ops.update_job_status = AsyncMock()
     ops.reset_failed_job = AsyncMock()
     ops.fail_job = AsyncMock()
+    ops.set_job_submission = AsyncMock()
 
     config = MagicMock()
     config.max_jobs_per_user_per_hour = 10
@@ -36,6 +37,12 @@ def _make_app_state(**overrides) -> AppState:
 
     runner = MagicMock()
 
+    blob_store = MagicMock()
+    blob_store.put = AsyncMock()
+    blob_store.get = AsyncMock()
+    blob_store.raw_input_key = MagicMock(return_value="raw/key")
+    blob_store.curated_extraction_key = MagicMock(return_value="curated/key")
+
     state = AppState(
         ops=ops,
         kb_store=MagicMock(),
@@ -44,6 +51,7 @@ def _make_app_state(**overrides) -> AppState:
         results={},
         runner=runner,
         manual_ingestion=MagicMock(),
+        blob_store=blob_store,
     )
     for k, v in overrides.items():
         object.__setattr__(state, k, v)
@@ -56,7 +64,7 @@ def _make_current_user(user_id: str = "alice", role: UserRole = UserRole.OPERATO
     return CurrentUser(user_id=user_id, role=role)
 
 
-def _make_job_row(status: str = "pending") -> dict[str, Any]:
+def _make_job_row(status: str = "pending", *, meeting_date=None, submission=None, raw_blob_key=None) -> dict[str, Any]:
     return {
         "job_id": "job-1",
         "status": status,
@@ -64,6 +72,9 @@ def _make_job_row(status: str = "pending") -> dict[str, Any]:
         "created_at": datetime.now(UTC),
         "error_payload": None,
         "mlflow_run_id": None,
+        "meeting_date": meeting_date,
+        "submission": submission,
+        "raw_blob_key": raw_blob_key,
     }
 
 
@@ -100,7 +111,7 @@ class TestSubmitJob:
         _override(app, state, _make_current_user())
         body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
         async with client as ac:
-            resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": body})
+            resp = await ac.post("/jobs", files={"file": ("input.yaml", b"data", "text/plain")}, data={"body": body})
         _clear(app)
         assert resp.status_code == 202
         assert "job_id" in resp.json()
@@ -140,6 +151,30 @@ class TestSubmitJob:
         _clear(app)
         assert resp.status_code == 429
         assert resp.json()["limit_type"] == "global_concurrency_cap"
+
+    async def test_persists_raw_bytes_and_submission(self, app, client):
+        state = _make_app_state()
+        _override(app, state, _make_current_user())
+        body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
+        async with client as ac:
+            resp = await ac.post("/jobs", files={"file": ("input.yaml", b"data", "text/plain")}, data={"body": body})
+        _clear(app)
+        assert resp.status_code == 202
+        state.blob_store.put.assert_called_once()
+        put_key = state.blob_store.put.call_args[0][0]
+        assert put_key == "raw/key"
+        state.ops.set_job_submission.assert_called_once()
+        call_args = state.ops.set_job_submission.call_args[0]
+        assert str(call_args[1]) == "2026-01-15"
+
+    async def test_rejects_file_without_extension(self, app, client):
+        state = _make_app_state()
+        _override(app, state, _make_current_user())
+        body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
+        async with client as ac:
+            resp = await ac.post("/jobs", files={"file": ("noextension", b"data", "text/plain")}, data={"body": body})
+        _clear(app)
+        assert resp.status_code == 400
 
     async def test_viewer_cannot_submit(self, app, client):
         state = _make_app_state()
@@ -217,6 +252,33 @@ class TestGetJobResults:
             resp = await ac.get("/jobs/job-1/results")
         _clear(app)
         assert resp.status_code == 200
+
+    async def test_falls_back_to_blob_after_restart(self, app, client):
+        from datetime import date
+
+        node = make_node()
+        result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
+        state = _make_app_state()
+        state.ops.get_job = AsyncMock(return_value=_make_job_row("done", meeting_date=date(2026, 1, 15)))
+        state.blob_store.get = AsyncMock(return_value=result.model_dump_json().encode())
+        _override(app, state, _make_current_user())
+        async with client as ac:
+            resp = await ac.get("/jobs/job-1/results")
+        _clear(app)
+        assert resp.status_code == 200
+        assert resp.json()["job_id"] == "job-1"
+
+    async def test_returns_404_when_blob_also_missing(self, app, client):
+        from datetime import date
+
+        state = _make_app_state()
+        state.ops.get_job = AsyncMock(return_value=_make_job_row("done", meeting_date=date(2026, 1, 15)))
+        state.blob_store.get = AsyncMock(return_value=None)
+        _override(app, state, _make_current_user())
+        async with client as ac:
+            resp = await ac.get("/jobs/job-1/results")
+        _clear(app)
+        assert resp.status_code == 404
 
 
 class TestApproveJob:
@@ -366,12 +428,30 @@ class TestRetryJob:
         _clear(app)
         assert resp.status_code == 409
 
-    async def test_returns_501_not_implemented(self, app, client):
+    async def test_no_stored_input_returns_409(self, app, client):
         state = _make_app_state()
         state.ops.get_job = AsyncMock(return_value=_make_job_row("failed"))
         _override(app, state, _make_current_user())
         async with client as ac:
             resp = await ac.post("/jobs/job-1/retry")
         _clear(app)
-        assert resp.status_code == 501
+        assert resp.status_code == 409
         state.ops.reset_failed_job.assert_not_called()
+
+    async def test_re_enqueues_from_blob(self, app, client):
+        state = _make_app_state()
+        state.ops.get_job = AsyncMock(
+            return_value=_make_job_row(
+                "failed",
+                raw_blob_key="jobs/2026-01-15/job-1/raw/input.yaml",
+                submission='{"source_type":"text","metadata":{"meeting_date":"2026-01-15"}}',
+            )
+        )
+        state.blob_store.get = AsyncMock(return_value=b"file data")
+        _override(app, state, _make_current_user())
+        async with client as ac:
+            resp = await ac.post("/jobs/job-1/retry")
+        _clear(app)
+        assert resp.status_code == 200
+        state.ops.reset_failed_job.assert_called_once_with("job-1")
+        state.queue.enqueue.assert_called_once()

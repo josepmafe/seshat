@@ -14,6 +14,7 @@ from seshat.worker.writing_stage import WritingStage
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from seshat.blob_store.s3_store import S3BlobStore
     from seshat.config.settings import SeshatConfig
     from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.ops.ledger import OpsLedger
@@ -31,6 +32,7 @@ class WorkerContext:
     kb_store: PostgresKBStore
     vector_store: AbstractVectorStore
     manual_ingestion: ManualIngestionService
+    blob_store: S3BlobStore
 
 
 @asynccontextmanager
@@ -57,6 +59,7 @@ async def build_worker_context(seshat_config: SeshatConfig) -> AsyncIterator[Wor
                 kb_store=kb_store,
                 vector_store=vector_store,
                 manual_ingestion=manual_ingestion,
+                blob_store=blob_store,
             )
         finally:
             await kb_store.close()

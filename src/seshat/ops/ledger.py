@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -87,6 +87,22 @@ class OpsLedger:
     async def reset_failed_job(self, job_id: str) -> None:
         await self._pool.execute(
             "UPDATE ops.jobs SET status='pending', error_payload=NULL, updated_at=$1 WHERE job_id=$2",
+            datetime.now(UTC),
+            job_id,
+        )
+
+    async def set_job_submission(
+        self,
+        job_id: str,
+        meeting_date: date,
+        submission_json: str,
+        raw_blob_key: str,
+    ) -> None:
+        await self._pool.execute(
+            "UPDATE ops.jobs SET meeting_date=$1, submission=$2, raw_blob_key=$3, updated_at=$4 WHERE job_id=$5",
+            meeting_date,
+            submission_json,
+            raw_blob_key,
             datetime.now(UTC),
             job_id,
         )

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 from seshat.models.enums import JobStatus
@@ -91,3 +91,20 @@ class TestOpsLedger:
         store = _make_ledger(fetch=rows)
         ids = await store.get_stranded_writing_jobs()
         assert ids == ["job-1", "job-2"]
+
+    async def test_set_job_submission_executes_update(self):
+        store = _make_ledger()
+        meeting_date = date(2026, 6, 28)
+        await store.set_job_submission(
+            "job-1", meeting_date, '{"source_type": "audio"}', "jobs/2026-06-28/job-1/raw/input.yaml"
+        )
+        store._pool.execute.assert_called_once()
+        call_args = store._pool.execute.call_args[0]
+        assert "UPDATE ops.jobs" in call_args[0]
+        assert "meeting_date" in call_args[0]
+        assert "submission" in call_args[0]
+        assert "raw_blob_key" in call_args[0]
+        assert call_args[1] == meeting_date
+        assert call_args[2] == '{"source_type": "audio"}'
+        assert call_args[3] == "jobs/2026-06-28/job-1/raw/input.yaml"
+        assert call_args[5] == "job-1"

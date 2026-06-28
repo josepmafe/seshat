@@ -7,6 +7,7 @@ from seshat.models.nodes import ExtractionResult
 from seshat.utils.log import get_logger, set_job_id
 
 if TYPE_CHECKING:
+    from seshat.blob_store.s3_store import S3BlobStore
     from seshat.models.nodes import IdentificationResult
     from seshat.models.submission import JobSubmissionRequest
     from seshat.ops.ledger import OpsLedger
@@ -25,12 +26,14 @@ class PipelineRunner:
         writing_stage: WritingStage,
         ops_ledger: OpsLedger,
         result_store: dict[str, ExtractionResult],
+        blob_store: S3BlobStore,
     ) -> None:
         self._ingestion = ingestion_orchestrator
         self._extraction = extraction_orchestrator
         self._writing = writing_stage
         self._ops = ops_ledger
         self._results = result_store
+        self._blob_store = blob_store
         self._pending: dict[str, IdentificationResult] = {}
 
     async def run(self, job_id: str, file_bytes: bytes, submission: JobSubmissionRequest) -> None:
@@ -96,6 +99,16 @@ class PipelineRunner:
                 confidence_breakdowns={str(k): v for k, v in identification_result.confidence_breakdowns.items()},
             )
             self._results[job_id] = result
+
+            job_row = await self._ops.get_job(job_id)
+            meeting_date = job_row["meeting_date"] if job_row else None
+            if meeting_date is not None:
+                await self._blob_store.put(
+                    self._blob_store.curated_extraction_key(meeting_date, job_id),
+                    result.model_dump_json().encode(),
+                )
+            else:
+                logger.warning("Job %s has no meeting_date; skipping extraction.json blob write", job_id)
 
             await self._ops.update_job_status(job_id, JobStatus.WRITING)
             written = await self._writing.write(result)

@@ -36,6 +36,7 @@ def _make_app_state() -> AppState:
         results={},
         runner=MagicMock(),
         manual_ingestion=manual_ingestion,
+        blob_store=MagicMock(),
     )
 
 

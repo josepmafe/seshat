@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from seshat.blob_store.s3_store import S3BlobStore
     from seshat.config.settings import SeshatConfig
     from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.models.nodes import ExtractionResult
@@ -22,3 +23,4 @@ class AppState:
     queue: AsyncioTaskQueue
     results: dict[str, ExtractionResult]
     runner: PipelineRunner
+    blob_store: S3BlobStore

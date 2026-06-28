@@ -51,7 +51,9 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
             logger.warning("Startup recovery: marked stranded job %s as FAILED", job_id)
 
         result_store: dict[str, ExtractionResult] = {}
-        runner = PipelineRunner(ctx.ingestion_orch, ctx.extraction_orch, ctx.writing_stage, ctx.ops, result_store)
+        runner = PipelineRunner(
+            ctx.ingestion_orch, ctx.extraction_orch, ctx.writing_stage, ctx.ops, result_store, ctx.blob_store
+        )
         queue = AsyncioTaskQueue()
 
         app.state.app_state = AppState(
@@ -62,6 +64,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
             queue=queue,
             results=result_store,
             runner=runner,
+            blob_store=ctx.blob_store,
         )
 
         yield
