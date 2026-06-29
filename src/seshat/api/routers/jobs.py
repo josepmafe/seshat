@@ -20,7 +20,19 @@ from seshat.models.submission import JobSubmissionRequest
 router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_role(UserRole.VIEWER))])
 
 
-@router.post("", status_code=status.HTTP_202_ACCEPTED, response_model=None)
+@router.post(
+    "",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=None,
+    summary="Submit a new ingestion job",
+    responses={
+        202: {"description": "Job accepted and queued"},
+        400: {"description": "Invalid file (missing extension)"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Insufficient role or overrides require operator"},
+        429: {"description": "Rate limit exceeded (per-user or global concurrency cap)"},
+    },
+)
 async def submit_job(
     state: Annotated[AppState, Depends(get_app_state)],
     user: Annotated[CurrentUser, Depends(require_role(UserRole.REVIEWER))],
@@ -31,7 +43,7 @@ async def submit_job(
 
     if submission.idempotency_key:
         existing = await state.ops.find_job_by_idempotency_key(submission.idempotency_key)
-        if existing and existing["status"] != "failed":
+        if existing and existing["status"] != JobStatus.FAILED:
             return JobSubmitResponse(job_id=existing["job_id"])
 
     if await state.ops.count_recent_jobs_for_user(user.user_id) >= state.config.max_jobs_per_user_per_hour:
@@ -77,7 +89,16 @@ async def submit_job(
     return JobSubmitResponse(job_id=job_id)
 
 
-@router.get("/{job_id}", response_model=JobResponse)
+@router.get(
+    "/{job_id}",
+    response_model=JobResponse,
+    summary="Get job status",
+    responses={
+        200: {"description": "Job found"},
+        401: {"description": "Missing or invalid API key"},
+        404: {"description": "Job not found"},
+    },
+)
 async def get_job(
     job_id: str,
     state: Annotated[AppState, Depends(get_app_state)],
@@ -92,7 +113,6 @@ async def get_job(
         job_id=job_id,
         status=JobStatus(row["status"]),
         idempotency_key=row["idempotency_key"],
-        current_stage=JobStatus(row["status"]) if row["status"] not in ("done", "failed") else None,
         stage_progress=None,
         elapsed_seconds=elapsed,
         error=error,
@@ -100,7 +120,16 @@ async def get_job(
     )
 
 
-@router.get("/{job_id}/results")
+@router.get(
+    "/{job_id}/results",
+    summary="Get extraction results for a job",
+    responses={
+        200: {"description": "Extraction result returned"},
+        401: {"description": "Missing or invalid API key"},
+        404: {"description": "Job not found or result not in storage"},
+        409: {"description": "Results not yet available (job not in awaiting_review or done state)"},
+    },
+)
 async def get_job_results(
     job_id: str,
     state: Annotated[AppState, Depends(get_app_state)],
@@ -108,7 +137,7 @@ async def get_job_results(
     row = await state.ops.get_job(job_id)
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
-    if row["status"] not in ("awaiting_review", "done"):
+    if row["status"] not in (JobStatus.AWAITING_REVIEW, JobStatus.DONE):
         raise HTTPException(status_code=409, detail="Results not yet available")
 
     result = state.results.get(job_id)
@@ -125,7 +154,17 @@ async def get_job_results(
     return result
 
 
-@router.post("/{job_id}/approve")
+@router.post(
+    "/{job_id}/approve",
+    summary="Submit review decisions and trigger writing",
+    responses={
+        200: {"description": "Decisions accepted; writing stage enqueued"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Insufficient role (reviewer or operator required)"},
+        404: {"description": "Job or extraction result not found"},
+        409: {"description": "Job is not in awaiting_review state"},
+    },
+)
 async def approve_job(
     job_id: str,
     approve_request: ApproveRequest,
@@ -135,7 +174,7 @@ async def approve_job(
     row = await state.ops.get_job(job_id)
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
-    if row["status"] != "awaiting_review":
+    if row["status"] != JobStatus.AWAITING_REVIEW:
         raise HTTPException(status_code=409, detail="Job is not awaiting review")
 
     result = state.results.get(job_id)
@@ -159,7 +198,17 @@ async def approve_job(
     return JobActionResponse(status="accepted")
 
 
-@router.post("/{job_id}/retry")
+@router.post(
+    "/{job_id}/retry",
+    summary="Retry a failed job",
+    responses={
+        200: {"description": "Job reset and re-queued"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Operator role required"},
+        404: {"description": "Job not found"},
+        409: {"description": "Job is not failed, or has no stored input to retry from"},
+    },
+)
 async def retry_job(
     job_id: str,
     state: Annotated[AppState, Depends(get_app_state)],
@@ -168,7 +217,7 @@ async def retry_job(
     row = await state.ops.get_job(job_id)
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
-    if row["status"] != "failed":
+    if row["status"] != JobStatus.FAILED:
         raise HTTPException(status_code=409, detail="Only failed jobs can be retried")
 
     raw_blob_key = row["raw_blob_key"]

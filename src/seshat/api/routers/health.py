@@ -25,7 +25,12 @@ class HealthResponse(BaseModel):
 router = APIRouter(prefix="/health", tags=["health"])
 
 
-@router.get("", response_model=HealthResponse)
+@router.get(
+    "",
+    response_model=HealthResponse,
+    summary="Service health check",
+    responses={200: {"description": "All components healthy"}, 503: {"description": "One or more components degraded"}},
+)
 async def health(state: Annotated[AppState, Depends(get_app_state)], response: Response) -> HealthResponse:
     config = state.config
 

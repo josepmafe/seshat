@@ -24,7 +24,6 @@ class JobResponse(BaseModel):
     idempotency_key: str | None = Field(
         default=None, description="Client-supplied idempotency key, echoed from the submission request."
     )
-    current_stage: JobStatus | None = None
     stage_progress: str | None = Field(
         default=None, description="Human-readable progress string for the current stage."
     )

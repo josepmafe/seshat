@@ -11,6 +11,7 @@ from fastapi import APIRouter, FastAPI
 from seshat.api.routers import graph, health, jobs
 from seshat.api.state import AppState
 from seshat.config.settings import SeshatConfig
+from seshat.models.enums import JobStatus
 from seshat.observability.mlflow_setup import setup_mlflow
 from seshat.utils.log import get_logger
 from seshat.worker.bootstrap import build_worker_context
@@ -47,7 +48,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     async with build_worker_context(config) as ctx:
         stranded = await ctx.ops.get_stranded_writing_jobs()
         for job_id in stranded:
-            await ctx.ops.fail_job(job_id, "writing", "Server crash during write", recoverable=True)
+            await ctx.ops.fail_job(job_id, JobStatus.WRITING, "Server crash during write", recoverable=True)
             logger.warning("Startup recovery: marked stranded job %s as FAILED", job_id)
 
         result_store: dict[str, ExtractionResult] = {}
