@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import pathlib
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
@@ -40,12 +39,10 @@ def create_app() -> FastAPI:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    set_job_id("api-lifespan")
-
+    set_job_id("api")
     config = SeshatConfig()
-    _check_eval_gate()
-
     configure_logging(config.logging)
+    _check_eval_gate(config.skip_eval_gate)
     setup_mlflow(config.observability)
 
     async with build_worker_context(config) as ctx:
@@ -74,9 +71,8 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
         yield
 
 
-def _check_eval_gate() -> None:
-    if os.environ.get("SESHAT_SKIP_EVAL_GATE", "").lower() in ("1", "true"):
-        logger.warning("Eval gate check bypassed — do not use in production")
+def _check_eval_gate(skip: bool = False) -> None:
+    if skip:
         return
     gate_path = pathlib.Path("eval_gate.json")
     if not gate_path.exists():

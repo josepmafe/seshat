@@ -321,11 +321,20 @@ class SeshatConfig(BaseSettings):
     max_jobs_per_user_per_hour: int = Field(default=10, gt=0)
     max_concurrent_jobs: int = Field(default=1, gt=0)
     max_concurrent_init_runs: int = Field(default=1, gt=0)
+    skip_eval_gate: bool = Field(
+        default=False, description="Bypass the eval gate check at startup. Should never be used in production."
+    )
+
+    @model_validator(mode="after")
+    def _warn_skip_eval_gate(self) -> "SeshatConfig":
+        if self.skip_eval_gate:
+            logger.warning("`skip_eval_gate=True`: eval gate check bypassed")
+        return self
 
     @model_validator(mode="after")
     def _warn_grounding_disabled(self) -> "SeshatConfig":
         if self.extraction.grounding is None:
-            logger.warning("grounding=None: heuristics-only confidence scoring.")
+            logger.warning("`grounding=None`: heuristics-only confidence scoring.")
         return self
 
 
