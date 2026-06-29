@@ -177,7 +177,6 @@ class VectorIndexConfig(BaseConfig):
 class RAGConfig(BaseConfig):
     enabled: bool = True
     top_k: int = Field(default=5, gt=0)
-    # TODO: calibrate against labeled retrieval corpus; 0.5 is a placeholder for text-embedding-3-small cosine scores
     min_similarity_score: float = Field(
         default=0.5, ge=0, le=1, description="Minimum similarity score [0, 1] to retain a retrieved result."
     )
@@ -284,9 +283,28 @@ class DocumentLoaderConfig(BaseConfig):
     source_path: str = "./init-docs"
 
 
+class LoggingConfig(BaseConfig):
+    level: str = Field(default="INFO", description="Root log level (DEBUG, INFO, WARNING, ERROR).")
+    noisy_loggers: dict[str, str] = Field(
+        default_factory=lambda: {
+            "aiobotocore": "WARNING",
+            "botocore": "WARNING",
+            "httpx": "WARNING",
+            "langchain": "WARNING",
+            "langchain_core": "WARNING",
+            "langchain_aws": "WARNING",
+            "langchain_openai": "WARNING",
+            "mlflow": "WARNING",
+            "urllib3.connectionpool": "ERROR",
+        },
+        description="Per-logger level overrides for verbose third-party libraries.",
+    )
+
+
 class SeshatConfig(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_nested_delimiter="__", extra="ignore")
 
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     vector_store: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
     vector_index: VectorIndexConfig = Field(default_factory=VectorIndexConfig)

@@ -13,7 +13,7 @@ from seshat.api.state import AppState
 from seshat.config.settings import SeshatConfig
 from seshat.models.enums import JobStatus
 from seshat.observability.mlflow_setup import setup_mlflow
-from seshat.utils.log import get_logger
+from seshat.utils.log import configure_logging, get_logger, set_job_id
 from seshat.worker.bootstrap import build_worker_context
 from seshat.worker.pipeline_runner import PipelineRunner
 from seshat.worker.queue import AsyncioTaskQueue
@@ -40,9 +40,12 @@ def create_app() -> FastAPI:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    _check_eval_gate()
+    set_job_id("api-lifespan")
 
     config = SeshatConfig()
+    _check_eval_gate()
+
+    configure_logging(config.logging)
     setup_mlflow(config.observability)
 
     async with build_worker_context(config) as ctx:
@@ -93,7 +96,6 @@ if __name__ == "__main__":
     from seshat.utils.log import configure_logging
 
     async def _serve() -> None:
-        configure_logging()
         config = uvicorn.Config(create_app(), host="0.0.0.0", port=8000, log_config=None)
         await uvicorn.Server(config).serve()
 
