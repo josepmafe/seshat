@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -9,7 +11,8 @@ from seshat.api.app import create_app
 from seshat.api.dependencies import CurrentUser, _get_current_user, get_app_state
 from seshat.api.state import AppState
 from seshat.models.api_graph import BulkFailure, BulkResult
-from seshat.models.enums import NodeState, UserRole
+from seshat.models.enums import ApprovalMethod, NodeState, NodeStatus, RelationshipType, UserRole
+from seshat.models.nodes import KBRelationship
 from seshat.worker.manual_ingestion import NodeNotFoundError, NodePreconditionError
 from tests.helpers import make_node
 
@@ -27,6 +30,7 @@ def _make_app_state() -> AppState:
     manual_ingestion.delete = AsyncMock()
     manual_ingestion.bulk_create = AsyncMock()
     manual_ingestion.bulk_delete = AsyncMock()
+    manual_ingestion.resolve = AsyncMock(return_value=[])
 
     return AppState(
         ops=MagicMock(),
@@ -305,8 +309,6 @@ class TestOverrideNode:
         assert resp.json()["id"] == str(node.id)
 
     async def test_operator_gets_auto_minimum_method(self, app, client):
-        from seshat.models.enums import ApprovalMethod
-
         node = make_node()
         state = _make_app_state()
         state.manual_ingestion.override = AsyncMock(return_value=node)
@@ -489,3 +491,59 @@ class TestBulkDeleteNodes:
             resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": ["id-1", "id-2"]})
         _clear(app)
         assert resp.json()["failed"][0]["node_id"] == "id-2"
+
+
+class TestResolveNodes:
+    def _node_ids(self, *nodes):
+        return [str(n.id) for n in nodes]
+
+    async def test_requires_operator(self, app, client):
+        node = make_node()
+        state = _make_app_state()
+        state.kb_store.get_node = AsyncMock(return_value=node)
+        _override(app, state, _make_current_user(role=UserRole.REVIEWER))
+        async with client as ac:
+            resp = await ac.post("/graph/nodes/resolve", json={"node_ids": self._node_ids(node)})
+        _clear(app)
+        assert resp.status_code == 403
+
+    async def test_404_when_node_missing(self, app, client):
+        state = _make_app_state()
+        state.kb_store.get_node = AsyncMock(return_value=None)
+        _override(app, state, _make_current_user())
+        async with client as ac:
+            resp = await ac.post("/graph/nodes/resolve", json={"node_ids": ["00000000-0000-0000-0000-000000000001"]})
+        _clear(app)
+        assert resp.status_code == 404
+
+    async def test_422_when_node_not_approved(self, app, client):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        state = _make_app_state()
+        state.kb_store.get_node = AsyncMock(return_value=node)
+        _override(app, state, _make_current_user())
+        async with client as ac:
+            resp = await ac.post("/graph/nodes/resolve", json={"node_ids": self._node_ids(node)})
+        _clear(app)
+        assert resp.status_code == 422
+
+    async def test_returns_relationship_count(self, app, client):
+        node = make_node()
+        rel = KBRelationship(
+            source_id=node.id,
+            target_id=uuid4(),
+            rel_type=RelationshipType.MITIGATES,
+            job_id="j1",
+            created_at=datetime.now(UTC),
+        )
+        state = _make_app_state()
+        state.kb_store.get_node = AsyncMock(return_value=node)
+        state.manual_ingestion.resolve = AsyncMock(return_value=[rel])
+        _override(app, state, _make_current_user())
+        async with client as ac:
+            resp = await ac.post("/graph/nodes/resolve", json={"node_ids": self._node_ids(node)})
+        _clear(app)
+        assert resp.status_code == 200
+        assert resp.json()["relationships_created"] == 1
+        state.manual_ingestion.resolve.assert_called_once()
+        call_nodes = state.manual_ingestion.resolve.call_args[0][0]
+        assert call_nodes == [node]

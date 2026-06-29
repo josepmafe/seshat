@@ -50,7 +50,7 @@ async def build_worker_context(seshat_config: SeshatConfig) -> AsyncIterator[Wor
             extraction_orch = build_extraction_orchestrator(seshat_config, kb_store, vector_store, blob_store)
             ingestion_orch = build_ingestion_orchestrator(seshat_config, blob_store)
             writing_stage = WritingStage(kb_store, vector_store)
-            manual_ingestion = ManualIngestionService(kb_store, vector_store)
+            manual_ingestion = ManualIngestionService(kb_store, vector_store, extraction_orch)
             yield WorkerContext(
                 extraction_orch=extraction_orch,
                 ingestion_orch=ingestion_orch,

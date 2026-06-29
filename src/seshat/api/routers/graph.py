@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -14,6 +15,8 @@ from seshat.models.api_graph import (
     ManualNodeUpdate,
     NodeFilter,
     NodeOverride,
+    ResolveRequest,
+    ResolveResponse,
 )
 from seshat.models.api_responses import (
     ImpactNode,
@@ -119,6 +122,28 @@ async def bulk_create_nodes(
 ) -> BulkResult:
     result = await state.manual_ingestion.bulk_create(payload, user.user_id)
     return result
+
+
+@router.post("/nodes/resolve")
+async def resolve_nodes(
+    payload: ResolveRequest,
+    state: Annotated[AppState, Depends(get_app_state)],
+    _user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
+) -> ResolveResponse:
+    nodes = []
+    for node_id in payload.node_ids:
+        node = await state.kb_store.get_node(str(node_id))
+        if node is None:
+            raise HTTPException(status_code=404, detail=f"Node {node_id} not found")
+        nodes.append(node)
+
+    not_approved = [str(n.id) for n in nodes if n.status != NodeStatus.APPROVED]
+    if not_approved:
+        raise HTTPException(status_code=422, detail=f"Nodes not in APPROVED status: {not_approved}")
+
+    job_id = f"manual_resolve_{uuid4()}"
+    relationships = await state.manual_ingestion.resolve(nodes, job_id)
+    return ResolveResponse(relationships_created=len(relationships))
 
 
 @router.post("", status_code=201)

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
     from seshat.models.nodes import KBNode
+    from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
     from seshat.vector_store.base_store import AbstractVectorStore
 
 logger = get_logger(__name__)
@@ -29,9 +30,15 @@ class NodePreconditionError(Exception):
 
 
 class ManualIngestionService:
-    def __init__(self, kb_store: PostgresKBStore, vector_store: AbstractVectorStore) -> None:
+    def __init__(
+        self,
+        kb_store: PostgresKBStore,
+        vector_store: AbstractVectorStore,
+        extraction_orch: ExtractionOrchestrator,
+    ) -> None:
         self._kb = kb_store
         self._vs = vector_store
+        self._extraction_orch = extraction_orch
 
     async def create(self, payload: ManualNodeCreate, user_id: str) -> KBNode:
         from seshat.models.nodes import KBNode, NodeMetadata
@@ -76,6 +83,50 @@ class ManualIngestionService:
 
         return node
 
+    async def bulk_create(self, payload: BulkNodeCreate, user_id: str) -> BulkResult:
+        succeeded: list[str] = []
+        failed: list[BulkFailure] = []
+
+        for item in payload.nodes:
+            try:
+                node = await self.create(item, user_id)
+                succeeded.append(str(node.id))
+            except Exception as exc:
+                if payload.on_error == "stop":
+                    raise
+                failed.append(BulkFailure(node_id=f"<{item.type}:{item.title}>", error=str(exc)))
+
+        return BulkResult(succeeded=succeeded, failed=failed)
+
+    async def delete(self, node_id: str, *, cascade: bool = True) -> None:
+        if not cascade:
+            n = await self._kb.count_inbound_relationships(node_id)
+            if n > 0:
+                raise NodePreconditionError(
+                    f"Node is referenced as a target by {n} relationships — delete them first or use cascade=true"
+                )
+
+        async with self._kb.transaction() as conn:
+            await self._kb.delete_relationships_for_node(node_id, cascade=cascade, conn=conn)
+            await self._kb.delete_node(node_id, conn=conn)
+
+        await self._vs.delete(node_id)
+
+    async def bulk_delete(self, payload: BulkNodeDelete, *, cascade: bool = True) -> BulkResult:
+        succeeded: list[str] = []
+        failed: list[BulkFailure] = []
+
+        for node_id in payload.node_ids:
+            try:
+                await self.delete(node_id, cascade=cascade)
+                succeeded.append(node_id)
+            except Exception as exc:
+                if payload.on_error == "stop":
+                    raise
+                failed.append(BulkFailure(node_id=node_id, error=str(exc)))
+
+        return BulkResult(succeeded=succeeded, failed=failed)
+
     async def update(self, node_id: str, payload: ManualNodeUpdate, user_id: str) -> KBNode:
         node = await self._kb.get_node(node_id)
         if node is None:
@@ -103,50 +154,6 @@ class ManualIngestionService:
             raise NodePreconditionError("Insufficient role to override this node")
 
         return await self._edit(node, payload, user_id)
-
-    async def bulk_create(self, payload: BulkNodeCreate, user_id: str) -> BulkResult:
-        succeeded: list[str] = []
-        failed: list[BulkFailure] = []
-
-        for item in payload.nodes:
-            try:
-                node = await self.create(item, user_id)
-                succeeded.append(str(node.id))
-            except Exception as exc:
-                if payload.on_error == "stop":
-                    raise
-                failed.append(BulkFailure(node_id=f"<{item.type}:{item.title}>", error=str(exc)))
-
-        return BulkResult(succeeded=succeeded, failed=failed)
-
-    async def bulk_delete(self, payload: BulkNodeDelete, *, cascade: bool = True) -> BulkResult:
-        succeeded: list[str] = []
-        failed: list[BulkFailure] = []
-
-        for node_id in payload.node_ids:
-            try:
-                await self.delete(node_id, cascade=cascade)
-                succeeded.append(node_id)
-            except Exception as exc:
-                if payload.on_error == "stop":
-                    raise
-                failed.append(BulkFailure(node_id=node_id, error=str(exc)))
-
-        return BulkResult(succeeded=succeeded, failed=failed)
-
-    async def delete(self, node_id: str, *, cascade: bool = True) -> None:
-        if not cascade:
-            n = await self._kb.count_inbound_relationships(node_id)
-            if n > 0:
-                raise NodePreconditionError(
-                    f"Node is referenced as a target by {n} relationships — delete them first or use cascade=true"
-                )
-
-        async with self._kb.transaction() as conn:
-            await self._kb.delete_relationships_for_node(node_id, cascade=cascade, conn=conn)
-            await self._kb.delete_node(node_id, conn=conn)
-
-        await self._vs.delete(node_id)
 
     async def _edit(self, node: KBNode, payload: ManualNodeUpdate, user_id: str) -> KBNode:
         now = datetime.now(UTC)
@@ -182,6 +189,16 @@ class ManualIngestionService:
         )
 
         return updated_node
+
+    async def resolve(self, nodes: list[KBNode], job_id: str) -> list[KBRelationship]:
+        """Run resolution for the given approved nodes and persist the resulting relationships."""
+        result = await self._extraction_orch.run_resolution(job_id=job_id, approved=nodes)
+
+        async with self._kb.transaction() as conn:
+            for rel in result.relationships:
+                await self._kb.write_relationship(rel, conn=conn)
+
+        return result.relationships
 
     async def _write_relationships(
         self,

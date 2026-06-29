@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -103,3 +104,11 @@ class BulkFailure(BaseModel):
 class BulkResult(BaseModel):
     succeeded: list[str]
     failed: list[BulkFailure]
+
+
+class ResolveRequest(BaseModel):
+    node_ids: list[UUID] = Field(..., min_length=1, max_length=50)
+
+
+class ResolveResponse(BaseModel):
+    relationships_created: int

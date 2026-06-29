@@ -40,7 +40,9 @@ def _make_service(*, node: KBNode | None = None, inbound_count: int = 0):
     vs.upsert = AsyncMock()
     vs.delete = AsyncMock()
 
-    return ManualIngestionService(kb, vs), kb, vs
+    extraction_orch = MagicMock()
+
+    return ManualIngestionService(kb, vs, extraction_orch), kb, vs
 
 
 def _manual_metadata() -> NodeMetadata:
