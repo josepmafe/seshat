@@ -177,7 +177,7 @@ class RetrievalEvalRunner:
             nonlocal failures
             metadata = {"node_type": node.type.value, "confidence": node.confidence}
             try:
-                await self._vs.upsert(str(node.id), text=f"{node.title} {node.description}", metadata=metadata)
+                await self._vs.upsert(str(node.id), text=node.vector_store_text, metadata=metadata)
             except Exception:
                 failures += 1
                 logger.warning("Failed to seed node %s; eval scores for this example will be inaccurate", node.id)

@@ -79,7 +79,7 @@ class ManualIngestionService:
             if payload.relationships is not None:
                 await self._write_relationships(node.id, payload.relationships, now, job_id=job_id, conn=conn)
 
-        await self._vs.upsert(str(node.id), f"{node.title} {node.description}", node.metadata.model_dump(mode="json"))
+        await self._vs.upsert(str(node.id), node.vector_store_text, node.metadata.model_dump(mode="json"))
 
         return node
 
@@ -183,9 +183,7 @@ class ManualIngestionService:
                 await self._write_relationships(node.id, payload.relationships, now, job_id=job_id, conn=conn)
 
         await self._vs.upsert(
-            str(updated_node.id),
-            f"{updated_node.title} {updated_node.description}",
-            updated_node.metadata.model_dump(mode="json"),
+            str(updated_node.id), updated_node.vector_store_text, updated_node.metadata.model_dump(mode="json")
         )
 
         return updated_node
