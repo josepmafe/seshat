@@ -43,8 +43,15 @@ def fake_vector_store():
 
 
 @pytest.fixture
-def svc(kb_store, fake_vector_store):
-    return ManualIngestionService(kb_store, fake_vector_store)
+def fake_extraction_orch():
+    orch = MagicMock()
+    orch.run_resolution = AsyncMock()
+    return orch
+
+
+@pytest.fixture
+def svc(kb_store, fake_vector_store, fake_extraction_orch):
+    return ManualIngestionService(kb_store, fake_vector_store, fake_extraction_orch)
 
 
 def _create_payload(
