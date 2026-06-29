@@ -201,7 +201,7 @@ class TrackingEmbeddings(Embeddings):
         return result
 
     async def _record_embedding_cost(self, texts: list[str]) -> None:
-        callback = _run_tracker_var.get()
+        callback = get_run_tracker()
         if callback is None:
             logger.warning("No active token budget tracker found in context; embedding tokens will not be tracked")
             return
@@ -223,7 +223,7 @@ class TrackingTranscriber(AbstractTranscriber):
         return result
 
     async def _record_audio_duration(self, audio_bytes: bytes) -> None:
-        callback = _run_tracker_var.get()
+        callback = get_run_tracker()
         if callback is None:
             logger.warning("No active token budget tracker found in context; audio seconds will not be tracked")
             return
@@ -302,6 +302,7 @@ def track_token_budget(
                     cache_read_tokens=tracker.cache_read_tokens,
                     cache_creation_tokens=tracker.cache_creation_tokens,
                     embedding_input_tokens=tracker.embedding_input_tokens,
+                    audio_seconds=tracker.audio_seconds,
                 )
 
                 if accumulate_to_fn is not None:

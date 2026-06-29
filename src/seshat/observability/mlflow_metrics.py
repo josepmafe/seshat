@@ -14,6 +14,7 @@ def log_token_metrics(
     cache_read_tokens: int = 0,
     cache_creation_tokens: int = 0,
     embedding_input_tokens: int = 0,
+    audio_seconds: int = 0,
     metrics_prefix: str = "usage.",
 ) -> None:
     """Log LLM and embedding token counts as MLflow metrics to the active run.
@@ -36,6 +37,7 @@ def log_token_metrics(
             f"{metrics_prefix}cache_read_input_tokens": float(cache_read_tokens),
             f"{metrics_prefix}cache_creation_input_tokens": float(cache_creation_tokens),
             f"{metrics_prefix}embedding_input": float(embedding_input_tokens),
+            f"{metrics_prefix}audio_seconds": float(audio_seconds),
         }
     )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from seshat.models.transcript import TranscriptDocument, TranscriptMetadata
+from seshat.observability.usage_tracker import track_token_budget
 from seshat.pipeline.ingestion.audio_validator import AudioValidator
 from seshat.pipeline.ingestion.text_validator import TextValidator
 from seshat.utils.log import get_logger
@@ -28,6 +29,7 @@ class IngestionOrchestrator:
         self._blob = blob_store
         self._config = transcription_config
 
+    @track_token_budget("ingestion", uncapped=True)
     async def ingest_audio(
         self,
         audio_bytes: bytes,
