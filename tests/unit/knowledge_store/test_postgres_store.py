@@ -32,7 +32,7 @@ class TestNodeToRowArgs:
         node = _make_node()
         created_at = datetime(2026, 4, 21, 12, 0, tzinfo=UTC)
         row = PostgresKBStore._node_to_row_args(node, created_at)
-        assert row[0] == node.id
+        assert row[0] == str(node.id)
         assert row[2] == "decision"
         assert row[7] == "approved"
         assert row[8] == "current"

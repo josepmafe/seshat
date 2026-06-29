@@ -163,9 +163,9 @@ class TestSubmitJob:
         state.blob_store.put.assert_called_once()
         put_key = state.blob_store.put.call_args[0][0]
         assert put_key == "raw/key"
-        state.ops.set_job_submission.assert_called_once()
-        call_args = state.ops.set_job_submission.call_args[0]
-        assert str(call_args[1]) == "2026-01-15"
+        state.ops.create_job.assert_called_once()
+        call_args = state.ops.create_job.call_args[0]
+        assert str(call_args[5]) == "2026-01-15"
 
     async def test_rejects_file_without_extension(self, app, client):
         state = _make_app_state()

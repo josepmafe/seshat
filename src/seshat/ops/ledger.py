@@ -5,14 +5,15 @@ import logging
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
+from seshat.models.enums import JobStatus
+
 if TYPE_CHECKING:
     import asyncpg
 
-    from seshat.models.enums import JobStatus
 
 logger = logging.getLogger(__name__)
 
-_RUNNING_STATUSES = ("transcribing", "extracting", "writing")
+_RUNNING_STATUSES = (JobStatus.TRANSCRIBING, JobStatus.EXTRACTING, JobStatus.WRITING)
 
 
 class OpsLedger:
@@ -26,16 +27,23 @@ class OpsLedger:
         source_type: str,
         idempotency_key: str | None,
         now: datetime,
+        meeting_date: date,
+        submission_json: str,
+        raw_blob_key: str,
     ) -> None:
         await self._pool.execute(
             "INSERT INTO ops.jobs "
-            "(job_id, user_id, status, idempotency_key, source_type, created_at, updated_at) "
-            "VALUES ($1, $2, 'pending', $3, $4, $5, $5)",
+            "(job_id, user_id, status, idempotency_key, source_type, created_at, updated_at, meeting_date, submission, raw_blob_key) "  # noqa: E501
+            "VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9)",
             job_id,
             user_id,
+            JobStatus.PENDING,
             idempotency_key,
             source_type,
             now,
+            meeting_date,
+            submission_json,
+            raw_blob_key,
         )
 
     async def get_job(self, job_id: str) -> asyncpg.Record | None:
@@ -60,7 +68,9 @@ class OpsLedger:
         *,
         recoverable: bool,
     ) -> None:
-        payload = json.dumps({"stage": stage, "reason": reason, "recoverable": recoverable, "usage": {}})
+        payload = json.dumps(
+            {"stage": stage, "status": "failed", "reason": reason, "recoverable": recoverable, "usage": {}}
+        )
         await self._pool.execute(
             "UPDATE ops.jobs SET status='failed', error_payload=$1, updated_at=$2 WHERE job_id=$3",
             payload,

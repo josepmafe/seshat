@@ -54,14 +54,23 @@ async def submit_job(
 
     job_id = str(uuid.uuid4())
     now = datetime.now(UTC)
-    await state.ops.create_job(job_id, user.user_id, submission.source_type, submission.idempotency_key, now)
-
-    file_bytes = await file.read()
     meeting_date = submission.metadata.meeting_date
     ext = file.filename.rsplit(".", 1)[-1]
     raw_key = state.blob_store.raw_input_key(meeting_date, job_id, ext)
+    submission_json = submission.model_dump_json()
+    await state.ops.create_job(
+        job_id,
+        user.user_id,
+        submission.source_type,
+        submission.idempotency_key,
+        now,
+        meeting_date,
+        submission_json,
+        raw_key,
+    )
+
+    file_bytes = await file.read()
     await state.blob_store.put(raw_key, file_bytes)
-    await state.ops.set_job_submission(job_id, meeting_date, submission.model_dump_json(), raw_key)
 
     await state.queue.enqueue(job_id, state.runner.run, job_id, file_bytes, submission)
 

@@ -23,7 +23,7 @@ class TestOpsLedger:
     async def test_create_job(self):
         store = _make_ledger()
         now = datetime.now(UTC)
-        await store.create_job("job-1", "user-1", "audio", None, now)
+        await store.create_job("job-1", "user-1", "audio", None, now, date(2026, 6, 1), "{}", "raw/key.mp3")
         store._pool.execute.assert_called_once()
         call_args = store._pool.execute.call_args[0]
         assert "INSERT INTO ops.jobs" in call_args[0]

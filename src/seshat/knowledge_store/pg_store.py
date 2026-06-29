@@ -154,8 +154,8 @@ class PostgresKBStore:
                 (source_id, target_id, rel_type, job_id, created_at)
             VALUES ($1,$2,$3,$4,$5)
             """,
-            rel.source_id,
-            rel.target_id,
+            str(rel.source_id),
+            str(rel.target_id),
             rel.rel_type.value,
             rel.job_id,
             rel.created_at,
@@ -341,7 +341,7 @@ class PostgresKBStore:
     @staticmethod
     def _node_to_row_args(node: KBNode, created_at: datetime) -> tuple:
         return (
-            node.id,
+            str(node.id),
             node.schema_version,
             node.type.value,
             node.title,

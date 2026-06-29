@@ -32,7 +32,7 @@ async def health(state: Annotated[AppState, Depends(get_app_state)], response: R
     postgres = await _check_postgres(state)
     mlflow = await _check_http(f"{config.observability.mlflow_tracking_uri}/health")
 
-    localstack_url = config.blob_store.endpoint_url or "localstack"
+    localstack_url = config.blob_store.endpoint_url or "http://localstack:4566"
     localstack = await _check_http(f"{localstack_url}/_localstack/health")
 
     components = {"postgres": postgres, "mlflow": mlflow, "localstack": localstack}

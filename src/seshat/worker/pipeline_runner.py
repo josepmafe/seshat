@@ -8,7 +8,7 @@ from seshat.utils.log import get_logger, set_job_id
 
 if TYPE_CHECKING:
     from seshat.blob_store.s3_store import S3BlobStore
-    from seshat.models.nodes import IdentificationResult
+    from seshat.models.nodes import IdentificationResult, KBRelationship
     from seshat.models.submission import JobSubmissionRequest
     from seshat.ops.ledger import OpsLedger
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
@@ -73,6 +73,10 @@ class PipelineRunner:
             identification_result = await self._extraction.run_identification(doc, job_id)
 
             self._pending[job_id] = identification_result
+            # Pre-populate results so GET /jobs/{id}/results works during AWAITING_REVIEW.
+            # run_post_approval overwrites this with the complete result (including relationships).
+            await self._store_result(job_id, identification_result, [])
+
             await self._ops.update_job_status(job_id, JobStatus.AWAITING_REVIEW)
             return identification_result
 
@@ -92,23 +96,7 @@ class PipelineRunner:
             approved = [n for n in identification_result.nodes if n.status == NodeStatus.APPROVED]
             resol = await self._extraction.run_resolution(job_id, approved=approved)
 
-            result = ExtractionResult(
-                job_id=job_id,
-                nodes=identification_result.nodes,
-                relationships=resol.relationships,
-                confidence_breakdowns={str(k): v for k, v in identification_result.confidence_breakdowns.items()},
-            )
-            self._results[job_id] = result
-
-            job_row = await self._ops.get_job(job_id)
-            meeting_date = job_row["meeting_date"] if job_row else None
-            if meeting_date is not None:
-                await self._blob_store.put(
-                    self._blob_store.curated_extraction_key(meeting_date, job_id),
-                    result.model_dump_json().encode(),
-                )
-            else:
-                logger.warning("Job %s has no meeting_date; skipping extraction.json blob write", job_id)
+            result = await self._store_result(job_id, identification_result, resol.relationships)
 
             await self._ops.update_job_status(job_id, JobStatus.WRITING)
             written = await self._writing.write(result)
@@ -120,3 +108,29 @@ class PipelineRunner:
             logger.exception("Job %s failed (post-approval): %s", job_id, exc)
             # MVP: all failures marked recoverable; see pre_approval comment above.
             await self._ops.fail_job(job_id, "post_approval", str(exc), recoverable=True)
+
+    async def _store_result(
+        self,
+        job_id: str,
+        identification_result: IdentificationResult,
+        relationships: list[KBRelationship],
+    ) -> ExtractionResult:
+        result = ExtractionResult(
+            job_id=job_id,
+            nodes=identification_result.nodes,
+            relationships=relationships,
+            confidence_breakdowns={str(k): v for k, v in identification_result.confidence_breakdowns.items()},
+        )
+        self._results[job_id] = result
+
+        job_row = await self._ops.get_job(job_id)
+        meeting_date = job_row["meeting_date"] if job_row else None
+        if meeting_date is not None:
+            await self._blob_store.put(
+                self._blob_store.curated_extraction_key(meeting_date, job_id),
+                result.model_dump_json().encode(),
+            )
+        else:
+            logger.warning("Job %s has no meeting_date; skipping extraction.json blob write", job_id)
+
+        return result
