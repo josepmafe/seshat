@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from seshat.ops.ledger import OpsLedger
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
     from seshat.pipeline.ingestion.orchestrator import IngestionOrchestrator
+    from seshat.worker.bootstrap import WorkerContext
     from seshat.worker.writing_stage import WritingStage
 
 logger = get_logger(__name__)
@@ -25,16 +26,29 @@ class PipelineRunner:
         extraction_orchestrator: ExtractionOrchestrator,
         writing_stage: WritingStage,
         ops_ledger: OpsLedger,
-        result_store: dict[str, ExtractionResult],
         blob_store: S3BlobStore,
     ) -> None:
         self._ingestion = ingestion_orchestrator
         self._extraction = extraction_orchestrator
         self._writing = writing_stage
         self._ops = ops_ledger
-        self._results = result_store
         self._blob_store = blob_store
         self._pending: dict[str, IdentificationResult] = {}
+        self._results: dict[str, ExtractionResult] = {}
+
+    @classmethod
+    def from_context(cls, ctx: WorkerContext) -> PipelineRunner:
+        return cls(
+            ingestion_orchestrator=ctx.ingestion_orchestrator,
+            extraction_orchestrator=ctx.extraction_orchestrator,
+            writing_stage=ctx.writing_stage,
+            ops_ledger=ctx.ops,
+            blob_store=ctx.blob_store,
+        )
+
+    @property
+    def results(self) -> dict[str, ExtractionResult]:
+        return self._results
 
     async def run(self, job_id: str, file_bytes: bytes, submission: JobSubmissionRequest) -> None:
         """Convenience method: run pre-approval and, if no review needed, post-approval."""

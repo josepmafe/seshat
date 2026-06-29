@@ -25,7 +25,6 @@ def _make_app_state(*, pg_ok: bool = True) -> AppState:
         kb_store=MagicMock(),
         config=config,
         queue=MagicMock(),
-        results={},
         runner=MagicMock(),
         manual_ingestion=MagicMock(),
         blob_store=MagicMock(),

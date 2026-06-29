@@ -12,7 +12,7 @@ from tests.helpers import make_node
 from tests.unit.api.conftest import make_current_user
 
 
-def _make_app_state(**overrides) -> AppState:
+def _make_app_state(runner_results: dict | None = None, **overrides) -> AppState:
     ops = MagicMock()
     ops.find_job_by_idempotency_key = AsyncMock(return_value=None)
     ops.count_recent_jobs_for_user = AsyncMock(return_value=0)
@@ -37,13 +37,14 @@ def _make_app_state(**overrides) -> AppState:
     blob_store.raw_input_key = MagicMock(return_value="raw/key")
     blob_store.curated_extraction_key = MagicMock(return_value="curated/key")
 
+    runner = MagicMock()
+    runner.results = runner_results if runner_results is not None else {}
     state = AppState(
         ops=ops,
         kb_store=MagicMock(),
         config=config,
         queue=queue,
-        results={},
-        runner=MagicMock(),
+        runner=runner,
         manual_ingestion=MagicMock(),
         blob_store=blob_store,
     )
@@ -194,7 +195,7 @@ class TestGetJobResults:
     async def test_returns_result_when_awaiting_review(self, api_client):
         node = make_node()
         result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(results={"job-1": result})
+        state = _make_app_state(runner_results={"job-1": result})
         state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.get("/jobs/job-1/results")
@@ -245,12 +246,12 @@ class TestApproveJob:
         assert resp.status_code == 409
 
     def _result_nodes(self, state: AppState) -> dict:
-        return {str(n.id): n for n in state.results["job-1"].nodes}
+        return {str(n.id): n for n in state.runner.results["job-1"].nodes}
 
     async def test_bulk_rule_approves_above_threshold(self, api_client):
         node = make_node(confidence=0.9, status=NodeStatus.PENDING_REVIEW)
         result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(results={"job-1": result})
+        state = _make_app_state(runner_results={"job-1": result})
         state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post("/jobs/job-1/approve", json={"approve_above_threshold": {"threshold": 0.8}})
@@ -260,7 +261,7 @@ class TestApproveJob:
     async def test_bulk_rule_skips_excluded_nodes(self, api_client):
         node = make_node(confidence=0.9, status=NodeStatus.PENDING_REVIEW)
         result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(results={"job-1": result})
+        state = _make_app_state(runner_results={"job-1": result})
         state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post(
@@ -273,7 +274,7 @@ class TestApproveJob:
     async def test_individual_decision_approves(self, api_client):
         node = make_node(status=NodeStatus.PENDING_REVIEW)
         result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(results={"job-1": result})
+        state = _make_app_state(runner_results={"job-1": result})
         state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post(
@@ -286,7 +287,7 @@ class TestApproveJob:
     async def test_individual_decision_rejects(self, api_client):
         node = make_node(status=NodeStatus.PENDING_REVIEW)
         result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(results={"job-1": result})
+        state = _make_app_state(runner_results={"job-1": result})
         state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post(
@@ -299,7 +300,7 @@ class TestApproveJob:
     async def test_unknown_node_in_decisions_is_ignored(self, api_client):
         node = make_node(status=NodeStatus.PENDING_REVIEW)
         result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(results={"job-1": result})
+        state = _make_app_state(runner_results={"job-1": result})
         state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post(
@@ -312,7 +313,7 @@ class TestApproveJob:
     async def test_transitions_job_to_writing_before_enqueue(self, api_client):
         node = make_node(status=NodeStatus.PENDING_REVIEW)
         result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(results={"job-1": result})
+        state = _make_app_state(runner_results={"job-1": result})
         state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
         call_order = []
         state.ops.update_job_status = AsyncMock(side_effect=lambda *_: call_order.append("status"))

@@ -20,7 +20,8 @@ from seshat.worker.queue import AsyncioTaskQueue
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from seshat.models.nodes import ExtractionResult
+    from seshat.ops.ledger import OpsLedger
+
 
 logger = get_logger(__name__)
 
@@ -40,33 +41,18 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     set_job_id("api")
+
     config = SeshatConfig()
     configure_logging(config.logging)
     _check_eval_gate(config.skip_eval_gate)
     setup_mlflow(config.observability)
 
     async with build_worker_context(config) as ctx:
-        stranded = await ctx.ops.get_stranded_writing_jobs()
-        for job_id in stranded:
-            await ctx.ops.fail_job(job_id, JobStatus.WRITING, "Server crash during write", recoverable=True)
-            logger.warning("Startup recovery: marked stranded job %s as FAILED", job_id)
+        await _check_stranded_jobs(ctx.ops)
 
-        result_store: dict[str, ExtractionResult] = {}
-        runner = PipelineRunner(
-            ctx.ingestion_orch, ctx.extraction_orch, ctx.writing_stage, ctx.ops, result_store, ctx.blob_store
-        )
+        runner = PipelineRunner.from_context(ctx)
         queue = AsyncioTaskQueue()
-
-        app.state.app_state = AppState(
-            config=config,
-            kb_store=ctx.kb_store,
-            manual_ingestion=ctx.manual_ingestion,
-            ops=ctx.ops,
-            queue=queue,
-            results=result_store,
-            runner=runner,
-            blob_store=ctx.blob_store,
-        )
+        app.state.app_state = AppState.from_context(ctx, config, runner, queue)
 
         yield
 
@@ -74,14 +60,23 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
 def _check_eval_gate(skip: bool = False) -> None:
     if skip:
         return
+
     gate_path = pathlib.Path("eval_gate.json")
     if not gate_path.exists():
-        logger.error("FATAL: eval_gate.json not found. Run 'seshat eval' first.")
+        logger.critical("eval_gate.json not found. Run 'seshat eval' first.")
         raise SystemExit(1)
+
     gate = json.loads(gate_path.read_text())
     if not gate.get("passed"):
-        logger.error("FATAL: eval gate not passed. Run 'seshat eval' first.")
+        logger.critical("eval gate not passed. Run 'seshat eval' first.")
         raise SystemExit(1)
+
+
+async def _check_stranded_jobs(ops: OpsLedger) -> None:
+    stranded = await ops.get_stranded_writing_jobs()
+    for job_id in stranded:
+        await ops.fail_job(job_id, JobStatus.WRITING, "Server crash during write", recoverable=True)
+        logger.warning("Startup recovery: marked stranded job %s as FAILED", job_id)
 
 
 if __name__ == "__main__":

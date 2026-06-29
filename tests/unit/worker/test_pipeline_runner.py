@@ -43,9 +43,8 @@ def _make_runner(
     blob_store.put = AsyncMock()
     blob_store.curated_extraction_key = MagicMock(return_value="curated/key")
 
-    result_store: dict = {}
-    runner = PipelineRunner(ingestion, extraction, writing, ops, result_store, blob_store)
-    return runner, ingestion, extraction, writing, ops, result_store
+    runner = PipelineRunner(ingestion, extraction, writing, ops, blob_store)
+    return runner, ingestion, extraction, writing, ops, runner.results
 
 
 def _make_submission(source_type: str = "text") -> MagicMock:

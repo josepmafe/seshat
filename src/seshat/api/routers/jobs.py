@@ -140,7 +140,7 @@ async def get_job_results(
     if row["status"] not in (JobStatus.AWAITING_REVIEW, JobStatus.DONE):
         raise HTTPException(status_code=409, detail="Results not yet available")
 
-    result = state.results.get(job_id)
+    result = state.runner.results.get(job_id)
     if not result:
         # In-memory result is lost on server restart; reconstruct from the curated blob written at the start of WRITING.
         meeting_date = row["meeting_date"]
@@ -177,7 +177,7 @@ async def approve_job(
     if row["status"] != JobStatus.AWAITING_REVIEW:
         raise HTTPException(status_code=409, detail="Job is not awaiting review")
 
-    result = state.results.get(job_id)
+    result = state.runner.results.get(job_id)
     if not result:
         raise HTTPException(status_code=404, detail="Extraction result not found")
 
@@ -190,7 +190,7 @@ async def approve_job(
     if approve_request.decisions:
         nodes = _apply_decisions(nodes, approve_request.decisions, user.user_id, now)
 
-    state.results[job_id] = result.model_copy(update={"nodes": nodes})
+    state.runner.results[job_id] = result._with(nodes=nodes)
 
     await state.ops.update_job_status(job_id, JobStatus.WRITING)
     await state.queue.enqueue(job_id, state.runner.run_post_approval, job_id)
