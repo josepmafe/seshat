@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from seshat.models.transcript import TranscriptDocument, TranscriptMetadata
 from seshat.observability.usage_tracker import track_token_budget
 from seshat.pipeline.ingestion.audio_validator import AudioValidator
-from seshat.pipeline.ingestion.text_validator import TextValidator
+from seshat.pipeline.ingestion.text_validator import TextValidationError, TextValidator
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
@@ -55,12 +55,18 @@ class IngestionOrchestrator:
     async def ingest_text(
         self,
         raw_bytes: bytes,
-        filename: str,
+        meeting_date: date,
         job_id: str,
+        filename: str,
     ) -> TranscriptDocument:
         parsed = TextValidator.parse(raw_bytes, filename)
 
-        transcript_key = self._blob.raw_transcript_key(parsed.meeting_date, job_id)
+        if parsed.meeting_date != meeting_date:
+            raise TextValidationError(
+                f"meeting_date mismatch: submission says {meeting_date}, file says {parsed.meeting_date}"
+            )
+
+        transcript_key = self._blob.raw_transcript_key(meeting_date, job_id)
         await self._blob.put(transcript_key, parsed.content.encode())
         logger.info("Job %s: uploaded transcript to %s", job_id, transcript_key)
 

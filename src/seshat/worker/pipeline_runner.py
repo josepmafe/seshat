@@ -81,7 +81,12 @@ class PipelineRunner:
                     submission.metadata,
                 )
             else:
-                doc = await self._ingestion.ingest_text(file_bytes, "input.yaml", job_id)
+                doc = await self._ingestion.ingest_text(
+                    file_bytes,
+                    submission.metadata.meeting_date,
+                    job_id,
+                    "input.yaml",
+                )
 
             await self._ops.update_job_status(job_id, JobStatus.EXTRACTING)
             identification_result = await self._extraction.run_identification(doc, job_id)
