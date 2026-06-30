@@ -53,6 +53,22 @@ class JobStatus(StrEnum):
     DONE = auto()
     FAILED = auto()
 
+    @property
+    def terminal_statuses(self) -> tuple:
+        return (JobStatus.DONE, JobStatus.FAILED)
+
+    @property
+    def is_terminal(self) -> bool:
+        return self in self.terminal_statuses
+
+    @property
+    def running_statuses(self) -> tuple:
+        return (JobStatus.TRANSCRIBING, JobStatus.EXTRACTING, JobStatus.WRITING)
+
+    @property
+    def is_running(self) -> bool:
+        return self in self.running_statuses
+
 
 class LLMProvider(StrEnum):
     OPENAI = auto()

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
@@ -17,7 +17,30 @@ from seshat.models.jobs import JobResponse
 from seshat.models.nodes import ExtractionResult, KBNode
 from seshat.models.submission import JobSubmissionRequest
 
+if TYPE_CHECKING:
+    from asyncpg import Record
+
+
 router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_role(UserRole.VIEWER))])
+
+
+@router.get(
+    "",
+    response_model=list[JobResponse],
+    summary="List jobs",
+    responses={
+        200: {"description": "Jobs returned"},
+        401: {"description": "Missing or invalid API key"},
+    },
+)
+async def list_jobs(
+    state: Annotated[AppState, Depends(get_app_state)],
+    job_status: JobStatus | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[JobResponse]:
+    rows = await state.ops.list_jobs(status=job_status, limit=min(limit, 200), offset=offset)
+    return [_job_response_from_row(row) for row in rows]
 
 
 @router.post(
@@ -107,17 +130,7 @@ async def get_job(
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    elapsed = (datetime.now(UTC) - row["created_at"]).total_seconds()
-    error = json.loads(row["error_payload"]) if row["error_payload"] else None
-    return JobResponse(
-        job_id=job_id,
-        status=JobStatus(row["status"]),
-        idempotency_key=row["idempotency_key"],
-        stage_progress=None,
-        elapsed_seconds=elapsed,
-        error=error,
-        mlflow_run_id=row["mlflow_run_id"],
-    )
+    return _job_response_from_row(row)
 
 
 @router.get(
@@ -232,6 +245,12 @@ async def retry_job(
     await state.queue.enqueue(job_id, state.runner.run, job_id, file_bytes, submission)
 
     return JobActionResponse(status="accepted")
+
+
+def _job_response_from_row(row: Record) -> JobResponse:
+    error = json.loads(row["error_payload"]) if row["error_payload"] else None
+    model_kwargs = dict(row) | {"error": error}
+    return JobResponse.model_validate(model_kwargs)
 
 
 def _apply_bulk_rule(nodes: list[KBNode], rule: BulkApproveRule, user_id: str, now: datetime) -> list[KBNode]:

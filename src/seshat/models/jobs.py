@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -21,12 +22,14 @@ class ErrorPayload(BaseModel):
 class JobResponse(BaseModel):
     job_id: str
     status: JobStatus
+    created_at: datetime
+    updated_at: datetime
+    finished_at: datetime | None = None
     idempotency_key: str | None = Field(
         default=None, description="Client-supplied idempotency key, echoed from the submission request."
     )
     stage_progress: str | None = Field(
         default=None, description="Human-readable progress string for the current stage."
     )
-    elapsed_seconds: float
     error: ErrorPayload | None = None
     mlflow_run_id: str | None = None

@@ -54,11 +54,14 @@ def _make_app_state(runner_results: dict | None = None, **overrides) -> AppState
 
 
 def _make_job_row(status: str = "pending", *, meeting_date=None, submission=None, raw_blob_key=None) -> dict[str, Any]:
+    now = datetime.now(UTC)
     return {
         "job_id": "job-1",
         "status": status,
         "idempotency_key": None,
-        "created_at": datetime.now(UTC),
+        "created_at": now,
+        "updated_at": now,
+        "finished_at": None,
         "error_payload": None,
         "mlflow_run_id": None,
         "meeting_date": meeting_date,
@@ -140,6 +143,24 @@ class TestSubmitJob:
         async with api_client(_make_app_state(), make_current_user(role=UserRole.REVIEWER)) as ac:
             resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": body})
         assert resp.status_code == 403
+
+
+class TestListJobs:
+    async def test_returns_jobs(self, api_client):
+        state = _make_app_state()
+        state.ops.list_jobs = AsyncMock(return_value=[_make_job_row("pending"), _make_job_row("done")])
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get("/jobs")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 2
+
+    async def test_filters_by_status(self, api_client):
+        state = _make_app_state()
+        state.ops.list_jobs = AsyncMock(return_value=[_make_job_row("done")])
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get("/jobs", params={"job_status": "done"})
+        assert resp.status_code == 200
+        state.ops.list_jobs.assert_called_once_with(status=JobStatus.DONE, limit=50, offset=0)
 
 
 class TestGetJob:
