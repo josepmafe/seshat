@@ -26,6 +26,8 @@ class OpsLedger:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
+    # -- Jobs: Create ----------------------------------------------------------
+
     async def create_job(
         self,
         job_id: str,
@@ -52,11 +54,50 @@ class OpsLedger:
             raw_blob_key,
         )
 
+    # -- Jobs: Read -----------------------------------------------------------
+
     async def get_job(self, job_id: str) -> asyncpg.Record | None:
         return await self._pool.fetchrow("SELECT * FROM ops.jobs WHERE job_id=$1", job_id)
 
     async def find_job_by_idempotency_key(self, key: str) -> asyncpg.Record | None:
         return await self._pool.fetchrow("SELECT job_id, status FROM ops.jobs WHERE idempotency_key=$1", key)
+
+    async def list_jobs(
+        self,
+        status: JobStatus | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[asyncpg.Record]:
+        if status is not None:
+            return await self._pool.fetch(
+                "SELECT * FROM ops.jobs WHERE status=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                status.value,
+                limit,
+                offset,
+            )
+        return await self._pool.fetch(
+            "SELECT * FROM ops.jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+            limit,
+            offset,
+        )
+
+    async def count_recent_jobs_for_user(self, user_id: str) -> int:
+        return await self._pool.fetchval(
+            "SELECT COUNT(*) FROM ops.jobs WHERE user_id=$1 AND created_at > NOW() - INTERVAL '1 hour'",
+            user_id,
+        )
+
+    async def count_running_jobs(self) -> int:
+        return await self._pool.fetchval(
+            "SELECT COUNT(*) FROM ops.jobs WHERE status = ANY($1::text[])",
+            JobStatus.running_statuses,
+        )
+
+    async def get_stranded_writing_jobs(self) -> list[str]:
+        rows = await self._pool.fetch("SELECT job_id FROM ops.jobs WHERE status='writing'")
+        return [row["job_id"] for row in rows]
+
+    # -- Jobs: Update --------------------------------------------------------
 
     async def update_job_status(self, job_id: str, status: JobStatus) -> None:
         now = datetime.now(UTC)
@@ -94,67 +135,6 @@ class OpsLedger:
             job_id,
         )
 
-    async def count_recent_jobs_for_user(self, user_id: str) -> int:
-        return await self._pool.fetchval(
-            "SELECT COUNT(*) FROM ops.jobs WHERE user_id=$1 AND created_at > NOW() - INTERVAL '1 hour'",
-            user_id,
-        )
-
-    async def count_running_jobs(self) -> int:
-        return await self._pool.fetchval(
-            "SELECT COUNT(*) FROM ops.jobs WHERE status = ANY($1::text[])",
-            JobStatus.running_statuses,
-        )
-
-    async def list_jobs(
-        self,
-        status: JobStatus | None = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[asyncpg.Record]:
-        if status is not None:
-            return await self._pool.fetch(
-                "SELECT * FROM ops.jobs WHERE status=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
-                status.value,
-                limit,
-                offset,
-            )
-        return await self._pool.fetch(
-            "SELECT * FROM ops.jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-            limit,
-            offset,
-        )
-
-    async def create_api_key(self, key_hash: str, user_id: str, role: UserRole, now: datetime) -> None:
-        await self._pool.execute(
-            "INSERT INTO ops.api_keys (key_hash, user_id, role, created_at) VALUES ($1, $2, $3, $4)",
-            key_hash,
-            user_id,
-            role.value,
-            now,
-        )
-
-    async def get_api_keys(self) -> list[tuple[str, str, str]]:
-        rows = await self._pool.fetch("SELECT key_hash, user_id, role FROM ops.api_keys WHERE revoked_at IS NULL")
-        return [(row["key_hash"], row["user_id"], row["role"]) for row in rows]
-
-    async def list_api_keys(self) -> list[asyncpg.Record]:
-        return await self._pool.fetch(
-            "SELECT id, user_id, role, created_at, revoked_at FROM ops.api_keys ORDER BY created_at DESC"
-        )
-
-    async def revoke_api_key(self, key_id: int, now: datetime) -> None:
-        row = await self._pool.fetchrow("SELECT revoked_at FROM ops.api_keys WHERE id=$1", key_id)
-        if row is None:
-            raise ApiKeyNotFoundError(key_id)
-        if row["revoked_at"] is not None:
-            raise ApiKeyAlreadyRevokedError(key_id)
-        await self._pool.execute(
-            "UPDATE ops.api_keys SET revoked_at=$1 WHERE id=$2",
-            now,
-            key_id,
-        )
-
     async def reset_failed_job(self, job_id: str) -> None:
         await self._pool.execute(
             "UPDATE ops.jobs SET status='pending', error_payload=NULL, finished_at=NULL, updated_at=$1 WHERE job_id=$2",
@@ -178,9 +158,43 @@ class OpsLedger:
             job_id,
         )
 
-    async def get_stranded_writing_jobs(self) -> list[str]:
-        rows = await self._pool.fetch("SELECT job_id FROM ops.jobs WHERE status='writing'")
-        return [row["job_id"] for row in rows]
+    # -- API Keys: Create ------------------------------------------------------
+
+    async def create_api_key(self, key_hash: str, user_id: str, role: UserRole, now: datetime) -> None:
+        await self._pool.execute(
+            "INSERT INTO ops.api_keys (key_hash, user_id, role, created_at) VALUES ($1, $2, $3, $4)",
+            key_hash,
+            user_id,
+            role.value,
+            now,
+        )
+
+    # -- API Keys: Read -------------------------------------------------------
+
+    async def get_api_keys(self) -> list[tuple[str, str, str]]:
+        rows = await self._pool.fetch("SELECT key_hash, user_id, role FROM ops.api_keys WHERE revoked_at IS NULL")
+        return [(row["key_hash"], row["user_id"], row["role"]) for row in rows]
+
+    async def list_api_keys(self) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            "SELECT id, user_id, role, created_at, revoked_at FROM ops.api_keys ORDER BY created_at DESC"
+        )
+
+    # -- API Keys: Update ----------------------------------------------------
+
+    async def revoke_api_key(self, key_id: int, now: datetime) -> None:
+        row = await self._pool.fetchrow("SELECT revoked_at FROM ops.api_keys WHERE id=$1", key_id)
+        if row is None:
+            raise ApiKeyNotFoundError(key_id)
+        if row["revoked_at"] is not None:
+            raise ApiKeyAlreadyRevokedError(key_id)
+        await self._pool.execute(
+            "UPDATE ops.api_keys SET revoked_at=$1 WHERE id=$2",
+            now,
+            key_id,
+        )
+
+    # -- Lifecycle -----------------------------------------------------------
 
     async def close(self) -> None:
         await self._pool.close()
