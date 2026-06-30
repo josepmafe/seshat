@@ -6,14 +6,16 @@ import sys
 from pathlib import Path
 
 import pytest
+from aiobotocore.session import get_session
+from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 from seshat.blob_store.s3_store import S3BlobStore
 from seshat.config.settings import BlobStoreConfig
 
-_AUDIO_FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "audio"
-
 load_dotenv()
+
+_AUDIO_FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "audio"
 
 _BEDROCK_PROFILE = os.environ.get("AWS_PROFILE") or "ClaudeCode"
 
@@ -219,14 +221,16 @@ async def localstack_s3_url():
     """
     endpoint = _get_localstack_url()
 
-    from aiobotocore.session import get_session
-
     session = get_session()
     async with session.create_client("s3", region_name=LOCALSTACK_REGION, endpoint_url=endpoint) as s3:
-        await s3.create_bucket(
-            Bucket=LOCALSTACK_TEST_BUCKET,
-            CreateBucketConfiguration={"LocationConstraint": LOCALSTACK_REGION},
-        )
+        try:
+            await s3.create_bucket(
+                Bucket=LOCALSTACK_TEST_BUCKET,
+                CreateBucketConfiguration={"LocationConstraint": LOCALSTACK_REGION},
+            )
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "BucketAlreadyOwnedByYou":
+                raise
 
     yield endpoint
 

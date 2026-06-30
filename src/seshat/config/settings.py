@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +17,9 @@ from seshat.models.enums import (
 from seshat.utils.log import get_logger
 
 logger = get_logger(__name__)
+
+PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent.parent
+DEFAULT_EVAL_GATE_PATH: Path = PROJECT_ROOT / "eval_gate.json"
 
 
 class BaseConfig(BaseModel):
@@ -177,7 +182,6 @@ class VectorIndexConfig(BaseConfig):
 class RAGConfig(BaseConfig):
     enabled: bool = True
     top_k: int = Field(default=5, gt=0)
-    # TODO: calibrate against labeled retrieval corpus; 0.5 is a placeholder for text-embedding-3-small cosine scores
     min_similarity_score: float = Field(
         default=0.5, ge=0, le=1, description="Minimum similarity score [0, 1] to retain a retrieved result."
     )
@@ -284,9 +288,46 @@ class DocumentLoaderConfig(BaseConfig):
     source_path: str = "./init-docs"
 
 
+class LoggingConfig(BaseConfig):
+    level: str = Field(default="INFO", description="Root log level (DEBUG, INFO, WARNING, ERROR).")
+    noisy_loggers: dict[str, str] = Field(
+        default_factory=lambda: {
+            "aiobotocore": "WARNING",
+            "botocore": "WARNING",
+            "httpx": "WARNING",
+            "langchain": "WARNING",
+            "langchain_core": "WARNING",
+            "langchain_aws": "WARNING",
+            "langchain_openai": "WARNING",
+            "mlflow": "WARNING",
+            "urllib3.connectionpool": "ERROR",
+        },
+        description="Per-logger level overrides for verbose third-party libraries.",
+    )
+
+
+class APIConfig(BaseConfig):
+    max_jobs_per_user_per_hour: int = Field(default=10, gt=0)
+    max_concurrent_jobs: int = Field(default=1, gt=0)
+    eval_gate_path: Path = Field(
+        default=DEFAULT_EVAL_GATE_PATH,
+        description="Path to the eval gate JSON file produced by 'seshat eval'.",
+    )
+    skip_eval_gate: bool = Field(
+        default=False, description="Bypass the eval gate check at startup. Should never be used in production."
+    )
+    skip_llm_ping: bool = Field(
+        default=False, description="Skip the LLM ping check at startup. Should never be used in production."
+    )
+    root_api_key_secret_key: str = Field(
+        default="root-api-key", description="Secrets key for the root API key used to create new API keys."
+    )
+
+
 class SeshatConfig(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_nested_delimiter="__", extra="ignore")
 
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     vector_store: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
     vector_index: VectorIndexConfig = Field(default_factory=VectorIndexConfig)
@@ -296,19 +337,11 @@ class SeshatConfig(BaseSettings):
     rag: RAGConfig = Field(default_factory=RAGConfig)
     secrets: SecretsConfig = Field(default_factory=SecretsConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
+    api: APIConfig = Field(default_factory=lambda: APIConfig())
 
     # only used for `seshat init`
     document_loader: DocumentLoaderConfig | None = None
-
-    max_jobs_per_user_per_hour: int = Field(default=10, gt=0)
-    max_concurrent_jobs: int = Field(default=1, gt=0)
     max_concurrent_init_runs: int = Field(default=1, gt=0)
-
-    @model_validator(mode="after")
-    def _warn_grounding_disabled(self) -> "SeshatConfig":
-        if self.extraction.grounding is None:
-            logger.warning("grounding=None: heuristics-only confidence scoring.")
-        return self
 
 
 class SeshatConfigOverride(BaseConfig):

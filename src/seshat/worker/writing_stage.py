@@ -82,5 +82,4 @@ class WritingStage:
             if node.id not in approved_ids:
                 continue
 
-            text = f"{node.title} {node.description}"
-            await self._vs.upsert(str(node.id), text, node.metadata.model_dump(mode="json"))
+            await self._vs.upsert(str(node.id), node.vector_store_text, node.metadata.model_dump(mode="json"))

@@ -243,11 +243,29 @@ Single `SeshatConfig` singleton loaded at startup via pydantic-settings. Per-req
 > **Config pattern:** only the root `SeshatConfig` inherits from `BaseSettings` — it owns env var resolution. All nested configs (`ExtractionConfig`, `RAGConfig`, etc.) are plain `BaseModel`. Nested fields are still fully configurable from the environment via `env_nested_delimiter="__"` (e.g. `EXTRACTION__CONFIDENCE_THRESHOLD=0.8`) — pydantic-settings resolves them through the root, not independently. This prevents dual resolution paths where a nested `BaseSettings` could silently read env vars on its own.
 
 ```python
+class LoggingConfig(BaseConfig):
+    level: str = "INFO"                # root log level
+    noisy_loggers: dict[str, str] = {  # per-logger overrides for verbose third-party libraries
+        "aiobotocore": "WARNING", "botocore": "WARNING", "httpx": "WARNING",
+        "langchain": "WARNING", "langchain_core": "WARNING", "langchain_aws": "WARNING",
+        "langchain_openai": "WARNING", "mlflow": "WARNING",
+        "urllib3.connectionpool": "ERROR",
+    }
+
+class APIConfig(BaseConfig):
+    max_jobs_per_user_per_hour: int = 10     # per-user job submission rate limit
+    max_concurrent_jobs: int = 1             # global cap on TRANSCRIBING/EXTRACTING/WRITING jobs
+    eval_gate_path: Path = PROJECT_ROOT / "eval_gate.json"
+    skip_eval_gate: bool = False             # bypass eval gate at startup; never use in production
+    skip_llm_ping: bool = False              # bypass LLM connectivity check at startup
+    admin_api_key_secret_key: str = "admin-api-key"  # Secrets key for the root admin API key
+
 class SeshatConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_nested_delimiter="__"   # e.g. EXTRACTION__LLM__PROVIDER=anthropic
     )
+    logging: LoggingConfig = LoggingConfig()
     transcription: TranscriptionConfig
     vector_store: VectorStoreConfig
     vector_index: VectorIndexConfig
@@ -257,10 +275,9 @@ class SeshatConfig(BaseSettings):
     rag: RAGConfig
     secrets: SecretsConfig
     observability: ObservabilityConfig
+    api: APIConfig = APIConfig()
     document_loader: DocumentLoaderConfig | None = None  # only required for seshat init
-    max_jobs_per_user_per_hour: int = 10                  # per-user job submission rate limit
-    max_concurrent_jobs: int = 1                          # global cap on jobs in TRANSCRIBING, EXTRACTING, or WRITING simultaneously; protects against LLM cost blowup
-    max_concurrent_init_runs: int = 1                     # cap on simultaneous seshat init runs; init is typically the most expensive pipeline operation
+    max_concurrent_init_runs: int = 1                    # cap on simultaneous seshat init runs
 ```
 
 All provider fields use `StrEnum` with `auto()` — values are lowercased member names, validated at startup:
@@ -734,7 +751,7 @@ Consequences:
 
   **Stale CONFLICTS edges:** when one party in a `CONFLICTS_WITH` pair is later superseded (its `state` advances to `SUPERSEDED`), the edge is not deleted — the Node Lifecycle Invariant is append-only. Instead, `GET /graph/{node_id}`, `GET /graph/{node_id}/impact`, and Screen 4 filter out `CONFLICTS_WITH` relationships where either party has `state != CURRENT`. The stale edge remains in `ops.kb_relationships` for historical audit but is invisible on all normal query paths. A future "show historical graph" view can expose it explicitly.
 - **Store sync and recovery:** the KB store (`PostgresKBStore`) and the vector store (pgvector) share the same Postgres instance. Each node write is a single database transaction: `write_node()` inserts the KB row and `upsert()` inserts the vector embedding atomically. A crash mid-transaction leaves no partial state — Postgres MVCC ensures either both writes are committed or neither is. `NodeState` transitions (`update_node_state()`) are also single-row updates within a transaction.
-- **Concurrent pipeline runs:** `max_concurrent_jobs=1` (default) prevents two jobs from running the pipeline simultaneously, which eliminates concurrent `update_node_state()` races at MVP scale. If `max_concurrent_jobs` is raised, `update_node_state()` transitions remain safe — setting `state=SUPERSEDED` twice on the same node is idempotent — but resolution quality may degrade because both jobs read the KB before either writes to it.
+- **Concurrent pipeline runs:** `api.max_concurrent_jobs=1` (default) prevents two jobs from running the pipeline simultaneously, which eliminates concurrent `update_node_state()` races at MVP scale. If `api.max_concurrent_jobs` is raised, `update_node_state()` transitions remain safe — setting `state=SUPERSEDED` twice on the same node is idempotent — but resolution quality may degrade because both jobs read the KB before either writes to it.
 - **Human corrections:** edits happen at review time via `ApproveRequest.decisions[].edited_content`. When `edited_content` is non-null, the node's `title` and `description` are updated with the human-supplied values, and `NodeMetadata.corrected_by` / `corrected_at` are set alongside `approved_by` / `approved_at`. `corrected_by` is the single field distinguishing human-corrected content from unmodified LLM output — queries on the KB can filter on it to assess how often auto-extraction required correction. A post-approval `PATCH /graph/{node_id}` is deferred to v2.
 
 ---
@@ -1020,9 +1037,9 @@ One role (`seshat`) with read/write on both schemas. Connection string stored in
 
 Three operational tables in the `ops` schema, all managed by Alembic:
 
-**`ops.api_keys`** — one row per issued API key. Fields: `key_hash` (PK, bcrypt), `user_id`, `role` (`viewer | reviewer | operator | admin`), `created_at`, `last_used_at`.
+**`ops.api_keys`** — one row per issued API key. Fields: `id` (PK, serial integer), `key_hash` (bcrypt), `user_id`, `role` (`viewer | reviewer | operator | admin`), `created_at`, `revoked_at` (NULL while active). The PK changed from `key_hash` to `id` (migration 006) to enable stable foreign-key referencing and revocation by integer ID.
 
-**`ops.jobs`** — authoritative job state. Fields: `job_id` (PK, UUID4), `user_id` (FK → api_keys.user_id), `status` (mirrors `JobStatus`), `idempotency_key` (UNIQUE nullable), `source_type`, `created_at`, `updated_at`, `error_payload` (JSONB, null until FAILED), `mlflow_run_id` (null while PENDING), `meeting_date` (DATE NOT NULL), `submission` (JSONB NOT NULL — the full `JobSubmissionRequest` JSON), `raw_blob_key` (TEXT NOT NULL — S3 key of the raw uploaded file). Index on `(user_id, created_at)` for the per-user rate-limit query. The three `meeting_date`/`submission`/`raw_blob_key` columns are written atomically by `OpsLedger.set_job_submission()` immediately after the raw file is stored — they power both `GET /jobs/{id}/results` blob fallback and `POST /jobs/{id}/retry` without additional DB calls.
+**`ops.jobs`** — authoritative job state. Fields: `job_id` (PK, UUID4), `user_id` (FK → api_keys.user_id), `status` (mirrors `JobStatus`), `idempotency_key` (UNIQUE nullable), `source_type`, `created_at`, `updated_at`, `finished_at` (TIMESTAMP, set when status transitions to `DONE` or `FAILED`; cleared on `reset_failed_job`), `error_payload` (JSONB, null until FAILED), `mlflow_run_id` (null while PENDING), `meeting_date` (DATE NOT NULL), `submission` (JSONB NOT NULL — the full `JobSubmissionRequest` JSON), `raw_blob_key` (TEXT NOT NULL — S3 key of the raw uploaded file). Index on `(user_id, created_at)` for the per-user rate-limit query. The three `meeting_date`/`submission`/`raw_blob_key` columns are written atomically by `OpsLedger.set_job_submission()` immediately after the raw file is stored — they power both `GET /jobs/{id}/results` blob fallback and `POST /jobs/{id}/retry` without additional DB calls.
 
 **`ops.init_runs`** — coordination for `seshat init`. Fields: `job_id` (PK, UUID4), `status` (`running | done | failed`), `source_path`, `created_at`, `updated_at`.
 
@@ -1032,26 +1049,27 @@ Three operational tables in the `ops` schema, all managed by Alembic:
 
 | Role | Allowed actions |
 |------|----------------|
-| `viewer` | `GET /jobs/{id}`, `GET /jobs/{id}/results`, `GET /graph`, `GET /graph/{node_id}`, `GET /graph/{node_id}/impact`, `GET /health` |
+| `viewer` | `GET /jobs`, `GET /jobs/{id}`, `GET /jobs/{id}/results`, `GET /graph`, `GET /graph/{node_id}`, `GET /graph/{node_id}/impact`, `GET /health`, `GET /health/components` |
 | `reviewer` | All `viewer` actions + `POST /jobs`, `POST /jobs/{id}/approve` |
 | `operator` | All `reviewer` actions + `POST /jobs/{id}/retry`, `POST /graph`, `PUT /graph/{node_id}`, `PUT /graph/{node_id}/override`, `POST /graph/bulk`, `POST /graph/nodes/resolve`, `auto_mode=True` per-request override |
 | `admin` | All `operator` actions + `DELETE /graph/{node_id}`, `DELETE /graph/bulk` |
 
-Key provisioning is a CLI command (`seshat create-api-key --user <id> --role <role>`) that prints the plaintext key once and stores the hash.
+Key provisioning is via `POST /admin/api-keys` (root-key authenticated), which returns the plaintext key once. The `/admin` router also exposes `GET /admin/api-keys` (list with revocation status) and `DELETE /admin/api-keys/{key_id}` (revoke). The root key itself is stored in Secrets Manager under `APIConfig.admin_api_key_secret_key` (default: `"admin-api-key"`).
 
 > **JWT (deferred to v2):** JWT with an external IdP (e.g. Azure AD) is the natural upgrade when the user base grows or SSO is needed. See Deferred Decisions.
 
 ### Endpoints
 
 ```
-POST /jobs                        Submit a new job (audio file or text); see Job Submission below
-GET  /jobs/{id}                   Job status + per-stage progress; see Job Progress Contract below
-GET  /jobs/{id}/results           ExtractionResult (nodes + relationships); available from AWAITING_REVIEW onwards (also DONE); returns HTTP 409 if not yet ready
+GET  /jobs                        List jobs; optional ?job_status=<status>&limit=<n>&offset=<n> (viewer+)
+POST /jobs                        Submit a new job (audio file or text); see Job Submission below (reviewer+)
+GET  /jobs/{id}                   Job status + timestamps; see Job Progress Contract below (viewer+)
+GET  /jobs/{id}/results           ExtractionResult; available from AWAITING_REVIEW onwards; HTTP 409 if not ready (viewer+)
 POST /jobs/{id}/approve           Submit node review decisions (reviewer+)
 POST /jobs/{id}/retry             Retry a FAILED job (operator only)
-GET  /graph                       Query KB nodes with filters
-GET  /graph/{node_id}             Node + neighbours (filters non-CURRENT neighbours)
-GET  /graph/{node_id}/impact      Traversal from node; see Impact Traversal below
+GET  /graph                       Query KB nodes with filters (viewer+)
+GET  /graph/{node_id}             Node + neighbours (filters non-CURRENT neighbours) (viewer+)
+GET  /graph/{node_id}/impact      Traversal from node; see Impact Traversal below (viewer+)
 POST /graph                       Create a manual KB node (operator+)
 PUT  /graph/{node_id}             Update a manually-created node (operator+)
 PUT  /graph/{node_id}/override    Override any node regardless of ingestion source (operator+)
@@ -1059,7 +1077,12 @@ POST /graph/bulk                  Bulk-create nodes with on_error semantics (ope
 POST /graph/nodes/resolve         Run resolution for manually-created APPROVED nodes (operator+)
 DELETE /graph/{node_id}           Delete a node, cascade by default (admin only)
 DELETE /graph/bulk                Bulk-delete nodes with on_error semantics (admin only)
-GET  /health                      Liveness + readiness; returns {status: "ok"|"degraded"|"down", components: {postgres: str, mlflow: str, localstack: str, worker: str}}
+GET  /health                      API liveness; always returns {status: "ok"}
+GET  /health/components           Component readiness; checks postgres, mlflow, blob_store; returns 503 when degraded
+
+GET  /admin/api-keys              List all API keys with revocation status (root-key only)
+POST /admin/api-keys              Create a new API key; returns plaintext once (root-key only)
+DELETE /admin/api-keys/{key_id}   Revoke an API key by integer ID (root-key only)
 ```
 
 `GET /graph` filter fields from `NodeFilter` are passed as query params: `?node_type=adr&team=platform&min_confidence=0.7&ingestion_source=job&job_id=abc&limit=100&offset=0`. All fields are optional and AND-combined. Enum fields accept the lowercased `StrEnum` value. `limit` defaults to 1000 (max 10 000); `offset` enables pagination.
@@ -1072,9 +1095,10 @@ GET  /health                      Liveness + readiness; returns {status: "ok"|"d
 
 ```python
 class JobSubmissionRequest(BaseModel):
-    source_type: Literal["audio", "text"]   # "video" deferred to v2 (ffmpeg dependency)
+    source_type: Literal["audio", "text"]         # "video" deferred to v2 (ffmpeg dependency)
     metadata: TranscriptMetadata                  # meeting_date, participants, etc.
     idempotency_key: str | None = None
+    auto_mode: bool = False                       # shorthand: operator sets True to skip human review for this job
     overrides: SeshatConfigOverride | None = None  # per-request config, deep-merged onto SeshatConfig
     retrieval_filters: NodeFilter | None = None    # runtime RAG retrieval scope; not config (see Section 3)
 ```
@@ -1083,8 +1107,8 @@ The API constructs a `TranscriptDocument` from this request (generating `id`; `b
 
 **Rate limiting:** `POST /jobs` enforces two checks before creating a job:
 
-1. **Per-user hourly cap:** counts the user's jobs submitted in the last hour using `ops.jobs` (sliding window: current UTC time − 3600 seconds, indexed on `user_id, created_at`). If the count meets or exceeds `max_jobs_per_user_per_hour` (default: 10), the request is rejected with HTTP 429.
-2. **Global concurrency cap:** counts jobs system-wide in `TRANSCRIBING`, `EXTRACTING`, or `WRITING` state. If the count meets or exceeds `max_concurrent_jobs` (default: 1), the request is rejected with HTTP 429 and a message indicating a job is already in progress. This prevents LLM cost blowup from simultaneous pipeline runs at MVP scale.
+1. **Per-user hourly cap:** counts the user's jobs submitted in the last hour using `ops.jobs` (sliding window: current UTC time − 3600 seconds, indexed on `user_id, created_at`). If the count meets or exceeds `api.max_jobs_per_user_per_hour` (default: 10), the request is rejected with HTTP 429.
+2. **Global concurrency cap:** counts jobs system-wide in `TRANSCRIBING`, `EXTRACTING`, or `WRITING` state. If the count meets or exceeds `api.max_concurrent_jobs` (default: 1), the request is rejected with HTTP 429 and a message indicating a job is already in progress. This prevents LLM cost blowup from simultaneous pipeline runs at MVP scale.
 
 Both checks run before the job is created. Violations are logged with `user_id` and timestamp.
 
@@ -1105,18 +1129,19 @@ class JobStatus(StrEnum):
 
 ### Job Progress Contract
 
-`GET /jobs/{id}` returns the following shape for all job states:
+`GET /jobs/{id}` and `GET /jobs` (list) return the following shape:
 
 ```python
 class JobResponse(BaseModel):
     job_id: str
     status: JobStatus
+    created_at: datetime
+    updated_at: datetime
+    finished_at: datetime | None        # set when status transitions to DONE or FAILED; None otherwise
     idempotency_key: str | None         # echoed from the original JobSubmissionRequest; None when not provided
-    current_stage: JobStatus | None     # None when status is DONE or FAILED
     stage_progress: str | None          # human-readable; None when no meaningful message available
-    elapsed_seconds: float
     error: ErrorPayload | None          # populated when status=FAILED
-    mlflow_run_id: str | None = None    # set when the worker starts the first pipeline stage (TRANSCRIBING); NULL while PENDING
+    mlflow_run_id: str | None = None    # set when the worker starts the first pipeline stage; NULL while PENDING
 ```
 
 **`stage_progress` examples per stage:**
@@ -1358,7 +1383,7 @@ Role requirement: `operator`.
 
 ### Reviewer Data Contract
 
-`GET /jobs/{id}/results` returns `ExtractionResult`. The result is served from the in-memory `result_store` dict while the server is running. After a server restart, the endpoint falls back to the curated extraction blob (`blob_store.curated_extraction_key(meeting_date, job_id)`) written by `PipelineRunner.run_post_approval()` at the start of the WRITING stage — this blob is the durable source of truth for completed jobs. Returns HTTP 409 if the job is not yet in a reviewable or completed state; HTTP 404 if neither in-memory result nor blob is available.
+`GET /jobs/{id}/results` returns `ExtractionResult`. The result is served from `PipelineRunner.results` (in-memory dict, owned by the runner) while the server is running. After a server restart, the endpoint falls back to the curated extraction blob (`blob_store.curated_extraction_key(meeting_date, job_id)`) written by `PipelineRunner.run_post_approval()` at the start of the WRITING stage — this blob is the durable source of truth for completed jobs. Returns HTTP 409 if the job is not yet in a reviewable or completed state; HTTP 404 if neither in-memory result nor blob is available.
 
 The Streamlit review screen is the only consumer of this endpoint for MVP — the data contract between the API and the UI is:
 

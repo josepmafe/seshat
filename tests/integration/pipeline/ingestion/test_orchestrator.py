@@ -10,6 +10,7 @@ from seshat.config.settings import TranscriptionConfig
 from seshat.models.transcript import TranscriptMetadata
 from seshat.pipeline.ingestion.audio_validator import AudioValidationError
 from seshat.pipeline.ingestion.orchestrator import IngestionOrchestrator
+from seshat.pipeline.ingestion.text_validator import TextValidationError
 from tests.integration.conftest import SKIP_IF_NO_LOCALSTACK
 
 pytestmark = [pytest.mark.integration, SKIP_IF_NO_LOCALSTACK]
@@ -67,7 +68,12 @@ class TestIngestionOrchestratorText:
                 "participants": ["Alice"],
             }
         ).encode()
-        doc = await orchestrator.ingest_text(raw, "meeting.yaml", "job-text-1")
+        doc = await orchestrator.ingest_text(raw, date(2026, 4, 21), "job-text-1", "meeting.yaml")
         assert doc.source_type == "text"
         assert doc.blob_key == "jobs/2026-04-21/job-text-1/raw/transcript.txt"
         assert doc.metadata.participants == ["Alice"]
+
+    async def test_ingest_text_meeting_date_mismatch_raises(self, orchestrator):
+        raw = yaml.dump({"date": "2026-04-21", "content": "Notes."}).encode()
+        with pytest.raises(TextValidationError, match="mismatch"):
+            await orchestrator.ingest_text(raw, date(2026, 1, 1), "job-text-2", "meeting.yaml")

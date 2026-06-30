@@ -99,7 +99,7 @@ async def seed_node(
         metadata = {"node_type": node.type.value, "confidence": node.confidence}
         if job_id is not None:
             metadata["job_id"] = job_id
-        await vector_store.upsert(str(node.id), f"{node.title} {node.description}", metadata)
+        await vector_store.upsert(str(node.id), node.vector_store_text, metadata)
 
 
 def make_relationship(

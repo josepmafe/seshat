@@ -26,9 +26,7 @@ from seshat.models.api_responses import (
 )
 from seshat.models.enums import (
     ApprovalMethod,
-    ConceptType,
     GraphDirection,
-    IngestionSource,
     NodeState,
     NodeStatus,
     RelationshipType,
@@ -40,33 +38,31 @@ from seshat.worker.manual_ingestion import NodeNotFoundError, NodePreconditionEr
 router = APIRouter(prefix="/graph", tags=["graph"], dependencies=[Depends(require_role(UserRole.VIEWER))])
 
 
-@router.get("")
+@router.get(
+    "",
+    summary="Query knowledge graph nodes",
+    responses={
+        200: {"description": "List of matching nodes (may be empty)"},
+        401: {"description": "Missing or invalid API key"},
+    },
+)
 async def query_graph(
     state: Annotated[AppState, Depends(get_app_state)],
-    node_type: ConceptType | None = None,
-    team: str | None = None,
-    project: str | None = None,
-    domain: str | None = None,
-    ingestion_source: IngestionSource | None = None,
-    min_confidence: float | None = None,
-    node_state: Annotated[NodeState | None, Query()] = None,
-    node_status: Annotated[NodeStatus | None, Query()] = None,
+    node_filter: Annotated[NodeFilter, Depends()],
 ) -> NodeListResponse:
-    node_filter = NodeFilter(
-        node_type=node_type,
-        team=team,
-        project=project,
-        domain=domain,
-        ingestion_source=ingestion_source,
-        min_confidence=min_confidence,
-        state=node_state,
-        status=node_status,
-    )
     nodes = await state.kb_store.query(node_filter)
     return NodeListResponse(nodes=nodes)
 
 
-@router.get("/{node_id}")
+@router.get(
+    "/{node_id}",
+    summary="Get a single node with its neighbours",
+    responses={
+        200: {"description": "Node and active neighbours"},
+        401: {"description": "Missing or invalid API key"},
+        404: {"description": "Node not found"},
+    },
+)
 async def get_node(
     node_id: str,
     state: Annotated[AppState, Depends(get_app_state)],
@@ -80,7 +76,15 @@ async def get_node(
     return NodeDetailResponse(node=node, neighbours=active_neighbours)
 
 
-@router.get("/{node_id}/impact")
+@router.get(
+    "/{node_id}/impact",
+    summary="Traverse inbound impact graph from a node",
+    responses={
+        200: {"description": "Nodes with traversal depth"},
+        401: {"description": "Missing or invalid API key"},
+        422: {"description": "depth out of allowed range [1, 3]"},
+    },
+)
 async def impact_traversal(
     node_id: str,
     state: Annotated[AppState, Depends(get_app_state)],
@@ -114,7 +118,15 @@ async def impact_traversal(
     return ImpactResponse(nodes=impact_nodes)
 
 
-@router.post("/bulk")
+@router.post(
+    "/bulk",
+    summary="Bulk create nodes",
+    responses={
+        200: {"description": "Succeeded and failed node IDs"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Operator role required"},
+    },
+)
 async def bulk_create_nodes(
     payload: BulkNodeCreate,
     state: Annotated[AppState, Depends(get_app_state)],
@@ -124,7 +136,17 @@ async def bulk_create_nodes(
     return result
 
 
-@router.post("/nodes/resolve")
+@router.post(
+    "/nodes/resolve",
+    summary="Trigger resolution for a set of approved nodes",
+    responses={
+        200: {"description": "Number of relationships created"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Operator role required"},
+        404: {"description": "One or more node IDs not found"},
+        422: {"description": "One or more nodes not in APPROVED status"},
+    },
+)
 async def resolve_nodes(
     payload: ResolveRequest,
     state: Annotated[AppState, Depends(get_app_state)],
@@ -146,7 +168,16 @@ async def resolve_nodes(
     return ResolveResponse(relationships_created=len(relationships))
 
 
-@router.post("", status_code=201)
+@router.post(
+    "",
+    status_code=201,
+    summary="Manually create a node",
+    responses={
+        201: {"description": "Node created"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Operator role required"},
+    },
+)
 async def create_node(
     payload: ManualNodeCreate,
     state: Annotated[AppState, Depends(get_app_state)],
@@ -156,7 +187,17 @@ async def create_node(
     return node
 
 
-@router.put("/{node_id}")
+@router.put(
+    "/{node_id}",
+    summary="Update a manually-created node",
+    responses={
+        200: {"description": "Updated node"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Operator role required"},
+        404: {"description": "Node not found"},
+        409: {"description": "Node not eligible for update (e.g. not manually created)"},
+    },
+)
 async def update_node(
     node_id: str,
     payload: ManualNodeUpdate,
@@ -173,7 +214,17 @@ async def update_node(
     return node
 
 
-@router.put("/{node_id}/override")
+@router.put(
+    "/{node_id}/override",
+    summary="Override a node (creates a SUPERSEDES/AMENDS successor)",
+    responses={
+        200: {"description": "New node version created"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Operator role required"},
+        404: {"description": "Node not found"},
+        409: {"description": "Node not eligible for override"},
+    },
+)
 async def override_node(
     node_id: str,
     payload: NodeOverride,
@@ -191,7 +242,15 @@ async def override_node(
     return node
 
 
-@router.delete("/bulk")
+@router.delete(
+    "/bulk",
+    summary="Bulk delete nodes",
+    responses={
+        200: {"description": "Succeeded and failed node IDs"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Admin role required"},
+    },
+)
 async def bulk_delete_nodes(
     payload: BulkNodeDelete,
     state: Annotated[AppState, Depends(get_app_state)],
@@ -202,7 +261,17 @@ async def bulk_delete_nodes(
     return result
 
 
-@router.delete("/{node_id}", status_code=204)
+@router.delete(
+    "/{node_id}",
+    status_code=204,
+    summary="Delete a node",
+    responses={
+        204: {"description": "Node deleted"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Admin role required"},
+        409: {"description": "Cannot delete node with inbound relationships (use cascade=true)"},
+    },
+)
 async def delete_node(
     node_id: str,
     state: Annotated[AppState, Depends(get_app_state)],

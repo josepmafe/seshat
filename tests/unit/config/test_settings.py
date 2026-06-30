@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from seshat.config.settings import (
+    APIConfig,
     ExtractionConfig,
     GroundingLLMConfig,
     IdentificationLLMConfig,
@@ -60,14 +61,14 @@ class TestGetRequestSettings:
             secrets=SecretsConfig(provider=SecretsProvider.ENV),
             transcription=TranscriptionConfig(max_retries=1),
             extraction=ExtractionConfig(identification=IdentificationLLMConfig(max_output_tokens=1024)),
-            max_jobs_per_user_per_hour=5,
+            api=APIConfig(max_jobs_per_user_per_hour=5),
         )
         monkeypatch.setattr("seshat.config.settings._config", base)
 
         # Override only confidence_threshold, the other fields should survive unchanged:
         # - transcription.max_retries (another config class)
         # - extraction.identification.max_output_tokens (same config class)
-        # - max_jobs_per_user_per_hour (top level field)
+        # - api.max_jobs_per_user_per_hour (nested api config field)
         result = get_request_settings(SeshatConfigOverride(extraction=ExtractionConfig(confidence_threshold=0.5)))
 
         # should be overridden
@@ -75,4 +76,4 @@ class TestGetRequestSettings:
         # must not revert to default
         assert result.transcription.max_retries == 1
         assert result.extraction.identification.max_output_tokens == 1024
-        assert result.max_jobs_per_user_per_hour == 5
+        assert result.api.max_jobs_per_user_per_hour == 5

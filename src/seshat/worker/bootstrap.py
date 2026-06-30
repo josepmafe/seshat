@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 
 @dataclass
 class WorkerContext:
-    extraction_orch: ExtractionOrchestrator
-    ingestion_orch: IngestionOrchestrator
+    ingestion_orchestrator: IngestionOrchestrator
+    extraction_orchestrator: ExtractionOrchestrator
     writing_stage: WritingStage
     ops: OpsLedger
     kb_store: PostgresKBStore
@@ -47,13 +47,13 @@ async def build_worker_context(seshat_config: SeshatConfig) -> AsyncIterator[Wor
         await blob_store.connect()
 
         try:
-            extraction_orch = build_extraction_orchestrator(seshat_config, kb_store, vector_store, blob_store)
-            ingestion_orch = build_ingestion_orchestrator(seshat_config, blob_store)
+            ingestion_orchestrator = build_ingestion_orchestrator(seshat_config, blob_store)
+            extraction_orchestrator = build_extraction_orchestrator(seshat_config, kb_store, vector_store, blob_store)
             writing_stage = WritingStage(kb_store, vector_store)
-            manual_ingestion = ManualIngestionService(kb_store, vector_store, extraction_orch)
+            manual_ingestion = ManualIngestionService(kb_store, vector_store, extraction_orchestrator)
             yield WorkerContext(
-                extraction_orch=extraction_orch,
-                ingestion_orch=ingestion_orch,
+                ingestion_orchestrator=ingestion_orchestrator,
+                extraction_orchestrator=extraction_orchestrator,
                 writing_stage=writing_stage,
                 ops=ops,
                 kb_store=kb_store,

@@ -79,7 +79,8 @@ Streamlit UI → FastAPI → Pipeline Worker → Storage Layer
 **Authentication & authorisation**
 
 - Validate API keys from `X-API-Key` header.
-- Roles: `submitter` (create jobs), `reviewer` (review jobs), `operator` (auto-mode and operations endpoints).
+- Roles: `viewer` (read-only), `reviewer` (review jobs), `operator` (auto-mode and operations endpoints), `admin` (delete operations + all operator actions).
+- Root API key (stored in Secrets Manager under `APIConfig.admin_api_key_secret_key`) gates the `/admin` router for key management.
 
 **Request validation**
 
@@ -89,9 +90,16 @@ Streamlit UI → FastAPI → Pipeline Worker → Storage Layer
 
 **Job lifecycle API**
 
-- `POST /jobs` — enforce per-user rate limiting and global concurrency cap; enforce idempotency via `idempotency_key`; persist initial job record in Postgres; enqueue work via `AsyncioTaskQueue`.
-- `GET /jobs/{id}` — return job status and, when appropriate, extracted nodes awaiting review with confidence scores and minimal relationship context.
+- `GET /jobs` — list jobs with optional `job_status` filter, pagination (`limit`, `offset`).
+- `POST /jobs` — enforce per-user rate limiting and global concurrency cap; enforce idempotency via `idempotency_key`; persist initial job record in Postgres; enqueue work via `AsyncioTaskQueue`. Accepts `auto_mode` top-level flag as a shorthand for operator-role auto-approval.
+- `GET /jobs/{id}` — return job status and timestamps (`created_at`, `updated_at`, `finished_at`).
 - `POST /jobs/{id}/approve` — accept `bulk_rules` (applied first) and explicit per-node decisions (applied second); transition job state (`AWAITING_REVIEW → WRITING → DONE`).
+
+**Admin API** (`/admin`, root-key authenticated)
+
+- `GET /admin/api-keys` — list all API keys with revocation status.
+- `POST /admin/api-keys` — create a new API key; plaintext returned once.
+- `DELETE /admin/api-keys/{key_id}` — revoke an API key.
 
 **Task queue interaction**
 
@@ -143,6 +151,8 @@ On startup, detects jobs stranded in `WRITING` and marks them `FAILED(recoverabl
 
 **`PostgresKBStore`** — `kb_nodes` and `kb_relationships` tables in the `ops` schema. Concrete class — no abstract base; single MVP implementation. Provides insert/update and query-by-id, meeting, type, or relationship. KB rows and their associated embeddings are written in a single transaction.
 
+**`OpsLedger`** — owns all reads and writes to `ops.jobs` and `ops.api_keys`. Exposes typed CRUD methods; no raw SQL leaks into higher layers. `finished_at` is set on terminal transitions (`DONE`, `FAILED`) and cleared on `reset_failed_job`.
+
 **`PGVectorStore`** — pgvector in a separate `store` schema, accessed via `langchain-postgres`. Stores embeddings and metadata (node id, concept type). Used for both RAG retrieval in Pass 2 and deduplication similarity checks.
 
 **`S3BlobStore`** — S3-compatible storage (LocalStack in MVP, AWS S3 in production). Concrete class — no abstract base; single MVP implementation. Path layout is date + job-ID based for human-readable, chronologically browsable paths — see the design spec §2 for the full structure.
@@ -157,7 +167,7 @@ KB store and vector store share the same Postgres instance but remain logically 
 
 ### Cross-Cutting Concerns
 
-**Configuration** — single process-wide `SeshatConfig` built on pydantic-settings with `env_nested_delimiter="__"`. Only the root config model inherits from `BaseSettings` to prevent dual env-var resolution in nested models. Per-request overrides are deep-merged onto the singleton into a new object; the singleton is never mutated.
+**Configuration** — single process-wide `SeshatConfig` built on pydantic-settings with `env_nested_delimiter="__"`. Only the root config model inherits from `BaseSettings` to prevent dual env-var resolution in nested models. Per-request overrides are deep-merged onto the singleton into a new object; the singleton is never mutated. API-specific settings (`max_jobs_per_user_per_hour`, `max_concurrent_jobs`, eval gate path, startup skip flags, admin key name) live under `SeshatConfig.api` (`APIConfig`). Logging settings (root level, per-logger overrides) live under `SeshatConfig.logging` (`LoggingConfig`).
 
 **Secrets** — `AbstractSecretsProvider` with `EnvSecretsProvider` (local/MVP) and `AWSSecretsProvider` (cloud). Secrets are resolved once at startup and cached in-process. Rotations require a worker restart in MVP; v2 adds TTL-based refresh.
 
@@ -169,7 +179,7 @@ KB store and vector store share the same Postgres instance but remain logically 
 
 This section captures only the "spine" models used to connect components. Full fields and validations are in the design spec.
 
-**Job** — `id: UUID`, `status: JobStatus` (`PENDING`, `TRANSCRIBING`, `EXTRACTING`, `AWAITING_REVIEW`, `WRITING`, `DONE`, `FAILED`), `input_type` (audio/text), `created_at`, `updated_at`, `idempotency_key: str | None`, `submitter_id`, `config_snapshot`. Persisted in `ops.jobs`.
+**Job** — `job_id: UUID`, `status: JobStatus` (`PENDING`, `TRANSCRIBING`, `EXTRACTING`, `AWAITING_REVIEW`, `WRITING`, `DONE`, `FAILED`), `source_type` (audio/text), `created_at`, `updated_at`, `finished_at` (set on terminal states), `idempotency_key: str | None`, `user_id`, `meeting_date`, `raw_blob_key`, `submission` (JSONB). Persisted in `ops.jobs`.
 
 **`TranscriptDocument`** — `job_id: UUID`, `raw_text: str`, token count metadata, segments/chunks (when attached), `metadata: TranscriptMetadata` (participants, meeting title, date, optional tags).
 
@@ -179,7 +189,7 @@ This section captures only the "spine" models used to connect components. Full f
 
 **Job submission request** — `input_type`, file (binary) or body (YAML/JSON), optional config overrides, `idempotency_key`.
 
-**Job status response** — `job` (id, status, timestamps); `pending_nodes` when status is `AWAITING_REVIEW` — list of simplified `KBNode` representations with confidence scores and minimal relationship context.
+**Job status response** — `job_id`, `status`, `created_at`, `updated_at`, `finished_at` (set on terminal states), `idempotency_key`, `stage_progress`, `error`, `mlflow_run_id`.
 
 **Approval request** — `bulk_rules` (threshold rules, processed first) and `decisions` (list of `{node_id, action: approve|reject, edited_content?, edited_title?}`, processed second).
 
@@ -283,7 +293,7 @@ Both emit `SweepResult` objects and log to MLflow. Recalibrate any time agent pr
 
 ## Security & Safety
 
-**Authentication & authorisation** — API key in `X-API-Key` header; keys stored hashed with bcrypt (cost factor 12). Roles: `submitter` (create jobs, read statuses), `reviewer` (review and approve/reject), `operator` (auto-mode, `seshat eval`, operational endpoints).
+**Authentication & authorisation** — API key in `X-API-Key` header; keys stored hashed with bcrypt (cost factor 12). Roles: `viewer` (read-only access to jobs and graph), `reviewer` (submit and review jobs), `operator` (auto-mode, retry, graph mutations), `admin` (delete operations + all operator actions). A separate root key gates the `/admin` router for key provisioning and revocation.
 
 **Rate limiting & concurrency** — per-user hourly job cap and global concurrency cap, both enforced at `POST /jobs`. Capped jobs may be rejected with 429 or queued depending on future configuration.
 

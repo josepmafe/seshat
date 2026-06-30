@@ -3,12 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from seshat.models.transcript import TranscriptDocument, TranscriptMetadata
+from seshat.observability.usage_tracker import track_token_budget
 from seshat.pipeline.ingestion.audio_validator import AudioValidator
-from seshat.pipeline.ingestion.text_validator import TextValidator
+from seshat.pipeline.ingestion.text_validator import TextValidationError, TextValidator
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from datetime import date as DateType
+    from datetime import date
 
     from seshat.blob_store.s3_store import S3BlobStore
     from seshat.config.settings import TranscriptionConfig
@@ -28,25 +29,22 @@ class IngestionOrchestrator:
         self._blob = blob_store
         self._config = transcription_config
 
+    @track_token_budget("ingestion", uncapped=True)
     async def ingest_audio(
         self,
         audio_bytes: bytes,
-        meeting_date: DateType,
+        meeting_date: date,
         job_id: str,
         metadata: TranscriptMetadata,
         filename: str | None = None,
     ) -> TranscriptDocument:
         ext = self._validate_and_get_audio_extension(audio_bytes, filename)
 
-        input_key = self._blob.raw_input_key(meeting_date, job_id, ext)
-        await self._blob.put(input_key, audio_bytes)
-        logger.info("Job %s: uploaded raw audio to %s", job_id, input_key)
-
         transcript_text = await self._transcription.transcribe(audio_bytes, extension=ext)
 
         transcript_key = self._blob.raw_transcript_key(meeting_date, job_id)
         await self._blob.put(transcript_key, transcript_text.encode())
-        logger.info("Job %s: uploaded transcript to %s", job_id, transcript_key)
+        logger.info("Job: uploaded transcript to %s", transcript_key)
 
         return TranscriptDocument(
             source_type="audio",
@@ -57,19 +55,20 @@ class IngestionOrchestrator:
     async def ingest_text(
         self,
         raw_bytes: bytes,
-        filename: str,
+        meeting_date: date,
         job_id: str,
+        filename: str,
     ) -> TranscriptDocument:
         parsed = TextValidator.parse(raw_bytes, filename)
 
-        ext = filename.rsplit(".", 1)[-1].lower()
-        input_key = self._blob.raw_input_key(parsed.meeting_date, job_id, ext)
-        await self._blob.put(input_key, raw_bytes)
-        logger.info("Job %s: uploaded raw text input to %s", job_id, input_key)
+        if parsed.meeting_date != meeting_date:
+            raise TextValidationError(
+                f"meeting_date mismatch: submission says {meeting_date}, file says {parsed.meeting_date}"
+            )
 
-        transcript_key = self._blob.raw_transcript_key(parsed.meeting_date, job_id)
+        transcript_key = self._blob.raw_transcript_key(meeting_date, job_id)
         await self._blob.put(transcript_key, parsed.content.encode())
-        logger.info("Job %s: uploaded transcript to %s", job_id, transcript_key)
+        logger.info("Job: uploaded transcript to %s", transcript_key)
 
         metadata = TranscriptMetadata(
             meeting_date=parsed.meeting_date,

@@ -6,7 +6,9 @@ from uuid import UUID, uuid4
 
 from seshat.models.api_graph import BulkFailure, BulkNodeCreate, BulkNodeDelete, BulkResult
 from seshat.models.enums import ApprovalMethod, IngestionSource, NodeState, NodeStatus
-from seshat.models.nodes import KBRelationship
+from seshat.models.nodes import KBNode, KBRelationship, NodeMetadata
+from seshat.observability.latency_tracker import track_latency_profile
+from seshat.observability.usage_tracker import UsageTracker, track_token_budget
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
@@ -14,7 +16,6 @@ if TYPE_CHECKING:
 
     from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
-    from seshat.models.nodes import KBNode
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
     from seshat.vector_store.base_store import AbstractVectorStore
 
@@ -39,47 +40,23 @@ class ManualIngestionService:
         self._kb = kb_store
         self._vs = vector_store
         self._extraction_orch = extraction_orch
+        self._usage_tracker = UsageTracker.uncapped()
 
+    @track_token_budget("manual_node_create", uncapped=True, accumulate_to_fn=lambda self: self._usage_tracker)
     async def create(self, payload: ManualNodeCreate, user_id: str) -> KBNode:
-        from seshat.models.nodes import KBNode, NodeMetadata
-
         now = datetime.now(UTC)
         job_id = f"manual_{uuid4()}"
 
         if payload.source_quote is not None:
             logger.warning("blob-based quote anchors are not yet implemented — ignoring source_quote")
 
-        node = KBNode(
-            id=uuid4(),
-            schema_version="1.0",
-            type=payload.type,
-            title=payload.title,
-            description=payload.description,
-            confidence=1.0,
-            quote_anchors=[],
-            status=NodeStatus.APPROVED,
-            state=NodeState.CURRENT,
-            metadata=NodeMetadata(
-                job_id=job_id,
-                ingestion_source=IngestionSource.MANUAL,
-                approval_method=ApprovalMethod.MANUAL,
-                approved_by=user_id,
-                approved_at=now,
-                meeting_date=payload.meeting_date,
-                participants=payload.participants,
-                team=payload.team,
-                project=payload.project,
-                domain=payload.domain,
-                concept_fields=payload.concept_fields,
-            ),
-        )
-
+        node = _build_manual_node(job_id, payload, now, user_id)
         async with self._kb.transaction() as conn:
             await self._kb.write_node(node, conn=conn)
             if payload.relationships is not None:
                 await self._write_relationships(node.id, payload.relationships, now, job_id=job_id, conn=conn)
 
-        await self._vs.upsert(str(node.id), f"{node.title} {node.description}", node.metadata.model_dump(mode="json"))
+        await self._vs.upsert(str(node.id), node.vector_store_text, node.metadata.model_dump(mode="json"))
 
         return node
 
@@ -155,6 +132,19 @@ class ManualIngestionService:
 
         return await self._edit(node, payload, user_id)
 
+    @track_token_budget("manual_node_resolve", uncapped=True, accumulate_to_fn=lambda self: self._usage_tracker)
+    @track_latency_profile("manual_node_resolve")
+    async def resolve(self, nodes: list[KBNode], job_id: str) -> list[KBRelationship]:
+        """Run resolution for the given approved nodes and persist the resulting relationships."""
+        result = await self._extraction_orch.run_resolution(job_id=job_id, approved=nodes)
+
+        async with self._kb.transaction() as conn:
+            for rel in result.relationships:
+                await self._kb.write_relationship(rel, conn=conn)
+
+        return result.relationships
+
+    @track_token_budget("manual_node_edit", uncapped=True)
     async def _edit(self, node: KBNode, payload: ManualNodeUpdate, user_id: str) -> KBNode:
         now = datetime.now(UTC)
         job_id = f"manual_{uuid4()}"
@@ -183,22 +173,10 @@ class ManualIngestionService:
                 await self._write_relationships(node.id, payload.relationships, now, job_id=job_id, conn=conn)
 
         await self._vs.upsert(
-            str(updated_node.id),
-            f"{updated_node.title} {updated_node.description}",
-            updated_node.metadata.model_dump(mode="json"),
+            str(updated_node.id), updated_node.vector_store_text, updated_node.metadata.model_dump(mode="json")
         )
 
         return updated_node
-
-    async def resolve(self, nodes: list[KBNode], job_id: str) -> list[KBRelationship]:
-        """Run resolution for the given approved nodes and persist the resulting relationships."""
-        result = await self._extraction_orch.run_resolution(job_id=job_id, approved=nodes)
-
-        async with self._kb.transaction() as conn:
-            for rel in result.relationships:
-                await self._kb.write_relationship(rel, conn=conn)
-
-        return result.relationships
 
     async def _write_relationships(
         self,
@@ -218,3 +196,31 @@ class ManualIngestionService:
                 created_at=now,
             )
             await self._kb.write_relationship(rel, conn=conn)
+
+
+def _build_manual_node(job_id: str, payload: ManualNodeCreate, now: datetime, user_id: str) -> KBNode:
+    metadata = NodeMetadata(
+        job_id=job_id,
+        ingestion_source=IngestionSource.MANUAL,
+        approval_method=ApprovalMethod.MANUAL,
+        approved_by=user_id,
+        approved_at=now,
+        meeting_date=payload.meeting_date,
+        participants=payload.participants,
+        team=payload.team,
+        project=payload.project,
+        domain=payload.domain,
+        concept_fields=payload.concept_fields,
+    )
+    return KBNode(
+        id=uuid4(),
+        schema_version="1.0",
+        type=payload.type,
+        title=payload.title,
+        description=payload.description,
+        confidence=1.0,
+        quote_anchors=[],
+        status=NodeStatus.APPROVED,
+        state=NodeState.CURRENT,
+        metadata=metadata,
+    )

@@ -85,6 +85,11 @@ class KBNode(SeshatModel):
     def __str__(self) -> str:
         return f"KBNode(id={self.id}, type={self.type}, title={self.title!r}, status={self.status})"
 
+    @property
+    def vector_store_text(self) -> str:
+        """Text representation indexed in the vector store."""
+        return f"{self.title} {self.description}"
+
 
 class IdentificationResult(SeshatModel):
     job_id: str

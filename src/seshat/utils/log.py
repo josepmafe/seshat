@@ -1,24 +1,16 @@
+from __future__ import annotations
+
 import logging
 from contextvars import ContextVar
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from seshat.config.settings import LoggingConfig
 
 _job_id_var: ContextVar[str] = ContextVar("job_id", default="")
 _task_num_var: ContextVar[str] = ContextVar("task_num", default="")
 
-_LOG_FORMAT = "%(asctime)s %(levelname)s [%(job_id)s%(task_num)s] %(name)s: %(message)s"
-_NOISY_LOGGERS = (
-    "aiobotocore",
-    "botocore",
-    "httpx",
-    "langchain",
-    "langchain_core",
-    "langchain_aws",
-    "langchain_openai",
-    "mlflow",
-    # mlflow.genai.evaluate fans out rows in parallel threads; suppress urllib3's cosmetic
-    # "connection pool is full" warnings that fire when concurrent MLflow trace POSTs exceed
-    # the default pool size of 10.
-    ("urllib3.connectionpool", logging.ERROR),
-)
+_LOG_FORMAT = "%(asctime)s %(levelname)s%(job_ctx)s %(name)s: %(message)s"
 
 
 def set_job_id(job_id: str) -> None:
@@ -33,8 +25,10 @@ def set_task_num(num: int) -> None:
 
 class _JobIdFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.job_id = _job_id_var.get()  # type: ignore[attr-defined]
-        record.task_num = _task_num_var.get()  # type: ignore[attr-defined]
+        job_id = _job_id_var.get()
+        task_num = _task_num_var.get()
+        # Omit brackets entirely when there is no job context.
+        record.job_ctx = f" [{job_id}{task_num}]" if job_id else ""  # type: ignore[attr-defined]
         return True
 
 
@@ -47,18 +41,18 @@ def get_logger(name: str) -> logging.Logger:
     return logger
 
 
-def configure_logging(level: int = logging.INFO) -> None:
+def configure_logging(config: LoggingConfig | None = None) -> None:
     """Configure a StreamHandler with job_id in the format. Call once at app startup."""
+    from seshat.config.settings import LoggingConfig as _LoggingConfig  # avoid circular import at module load
+
+    if config is None:
+        config = _LoggingConfig()
+
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     handler.addFilter(_job_id_filter)
     logging.root.addHandler(handler)
-    logging.root.setLevel(level)
+    logging.root.setLevel(config.level)
 
-    for record in _NOISY_LOGGERS:
-        if isinstance(record, tuple):
-            name, level = record
-        else:
-            name, level = record, logging.WARNING
-
+    for name, level in config.noisy_loggers.items():
         logging.getLogger(name).setLevel(level)

@@ -10,3 +10,9 @@ COPY alembic.ini .
 COPY alembic/ alembic/
 COPY src/ src/
 CMD ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+
+
+FROM deps AS api
+COPY src/ src/
+EXPOSE 8000
+CMD ["uv", "run", "--no-sync", "uvicorn", "seshat.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

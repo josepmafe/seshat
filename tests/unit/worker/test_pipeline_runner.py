@@ -43,14 +43,15 @@ def _make_runner(
     blob_store.put = AsyncMock()
     blob_store.curated_extraction_key = MagicMock(return_value="curated/key")
 
-    result_store: dict = {}
-    runner = PipelineRunner(ingestion, extraction, writing, ops, result_store, blob_store)
-    return runner, ingestion, extraction, writing, ops, result_store
+    runner = PipelineRunner(ingestion, extraction, writing, ops, blob_store)
+    return runner, ingestion, extraction, writing, ops, runner.results
 
 
 def _make_submission(source_type: str = "text") -> MagicMock:
     sub = MagicMock()
     sub.source_type = source_type
+    sub.auto_mode = False
+    sub.overrides = None
     return sub
 
 
@@ -156,3 +157,55 @@ class TestPipelineRunnerRun:
 
         extraction.run_resolution.assert_called_once()
         writing.write.assert_called_once()
+
+    async def test_auto_mode_field_promotes_pending_and_fires_post_approval(self):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        runner, _, extraction, writing, _, _ = _make_runner(nodes=[node])
+
+        sub = _make_submission()
+        sub.auto_mode = True
+
+        await runner.run("job-1", b"data", sub)
+
+        extraction.run_resolution.assert_called_once()
+        writing.write.assert_called_once()
+        approved = [n for n in runner.results["job-1"].nodes if n.status == NodeStatus.APPROVED]
+        assert len(approved) == 1
+
+    async def test_auto_mode_via_extraction_override_also_works(self):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        runner, _, extraction, writing, _, _ = _make_runner(nodes=[node])
+
+        sub = _make_submission()
+        sub.overrides = MagicMock()
+        sub.overrides.extraction = MagicMock()
+        sub.overrides.extraction.auto_mode = True
+
+        await runner.run("job-1", b"data", sub)
+
+        extraction.run_resolution.assert_called_once()
+        writing.write.assert_called_once()
+
+    async def test_auto_mode_service_default_promotes_pending_nodes(self):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        runner, _, extraction, writing, _, _ = _make_runner(nodes=[node])
+        runner._extraction_auto_mode = True
+
+        await runner.run("job-1", b"data", _make_submission())
+
+        extraction.run_resolution.assert_called_once()
+        writing.write.assert_called_once()
+
+    async def test_auto_mode_false_override_leaves_pending_nodes_waiting(self):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        runner, _, extraction, writing, _, _ = _make_runner(nodes=[node])
+
+        sub = _make_submission()
+        sub.overrides = MagicMock()
+        sub.overrides.extraction = MagicMock()
+        sub.overrides.extraction.auto_mode = False
+
+        await runner.run("job-1", b"data", sub)
+
+        extraction.run_resolution.assert_not_called()
+        writing.write.assert_not_called()
