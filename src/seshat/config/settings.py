@@ -316,6 +316,9 @@ class APIConfig(BaseConfig):
     skip_eval_gate: bool = Field(
         default=False, description="Bypass the eval gate check at startup. Should never be used in production."
     )
+    skip_llm_ping: bool = Field(
+        default=False, description="Skip the LLM ping check at startup. Should never be used in production."
+    )
     admin_api_key_secret_key: str = Field(
         default="admin-api-key", description="Secrets key for the admin API key used to create new API keys."
     )

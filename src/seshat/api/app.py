@@ -87,6 +87,11 @@ def _check_eval_gate(config: APIConfig) -> None:
 
 async def _ping_llms(config: SeshatConfig) -> None:
     """Verify connectivity to all configured LLM providers. Raises SystemExit(1) on failure."""
+    # TODO: add embedding and transcription pings
+    if config.api.skip_llm_ping:
+        logger.warning("`skip_llm_ping=True`: LLM ping check bypassed")
+        return
+
     llm_configs: list[_LLMConfig | None] = [
         config.extraction.identification,
         config.extraction.identification_self_review.llm,
@@ -107,8 +112,9 @@ async def _ping_llms(config: SeshatConfig) -> None:
             continue
 
         seen.add(key)
-        llm = _build_llm(llm_cfg, config)
+
         try:
+            llm = _build_llm(llm_cfg, config)
             await llm.ainvoke([HumanMessage(content="ping")], max_tokens=1)
             logger.debug("LLM reachable: provider=%s model=%s", llm_cfg.provider, llm_cfg.model)
         except Exception as exc:
