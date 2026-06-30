@@ -22,6 +22,7 @@ coverage.xml
 
 # Environments
 .env
+.env.docker
 .venv
 
 # Jupyter Notebook

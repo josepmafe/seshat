@@ -1,5 +1,11 @@
 name: seshat
 
+# Dummy AWS credentials shared by any service that talks to LocalStack.
+x-aws-localstack-env: &aws-localstack-env
+  AWS_ACCESS_KEY_ID: dummy_id
+  AWS_SECRET_ACCESS_KEY: dummy_secret
+  AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+
 services:
   postgres:
     image: pgvector/pgvector:pg17
@@ -38,6 +44,7 @@ services:
       --backend-store-uri sqlite:///mlflow/mlflow.db
       --default-artifact-root /mlflow/artifacts
       --serve-artifacts
+      --allowed-hosts "mlflow:5000,localhost,127.0.0.1"
     volumes:
       - mlflow_data:/mlflow
     ports:
@@ -51,15 +58,13 @@ services:
 
   localstack:
     image: localstack/localstack:3
+    env_file: .env.docker
     environment:
+      <<: *aws-localstack-env
       SERVICES: secretsmanager,s3
-      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-      AWS_ACCESS_KEY_ID: dummy_id
-      AWS_SECRET_ACCESS_KEY: dummy_secret
+      # Passed to localstack-init.sh to seed Secrets Manager and create the S3 bucket
       DATABASE_URL: ${DATABASE_URL}
       S3_BUCKET: ${S3_BUCKET}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "${LOCALSTACK_PORT}:4566"
     volumes:
@@ -70,6 +75,43 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  seshat-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: api
+    env_file: .env.docker
+    environment:
+      <<: *aws-localstack-env
+      # Secrets backend — pull from LocalStack at startup
+      SECRETS__PROVIDER: aws
+      SECRETS__ENDPOINT_URL: http://localstack:4566
+      SECRETS__REGION: ${AWS_DEFAULT_REGION}
+      # Blob store
+      BLOB_STORE__BUCKET: ${S3_BUCKET}
+      BLOB_STORE__REGION: ${AWS_DEFAULT_REGION}
+      BLOB_STORE__ENDPOINT_URL: http://localstack:4566
+      # Observability
+      OBSERVABILITY__MLFLOW_TRACKING_URI: http://mlflow:5000
+      SKIP_EVAL_GATE: "true"
+    ports:
+      - "${API_PORT}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   postgres_data:

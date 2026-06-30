@@ -44,7 +44,10 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     config = SeshatConfig()
     configure_logging(config.logging)
-    _check_eval_gate(config.skip_eval_gate)
+
+    _emit_config_warnings(config)
+    _check_eval_gate(config)
+
     setup_mlflow(config.observability)
 
     async with build_worker_context(config) as ctx:
@@ -57,8 +60,14 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
         yield
 
 
-def _check_eval_gate(skip: bool = False) -> None:
-    if skip:
+def _emit_config_warnings(config: SeshatConfig) -> None:
+    if config.extraction.grounding is None:
+        logger.warning("`grounding=None`: heuristics-only confidence scoring for identified nodes.")
+
+
+def _check_eval_gate(config: SeshatConfig) -> None:
+    if config.skip_eval_gate:
+        logger.warning("`skip_eval_gate=True`: eval gate check bypassed")
         return
 
     gate_path = pathlib.Path("eval_gate.json")
