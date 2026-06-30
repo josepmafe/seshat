@@ -100,7 +100,7 @@ class PipelineRunner:
             return identification_result
 
         except Exception as exc:
-            logger.exception("Job %s failed (pre-approval): %s", job_id, exc)
+            logger.exception("Job failed (pre-approval): %s", exc)
             # MVP: all failures marked recoverable; operator reads error_payload to triage.
             # Revisit when a retry queue is added — some failures (e.g. bad input) are permanent.
             await self._ops.fail_job(job_id, "pre_approval", str(exc), recoverable=True)
@@ -121,10 +121,10 @@ class PipelineRunner:
             written = await self._writing.write(result)
 
             await self._ops.update_job_status(job_id, JobStatus.DONE)
-            logger.info("Job %s done: %d nodes written", job_id, written)
+            logger.info("Job done: %d nodes written", written)
 
         except Exception as exc:
-            logger.exception("Job %s failed (post-approval): %s", job_id, exc)
+            logger.exception("Job failed (post-approval): %s", exc)
             # MVP: all failures marked recoverable; see pre_approval comment above.
             await self._ops.fail_job(job_id, "post_approval", str(exc), recoverable=True)
 
@@ -150,6 +150,6 @@ class PipelineRunner:
                 result.model_dump_json().encode(),
             )
         else:
-            logger.warning("Job %s has no meeting_date; skipping extraction.json blob write", job_id)
+            logger.warning("Job has no meeting_date; skipping `extraction.json` blob write")
 
         return result

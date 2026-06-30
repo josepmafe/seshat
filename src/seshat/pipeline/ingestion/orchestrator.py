@@ -44,7 +44,7 @@ class IngestionOrchestrator:
 
         transcript_key = self._blob.raw_transcript_key(meeting_date, job_id)
         await self._blob.put(transcript_key, transcript_text.encode())
-        logger.info("Job %s: uploaded transcript to %s", job_id, transcript_key)
+        logger.info("Job: uploaded transcript to %s", transcript_key)
 
         return TranscriptDocument(
             source_type="audio",
@@ -68,7 +68,7 @@ class IngestionOrchestrator:
 
         transcript_key = self._blob.raw_transcript_key(meeting_date, job_id)
         await self._blob.put(transcript_key, parsed.content.encode())
-        logger.info("Job %s: uploaded transcript to %s", job_id, transcript_key)
+        logger.info("Job: uploaded transcript to %s", transcript_key)
 
         metadata = TranscriptMetadata(
             meeting_date=parsed.meeting_date,

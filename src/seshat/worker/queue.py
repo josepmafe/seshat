@@ -30,7 +30,7 @@ class AsyncioTaskQueue:
             self._statuses[job_id] = JobStatus.FAILED
             raise
         except Exception as exc:
-            logger.error("Job %s failed: %s", job_id, exc)
+            logger.error("Job failed: %s", exc)
             self._statuses[job_id] = JobStatus.FAILED
 
     async def get_status(self, job_id: str) -> JobStatus | None:
