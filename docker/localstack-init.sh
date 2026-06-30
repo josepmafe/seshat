@@ -11,7 +11,7 @@ _upsert_secret() {
 }
 
 _upsert_secret "seshat/postgres_url" "${DATABASE_URL}"
-_upsert_secret "seshat/admin-api-key" "${SESHAT_ADMIN_API_KEY}"
+_upsert_secret "seshat/root-api-key" "${SESHAT_ROOT_API_KEY}"
 
 _upsert_secret "seshat/openai_api_key"       "${OPENAI_API_KEY}"
 _upsert_secret "seshat/anthropic_api_key"    "${ANTHROPIC_API_KEY}"

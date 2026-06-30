@@ -319,8 +319,8 @@ class APIConfig(BaseConfig):
     skip_llm_ping: bool = Field(
         default=False, description="Skip the LLM ping check at startup. Should never be used in production."
     )
-    admin_api_key_secret_key: str = Field(
-        default="admin-api-key", description="Secrets key for the admin API key used to create new API keys."
+    root_api_key_secret_key: str = Field(
+        default="root-api-key", description="Secrets key for the root API key used to create new API keys."
     )
 
 

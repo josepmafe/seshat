@@ -17,7 +17,7 @@ from seshat.secrets.factory import get_secrets_resolver
 
 async def _get_root_key(state: Annotated[AppState, Depends(get_app_state)]) -> str:
     resolver = get_secrets_resolver(state.config)
-    secret_key = state.config.api.admin_api_key_secret_key
+    secret_key = state.config.api.root_api_key_secret_key
     return await asyncio.to_thread(resolver.get_secret, secret_key)
 
 
