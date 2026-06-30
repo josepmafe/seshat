@@ -131,17 +131,3 @@ async def _check_stranded_jobs(ops: OpsLedger) -> None:
     for job_id in stranded:
         await ops.fail_job(job_id, JobStatus.WRITING, "Server crash during write", recoverable=True)
         logger.warning("Startup recovery: marked stranded job %s as FAILED", job_id)
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    import uvicorn
-
-    from seshat.utils.log import configure_logging
-
-    async def _serve() -> None:
-        config = uvicorn.Config(create_app(), host="0.0.0.0", port=8000, log_config=None)
-        await uvicorn.Server(config).serve()
-
-    asyncio.run(_serve())
