@@ -1,22 +1,15 @@
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
 from seshat.api.auth import AuthenticationError, verify_api_key
 from seshat.api.state import AppState
-from seshat.config.settings import SeshatConfig
 from seshat.models.enums import UserRole
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-
-
-@lru_cache
-def get_config() -> SeshatConfig:
-    return SeshatConfig()
 
 
 def get_app_state(request: Request) -> AppState:

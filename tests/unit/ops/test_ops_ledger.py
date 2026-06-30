@@ -1,8 +1,10 @@
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
 
-from seshat.models.enums import JobStatus
-from seshat.ops.ledger import OpsLedger
+import pytest
+
+from seshat.models.enums import JobStatus, UserRole
+from seshat.ops.ledger import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError, OpsLedger
 
 
 def _make_pool(**fetch_results):
@@ -108,8 +110,6 @@ class TestOpsLedger:
 
     async def test_create_api_key(self):
         store = _make_ledger()
-        from seshat.models.enums import UserRole
-
         now = datetime.now(UTC)
         await store.create_api_key("hashed-key", "alice", UserRole.REVIEWER, now)
         store._pool.execute.assert_called_once()
@@ -117,6 +117,32 @@ class TestOpsLedger:
         assert "INSERT INTO ops.api_keys" in call_args[0]
         assert call_args[1] == "hashed-key"
         assert call_args[2] == "alice"
+
+    async def test_list_api_keys(self):
+        rows = [{"id": 1, "user_id": "alice", "role": "reviewer", "created_at": datetime.now(UTC), "revoked_at": None}]
+        store = _make_ledger(fetch=rows)
+        result = await store.list_api_keys()
+        assert len(result) == 1
+
+    async def test_revoke_api_key_ok(self):
+        pool = MagicMock()
+        pool.fetchrow = AsyncMock(return_value={"revoked_at": None})
+        pool.execute = AsyncMock()
+        store = OpsLedger(pool)
+        await store.revoke_api_key(1, datetime.now(UTC))
+        pool.execute.assert_called_once()
+
+    async def test_revoke_api_key_not_found(self):
+        store = _make_ledger(fetchrow=None)
+        with pytest.raises(ApiKeyNotFoundError):
+            await store.revoke_api_key(99, datetime.now(UTC))
+
+    async def test_revoke_api_key_already_revoked(self):
+        pool = MagicMock()
+        pool.fetchrow = AsyncMock(return_value={"revoked_at": datetime.now(UTC)})
+        store = OpsLedger(pool)
+        with pytest.raises(ApiKeyAlreadyRevokedError):
+            await store.revoke_api_key(1, datetime.now(UTC))
 
     async def test_get_stranded_writing_jobs(self):
         rows = [{"job_id": "job-1"}, {"job_id": "job-2"}]

@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, FastAPI
 
-from seshat.api.routers import graph, health, jobs
+from seshat.api.routers import admin, graph, health, jobs
 from seshat.api.state import AppState
-from seshat.config.settings import SeshatConfig
+from seshat.config.settings import SeshatConfig, get_config
 from seshat.models.enums import JobStatus
 from seshat.observability.mlflow_setup import setup_mlflow
 from seshat.utils.log import configure_logging, get_logger, set_job_id
@@ -19,6 +19,7 @@ from seshat.worker.queue import AsyncioTaskQueue
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+    from seshat.config.settings import APIConfig
     from seshat.ops.ledger import OpsLedger
 
 
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(health.router)
     v1_router.include_router(jobs.router)
     v1_router.include_router(graph.router)
+    v1_router.include_router(admin.router)
 
     app = FastAPI(title="Seshat API", version="0.1.0", lifespan=_lifespan)
     app.include_router(v1_router)
@@ -41,11 +43,11 @@ def create_app() -> FastAPI:
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     set_job_id("api")
 
-    config = SeshatConfig()
+    config = get_config()
     configure_logging(config.logging)
 
     _emit_config_warnings(config)
-    _check_eval_gate(config)
+    _check_eval_gate(config.api)
 
     setup_mlflow(config.observability)
 
@@ -64,7 +66,7 @@ def _emit_config_warnings(config: SeshatConfig) -> None:
         logger.warning("`grounding=None`: heuristics-only confidence scoring for identified nodes.")
 
 
-def _check_eval_gate(config: SeshatConfig) -> None:
+def _check_eval_gate(config: APIConfig) -> None:
     if config.skip_eval_gate:
         logger.warning("`skip_eval_gate=True`: eval gate check bypassed")
         return

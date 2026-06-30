@@ -69,13 +69,13 @@ async def submit_job(
         if existing and existing["status"] != JobStatus.FAILED:
             return JobSubmitResponse(job_id=existing["job_id"])
 
-    if await state.ops.count_recent_jobs_for_user(user.user_id) >= state.config.max_jobs_per_user_per_hour:
+    if await state.ops.count_recent_jobs_for_user(user.user_id) >= state.config.api.max_jobs_per_user_per_hour:
         return JSONResponse(
             status_code=429,
             content=RateLimitError(limit_type="per_user_hourly_cap").model_dump(),
         )
 
-    if await state.ops.count_running_jobs() >= state.config.max_concurrent_jobs:
+    if await state.ops.count_running_jobs() >= state.config.api.max_concurrent_jobs:
         return JSONResponse(
             status_code=429,
             content=RateLimitError(limit_type="global_concurrency_cap").model_dump(),

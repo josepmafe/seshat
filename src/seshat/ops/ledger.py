@@ -14,6 +14,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class ApiKeyNotFoundError(Exception):
+    pass
+
+
+class ApiKeyAlreadyRevokedError(Exception):
+    pass
+
+
 class OpsLedger:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
@@ -127,8 +135,25 @@ class OpsLedger:
         )
 
     async def get_api_keys(self) -> list[tuple[str, str, str]]:
-        rows = await self._pool.fetch("SELECT key_hash, user_id, role FROM ops.api_keys")
+        rows = await self._pool.fetch("SELECT key_hash, user_id, role FROM ops.api_keys WHERE revoked_at IS NULL")
         return [(row["key_hash"], row["user_id"], row["role"]) for row in rows]
+
+    async def list_api_keys(self) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            "SELECT id, user_id, role, created_at, revoked_at FROM ops.api_keys ORDER BY created_at DESC"
+        )
+
+    async def revoke_api_key(self, key_id: int, now: datetime) -> None:
+        row = await self._pool.fetchrow("SELECT revoked_at FROM ops.api_keys WHERE id=$1", key_id)
+        if row is None:
+            raise ApiKeyNotFoundError(key_id)
+        if row["revoked_at"] is not None:
+            raise ApiKeyAlreadyRevokedError(key_id)
+        await self._pool.execute(
+            "UPDATE ops.api_keys SET revoked_at=$1 WHERE id=$2",
+            now,
+            key_id,
+        )
 
     async def reset_failed_job(self, job_id: str) -> None:
         await self._pool.execute(

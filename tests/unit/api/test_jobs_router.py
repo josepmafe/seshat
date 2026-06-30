@@ -25,8 +25,8 @@ def _make_app_state(runner_results: dict | None = None, **overrides) -> AppState
     ops.set_job_submission = AsyncMock()
 
     config = MagicMock()
-    config.max_jobs_per_user_per_hour = 10
-    config.max_concurrent_jobs = 5
+    config.api.max_jobs_per_user_per_hour = 10
+    config.api.max_concurrent_jobs = 5
 
     queue = MagicMock()
     queue.enqueue = AsyncMock()

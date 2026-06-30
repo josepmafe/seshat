@@ -306,6 +306,21 @@ class LoggingConfig(BaseConfig):
     )
 
 
+class APIConfig(BaseConfig):
+    max_jobs_per_user_per_hour: int = Field(default=10, gt=0)
+    max_concurrent_jobs: int = Field(default=1, gt=0)
+    eval_gate_path: Path = Field(
+        default=DEFAULT_EVAL_GATE_PATH,
+        description="Path to the eval gate JSON file produced by 'seshat eval'.",
+    )
+    skip_eval_gate: bool = Field(
+        default=False, description="Bypass the eval gate check at startup. Should never be used in production."
+    )
+    admin_api_key_secret_key: str = Field(
+        default="admin-api-key", description="Secrets key for the admin API key used to create new API keys."
+    )
+
+
 class SeshatConfig(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_nested_delimiter="__", extra="ignore")
 
@@ -319,20 +334,11 @@ class SeshatConfig(BaseSettings):
     rag: RAGConfig = Field(default_factory=RAGConfig)
     secrets: SecretsConfig = Field(default_factory=SecretsConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
+    api: APIConfig = Field(default_factory=lambda: APIConfig())
 
     # only used for `seshat init`
     document_loader: DocumentLoaderConfig | None = None
-
-    max_jobs_per_user_per_hour: int = Field(default=10, gt=0)
-    max_concurrent_jobs: int = Field(default=1, gt=0)
     max_concurrent_init_runs: int = Field(default=1, gt=0)
-    eval_gate_path: Path = Field(
-        default=DEFAULT_EVAL_GATE_PATH,
-        description="Path to the eval gate JSON file produced by 'seshat eval'.",
-    )
-    skip_eval_gate: bool = Field(
-        default=False, description="Bypass the eval gate check at startup. Should never be used in production."
-    )
 
 
 class SeshatConfigOverride(BaseConfig):
