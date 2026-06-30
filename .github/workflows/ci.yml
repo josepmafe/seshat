@@ -60,7 +60,7 @@ jobs:
       - name: Set up env
         run: |
           cp .env.example .env
-          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+          cp docker/.env.docker.example .env.docker
 
       - name: Start Docker services
         run: docker compose up -d --wait
