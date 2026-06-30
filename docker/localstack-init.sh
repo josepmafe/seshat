@@ -13,10 +13,10 @@ _upsert_secret() {
 _upsert_secret "seshat/postgres_url" "${DATABASE_URL}"
 _upsert_secret "seshat/admin-api-key" "${SESHAT_ADMIN_API_KEY}"
 
-[ -n "${OPENAI_API_KEY}" ]       && _upsert_secret "seshat/openai_api_key"       "${OPENAI_API_KEY}"
-[ -n "${ANTHROPIC_API_KEY}" ]    && _upsert_secret "seshat/anthropic_api_key"    "${ANTHROPIC_API_KEY}"
-[ -n "${AZURE_OPENAI_API_KEY}" ] && _upsert_secret "seshat/azure_openai_api_key" "${AZURE_OPENAI_API_KEY}"
-[ -n "${ASSEMBLYAI_API_KEY}" ]   && _upsert_secret "seshat/assemblyai_api_key"   "${ASSEMBLYAI_API_KEY}"
+_upsert_secret "seshat/openai_api_key"       "${OPENAI_API_KEY}"
+_upsert_secret "seshat/anthropic_api_key"    "${ANTHROPIC_API_KEY}"
+_upsert_secret "seshat/azure_openai_api_key" "${AZURE_OPENAI_API_KEY}"
+_upsert_secret "seshat/assemblyai_api_key"   "${ASSEMBLYAI_API_KEY}"
 
 awslocal s3 mb "s3://${S3_BUCKET}" 2>/dev/null || true
 
