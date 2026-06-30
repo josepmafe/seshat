@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +17,9 @@ from seshat.models.enums import (
 from seshat.utils.log import get_logger
 
 logger = get_logger(__name__)
+
+PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent.parent
+DEFAULT_EVAL_GATE_PATH: Path = PROJECT_ROOT / "eval_gate.json"
 
 
 class BaseConfig(BaseModel):
@@ -321,6 +326,10 @@ class SeshatConfig(BaseSettings):
     max_jobs_per_user_per_hour: int = Field(default=10, gt=0)
     max_concurrent_jobs: int = Field(default=1, gt=0)
     max_concurrent_init_runs: int = Field(default=1, gt=0)
+    eval_gate_path: Path = Field(
+        default=DEFAULT_EVAL_GATE_PATH,
+        description="Path to the eval gate JSON file produced by 'seshat eval'.",
+    )
     skip_eval_gate: bool = Field(
         default=False, description="Bypass the eval gate check at startup. Should never be used in production."
     )

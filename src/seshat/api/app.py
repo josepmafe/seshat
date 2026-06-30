@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import pathlib
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -70,9 +69,9 @@ def _check_eval_gate(config: SeshatConfig) -> None:
         logger.warning("`skip_eval_gate=True`: eval gate check bypassed")
         return
 
-    gate_path = pathlib.Path("eval_gate.json")
+    gate_path = config.eval_gate_path
     if not gate_path.exists():
-        logger.critical("eval_gate.json not found. Run 'seshat eval' first.")
+        logger.critical("%s not found. Run 'seshat eval' first.", gate_path)
         raise SystemExit(1)
 
     gate = json.loads(gate_path.read_text())

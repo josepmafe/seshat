@@ -4,12 +4,10 @@ from typing import ClassVar
 from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from seshat.config.settings import ObservabilityConfig
+from seshat.config.settings import DEFAULT_EVAL_GATE_PATH, PROJECT_ROOT, ObservabilityConfig
 from seshat.models.enums import SearchMode
 
-_ROOT_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
-_DEFAULT_CORPUS_BASE_DIR: Path = _ROOT_DIR / "data" / "eval" / "corpora"
-_DEFAULT_GATE_PATH: Path = _ROOT_DIR / "eval_gate.json"
+_DEFAULT_CORPUS_BASE_DIR: Path = PROJECT_ROOT / "data" / "eval" / "corpora"
 
 
 class EvalConfig(BaseSettings):
@@ -26,7 +24,7 @@ class EvalConfig(BaseSettings):
         description="Root directory for eval corpora. Expected subdirs: one per eval harness.",
     )
     gate_path: Path = Field(
-        default=_DEFAULT_GATE_PATH,
+        default=DEFAULT_EVAL_GATE_PATH,
         description="Full path (including filename) for the GateResult JSON output.",
     )
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
@@ -85,7 +83,7 @@ class EvalConfig(BaseSettings):
     _grounding_subdir: ClassVar[str] = "grounding"
     _grouping_subdir: ClassVar[str] = "grouping"
     # a hidden folder in the project root for caching intermediate results during eval runs; not intended for manual use
-    _cache_dir: ClassVar[Path] = _ROOT_DIR / ".seshat" / "eval_cache"
+    _cache_dir: ClassVar[Path] = PROJECT_ROOT / ".seshat" / "eval_cache"
 
     @computed_field  # type: ignore[misc]
     @property
