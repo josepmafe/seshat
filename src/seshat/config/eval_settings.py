@@ -85,52 +85,52 @@ class EvalConfig(BaseSettings):
     # a hidden folder in the project root for caching intermediate results during eval runs; not intended for manual use
     _cache_dir: ClassVar[Path] = PROJECT_ROOT / ".seshat" / "eval_cache"
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def identification_corpus_dir(self) -> Path:
         return self.corpus_base_dir / self._identification_subdir
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def resolution_corpus_dir(self) -> Path:
         return self.corpus_base_dir / self._resolution_subdir
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def retrieval_corpus_dir(self) -> Path:
         return self.corpus_base_dir / self._retrieval_subdir
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def grounding_corpus_dir(self) -> Path:
         return self.corpus_base_dir / self._grounding_subdir
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def identification_cache_dir(self) -> Path:
         return self._cache_dir / self._identification_subdir
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def resolution_cache_dir(self) -> Path:
         return self._cache_dir / self._resolution_subdir
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def retrieval_cache_dir(self) -> Path:
         return self._cache_dir / self._retrieval_subdir
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def grounding_cache_dir(self) -> Path:
         return self._cache_dir / self._grounding_subdir
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def grouping_corpus_dir(self) -> Path:
         return self.corpus_base_dir / self._grouping_subdir
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def grouping_cache_dir(self) -> Path:
         return self._cache_dir / self._grouping_subdir

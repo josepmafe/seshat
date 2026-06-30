@@ -46,7 +46,7 @@ class ApiKeyResponse(BaseModel):
     created_at: datetime
     revoked_at: datetime | None = None
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def is_active(self) -> bool:
         return self.revoked_at is None
