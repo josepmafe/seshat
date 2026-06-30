@@ -94,7 +94,7 @@ services:
       BLOB_STORE__ENDPOINT_URL: http://localstack:4566
       # Observability
       OBSERVABILITY__MLFLOW_TRACKING_URI: http://mlflow:5000
-      SKIP_EVAL_GATE: "true"
+      API__SKIP_EVAL_GATE: "true"
     ports:
       - "${API_PORT}:8000"
     depends_on:
