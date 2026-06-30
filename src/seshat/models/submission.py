@@ -10,6 +10,10 @@ from seshat.models.transcript import TranscriptMetadata
 class JobSubmissionRequest(BaseModel):
     source_type: Literal["audio", "text"]
     metadata: TranscriptMetadata
+    auto_mode: bool = Field(
+        default=False,
+        description="When True, skip manual review and write all nodes above threshold automatically.",
+    )
     idempotency_key: str | None = Field(
         default=None, description="Client-supplied key; re-submitting with the same key returns the existing job."
     )

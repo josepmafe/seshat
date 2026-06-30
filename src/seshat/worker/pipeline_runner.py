@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from seshat.models.enums import JobStatus, NodeStatus
+from seshat.models.enums import ApprovalMethod, JobStatus, NodeStatus
 from seshat.models.nodes import ExtractionResult
 from seshat.utils.log import get_logger, set_job_id
 
@@ -27,12 +28,15 @@ class PipelineRunner:
         writing_stage: WritingStage,
         ops_ledger: OpsLedger,
         blob_store: S3BlobStore,
+        *,
+        extraction_auto_mode: bool = False,
     ) -> None:
         self._ingestion = ingestion_orchestrator
         self._extraction = extraction_orchestrator
         self._writing = writing_stage
         self._ops = ops_ledger
         self._blob_store = blob_store
+        self._extraction_auto_mode = extraction_auto_mode
         self._pending: dict[str, IdentificationResult] = {}
         self._results: dict[str, ExtractionResult] = {}
 
@@ -44,6 +48,7 @@ class PipelineRunner:
             writing_stage=ctx.writing_stage,
             ops_ledger=ctx.ops,
             blob_store=ctx.blob_store,
+            extraction_auto_mode=ctx.extraction_orchestrator._config.auto_mode,
         )
 
     @property
@@ -56,8 +61,8 @@ class PipelineRunner:
         if identification_result is None:
             return
 
-        # In auto_mode all nodes are APPROVED or REJECTED by assign_status, so this is always
-        # False and post-approval fires immediately without a human review step.
+        # In auto_mode (service config or per-request override) all nodes are APPROVED or REJECTED
+        # by _apply_auto_mode, so has_pending is always False and post-approval fires immediately.
         has_pending = any(n.status == NodeStatus.PENDING_REVIEW for n in identification_result.nodes)
         if not has_pending:
             await self.run_post_approval(job_id)
@@ -91,6 +96,9 @@ class PipelineRunner:
             await self._ops.update_job_status(job_id, JobStatus.EXTRACTING)
             identification_result = await self._extraction.run_identification(doc, job_id)
 
+            if self._effective_auto_mode(submission):
+                identification_result = self._apply_auto_mode(identification_result, datetime.now(UTC))
+
             self._pending[job_id] = identification_result
             # Pre-populate results so GET /jobs/{id}/results works during AWAITING_REVIEW.
             # run_post_approval overwrites this with the complete result (including relationships).
@@ -105,6 +113,30 @@ class PipelineRunner:
             # Revisit when a retry queue is added — some failures (e.g. bad input) are permanent.
             await self._ops.fail_job(job_id, "pre_approval", str(exc), recoverable=True)
             return None
+
+    def _effective_auto_mode(self, submission: JobSubmissionRequest) -> bool:
+        if submission.auto_mode:
+            return True
+
+        overrides = submission.overrides
+        if overrides and overrides.extraction and overrides.extraction.auto_mode:
+            return True
+
+        return self._extraction_auto_mode
+
+    def _apply_auto_mode(self, identification_result: IdentificationResult, now: datetime) -> IdentificationResult:
+        """Promote PENDING_REVIEW nodes to APPROVED when auto_mode is active."""
+        updated_nodes = []
+        for node in identification_result.nodes:
+            if node.status == NodeStatus.PENDING_REVIEW:
+                metadata = node.metadata._with(
+                    approval_method=ApprovalMethod.AUTO,
+                    approved_at=now,
+                )
+                node = node._with(status=NodeStatus.APPROVED, metadata=metadata)
+            updated_nodes.append(node)
+
+        return identification_result._with(nodes=updated_nodes)
 
     async def run_post_approval(self, job_id: str) -> None:
         """Resolve, write, and mark DONE. Expects _run_pre_approval to have completed."""
