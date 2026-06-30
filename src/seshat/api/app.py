@@ -5,12 +5,14 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, FastAPI
+from langchain_core.messages import HumanMessage
 
 from seshat.api.routers import admin, graph, health, jobs
 from seshat.api.state import AppState
 from seshat.config.settings import SeshatConfig, get_config
 from seshat.models.enums import JobStatus
 from seshat.observability.mlflow_setup import setup_mlflow
+from seshat.pipeline.llm_factory import _build_llm
 from seshat.utils.log import configure_logging, get_logger, set_job_id
 from seshat.worker.bootstrap import build_worker_context
 from seshat.worker.pipeline_runner import PipelineRunner
@@ -19,7 +21,7 @@ from seshat.worker.queue import AsyncioTaskQueue
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from seshat.config.settings import APIConfig
+    from seshat.config.settings import APIConfig, _LLMConfig
     from seshat.ops.ledger import OpsLedger
 
 
@@ -50,6 +52,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     _check_eval_gate(config.api)
 
     setup_mlflow(config.observability)
+    await _ping_llms(config)
 
     async with build_worker_context(config) as ctx:
         await _check_stranded_jobs(ctx.ops)
@@ -79,6 +82,47 @@ def _check_eval_gate(config: APIConfig) -> None:
     gate = json.loads(gate_path.read_text())
     if not gate.get("passed"):
         logger.critical("eval gate not passed. Run 'seshat eval' first.")
+        raise SystemExit(1)
+
+
+async def _ping_llms(config: SeshatConfig) -> None:
+    """Verify connectivity to all configured LLM providers. Raises SystemExit(1) on failure."""
+    llm_configs: list[_LLMConfig | None] = [
+        config.extraction.identification,
+        config.extraction.identification_self_review.llm,
+        config.extraction.grounding,
+        config.rag.keyword_extraction_llm,
+        config.extraction.resolution,
+        config.extraction.resolution_self_review.llm,
+    ]
+
+    seen: set[tuple[str, str | None]] = set()
+    faulty_providers: list[str] = []
+    for llm_cfg in llm_configs:
+        if llm_cfg is None:
+            continue
+
+        key = (llm_cfg.provider, llm_cfg.api_key_secret_key)
+        if key in seen:
+            continue
+
+        seen.add(key)
+        llm = _build_llm(llm_cfg, config)
+        try:
+            await llm.ainvoke([HumanMessage(content="ping")], max_tokens=1)
+            logger.debug("LLM reachable: provider=%s model=%s", llm_cfg.provider, llm_cfg.model)
+        except Exception as exc:
+            logger.warning(
+                "LLM provider unreachable at startup: provider=%s model=%s — %s: %s",
+                llm_cfg.provider,
+                llm_cfg.model,
+                type(exc).__name__,
+                exc,
+            )
+            faulty_providers.append(llm_cfg.provider)
+
+    if faulty_providers:
+        logger.critical("LLM connectivity check failed for providers: %s", ", ".join(faulty_providers))
         raise SystemExit(1)
 
 

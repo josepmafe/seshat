@@ -14,10 +14,14 @@ if TYPE_CHECKING:
 
     from seshat.config.settings import SeshatConfig, _LLMConfig
 
+
+_PROVIDERS_WITHOUT_API_KEY = frozenset({LLMProvider.BEDROCK_CONVERSE})
+_PROMPT_CACHING_PROVIDERS = frozenset({LLMProvider.ANTHROPIC})
+
+
 logger = get_logger(__name__)
 
 
-# TODO: add a _ping_llm(llm) startup health check (minimal single-token call) once the app entrypoint exists
 def get_identification_llm(config: SeshatConfig) -> BaseChatModel:
     return _build_llm(config.extraction.identification, config)
 
@@ -30,10 +34,6 @@ def get_grounding_llm(config: SeshatConfig) -> BaseChatModel:
 
 def get_resolution_llm(config: SeshatConfig) -> BaseChatModel:
     return _build_llm(config.extraction.resolution, config)
-
-
-_PROVIDERS_WITHOUT_API_KEY = frozenset({LLMProvider.BEDROCK_CONVERSE})
-_PROMPT_CACHING_PROVIDERS = frozenset({LLMProvider.ANTHROPIC})
 
 
 def _build_llm(llm: _LLMConfig, config: SeshatConfig) -> BaseChatModel:
