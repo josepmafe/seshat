@@ -26,9 +26,7 @@ from seshat.models.api_responses import (
 )
 from seshat.models.enums import (
     ApprovalMethod,
-    ConceptType,
     GraphDirection,
-    IngestionSource,
     NodeState,
     NodeStatus,
     RelationshipType,
@@ -50,25 +48,8 @@ router = APIRouter(prefix="/graph", tags=["graph"], dependencies=[Depends(requir
 )
 async def query_graph(
     state: Annotated[AppState, Depends(get_app_state)],
-    node_type: ConceptType | None = None,
-    team: str | None = None,
-    project: str | None = None,
-    domain: str | None = None,
-    ingestion_source: IngestionSource | None = None,
-    min_confidence: float | None = None,
-    node_state: Annotated[NodeState | None, Query()] = None,
-    node_status: Annotated[NodeStatus | None, Query()] = None,
+    node_filter: Annotated[NodeFilter, Depends()],
 ) -> NodeListResponse:
-    node_filter = NodeFilter(
-        node_type=node_type,
-        team=team,
-        project=project,
-        domain=domain,
-        ingestion_source=ingestion_source,
-        min_confidence=min_confidence,
-        state=node_state,
-        status=node_status,
-    )
     nodes = await state.kb_store.query(node_filter)
     return NodeListResponse(nodes=nodes)
 

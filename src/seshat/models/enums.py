@@ -132,3 +132,9 @@ class UserRole(StrEnum):
         """Return True if this role meets or exceeds minimum."""
         members = list(UserRole)
         return members.index(self) >= members.index(minimum)
+
+
+class HealthStatus(StrEnum):
+    OK = auto()
+    DEGRADED = auto()
+    ERROR = auto()

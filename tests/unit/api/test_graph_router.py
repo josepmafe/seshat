@@ -63,7 +63,7 @@ class TestQueryGraph:
     async def test_passes_status_filter(self, api_client):
         state = _make_app_state()
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.get("/graph?node_status=approved")
+            resp = await ac.get("/graph?status=approved")
         assert resp.status_code == 200
         called_filter = state.kb_store.query.call_args[0][0]
         assert called_filter.status.value == "approved"

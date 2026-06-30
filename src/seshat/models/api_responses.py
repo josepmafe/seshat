@@ -4,8 +4,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, computed_field
 
-from seshat.models.enums import UserRole
+from seshat.models.enums import HealthStatus, UserRole
 from seshat.models.nodes import KBNode
+
+
+class HealthResponse(BaseModel):
+    status: HealthStatus
+    components: dict[str, HealthStatus] | None = None
 
 
 class NodeListResponse(BaseModel):

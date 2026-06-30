@@ -1,26 +1,13 @@
 from __future__ import annotations
 
-from enum import StrEnum, auto
 from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel
 
 from seshat.api.dependencies import get_app_state
 from seshat.api.state import AppState
-
-
-class HealthStatus(StrEnum):
-    OK = auto()
-    DEGRADED = auto()
-    ERROR = auto()
-
-
-class HealthResponse(BaseModel):
-    status: HealthStatus
-    components: dict[str, HealthStatus]
-
+from seshat.models.api_responses import HealthResponse, HealthStatus
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -32,7 +19,7 @@ router = APIRouter(prefix="/health", tags=["health"])
     responses={200: {"description": "API is healthy"}, 503: {"description": "API is degraded"}},
 )
 async def health() -> HealthResponse:
-    return HealthResponse(status=HealthStatus.OK, components={})
+    return HealthResponse(status=HealthStatus.OK)
 
 
 @router.get(
@@ -58,11 +45,8 @@ async def components_health(state: Annotated[AppState, Depends(get_app_state)], 
 
 
 async def _check_postgres(state: AppState) -> HealthStatus:
-    try:
-        await state.ops._pool.fetchval("SELECT 1")
-        return HealthStatus.OK
-    except Exception:
-        return HealthStatus.ERROR
+    postgres_alive = await state.ops.is_alive()
+    return HealthStatus.OK if postgres_alive else HealthStatus.ERROR
 
 
 async def _check_blob_store(state: AppState) -> HealthStatus:

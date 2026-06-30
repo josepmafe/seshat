@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from seshat.api.routers.health import HealthStatus
 from seshat.api.state import AppState
+from seshat.models.api_responses import HealthStatus
 from seshat.models.enums import UserRole
 from tests.unit.api.conftest import make_current_user
 
@@ -16,6 +16,7 @@ def _make_app_state(*, pg_ok: bool = True) -> AppState:
 
     ops = MagicMock()
     ops._pool = pool
+    ops.is_alive = AsyncMock(return_value=pg_ok)
 
     config = MagicMock()
     config.observability.mlflow_tracking_uri = "http://mlflow:5000"

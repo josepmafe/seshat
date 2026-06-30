@@ -196,5 +196,12 @@ class OpsLedger:
 
     # -- Lifecycle -----------------------------------------------------------
 
+    async def is_alive(self) -> bool:
+        try:
+            await self._pool.fetchval("SELECT 1")
+            return True
+        except Exception:
+            return False
+
     async def close(self) -> None:
         await self._pool.close()
