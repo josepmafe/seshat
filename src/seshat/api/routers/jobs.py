@@ -121,7 +121,7 @@ async def submit_job(
     )
 
     await state.blob_store.put(raw_key, file_bytes)
-    await state.queue.enqueue(job_id, state.runner.run, job_id, file_bytes, submission)
+    await state.queue.enqueue(job_id, state.runner.run, job_id, file_bytes, submission, user.user_id)
 
     return JobSubmitResponse(job_id=job_id)
 

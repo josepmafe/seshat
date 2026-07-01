@@ -40,6 +40,13 @@ _S3_ASYNC_RETRY = async_retry(retryable_exceptions=(ClientError,), should_retry=
 logger = get_logger(__name__)
 
 
+class BlobNotFoundError(Exception):
+    def __init__(self, bucket: str, key: str) -> None:
+        super().__init__(f"Blob not found: s3://{bucket}/{key}")
+        self.bucket = bucket
+        self.key = key
+
+
 class S3BlobStore(BlobPathsMixin):
     def __init__(self, config: BlobStoreConfig) -> None:
         self._bucket = config.bucket

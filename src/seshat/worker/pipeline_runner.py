@@ -55,9 +55,11 @@ class PipelineRunner:
     def results(self) -> dict[str, ExtractionResult]:
         return self._results
 
-    async def run(self, job_id: str, file_bytes: bytes, submission: JobSubmissionRequest) -> None:
+    async def run(
+        self, job_id: str, file_bytes: bytes, submission: JobSubmissionRequest, user_id: str | None = None
+    ) -> None:
         """Convenience method: run pre-approval and, if no review needed, post-approval."""
-        identification_result = await self._run_pre_approval(job_id, file_bytes, submission)
+        identification_result = await self._run_pre_approval(job_id, file_bytes, submission, user_id=user_id)
         if identification_result is None:
             return
 
@@ -72,6 +74,7 @@ class PipelineRunner:
         job_id: str,
         file_bytes: bytes,
         submission: JobSubmissionRequest,
+        user_id: str | None = None,
     ) -> IdentificationResult | None:
         """Ingest and identify. Stores result; sets AWAITING_REVIEW. Returns None on failure."""
         try:
@@ -94,7 +97,7 @@ class PipelineRunner:
                 )
 
             await self._ops.update_job_status(job_id, JobStatus.EXTRACTING)
-            identification_result = await self._extraction.run_identification(doc, job_id)
+            identification_result = await self._extraction.run_identification(doc, job_id, user_id=user_id)
 
             if self._effective_auto_mode(submission):
                 identification_result = self._apply_auto_mode(identification_result, datetime.now(UTC))

@@ -9,7 +9,8 @@ from seshat.config.settings import ExtractionConfig
 from seshat.models.enums import ApprovalMethod, ConceptType, IngestionSource, NodeStatus
 from seshat.models.nodes import ConfidenceBreakdown
 from seshat.models.quote_anchor import QuoteAnchor
-from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _deduplicate, _PendingNode
+from seshat.pipeline.extraction.orchestrator import _deduplicate
+from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _PendingNode
 
 TRANSCRIPT = "we will use PostgreSQL for the main database"
 
@@ -99,7 +100,7 @@ class TestDeduplicate:
 
     def test_collision_emits_warning_log(self):
         nodes = [_make_pending("Use PostgreSQL"), _make_pending("Use PostgreSQL")]
-        with patch("seshat.pipeline.extraction.pending_node.logger") as mock_logger:
+        with patch("seshat.pipeline.extraction.orchestrator.logger") as mock_logger:
             _deduplicate(nodes)
         mock_logger.warning.assert_called_once()
 

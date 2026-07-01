@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 from seshat.agents.grounding import GroundingRetryExhaustedError
+from seshat.blob_store.s3_store import BlobNotFoundError
 from seshat.models.api_graph import NodeFilter
 from seshat.models.enums import ConceptType, NodeStatus
 from seshat.models.nodes import (
@@ -18,7 +19,7 @@ from seshat.models.nodes import (
 from seshat.observability.latency_tracker import track_latency_profile
 from seshat.observability.usage_tracker import UsageTracker, track_token_budget
 from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
-from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _deduplicate, _PendingNode, _quote_text
+from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _PendingNode, _quote_text
 from seshat.utils.log import get_logger
 from seshat.utils.tokens import count_tokens
 
@@ -70,9 +71,15 @@ class ExtractionOrchestrator:
         accumulate_to_fn=lambda self: self._job_tracker,
     )
     @track_latency_profile("identification")
-    async def run_identification(self, doc: TranscriptDocument, job_id: str) -> IdentificationResult:
-        transcript = (await self._blob.get(doc.blob_key)).decode()
-        coro = self._run_identification(transcript, doc.blob_key, job_id)
+    async def run_identification(
+        self, doc: TranscriptDocument, job_id: str, user_id: str | None = None
+    ) -> IdentificationResult:
+        raw = await self._blob.get(doc.blob_key)
+        if raw is None:
+            raise BlobNotFoundError(self._blob._bucket, doc.blob_key)
+
+        transcript = raw.decode()
+        coro = self._run_identification(transcript, doc.blob_key, job_id, user_id=user_id)
         if self._config.identification_timeout_seconds is not None:
             return await asyncio.wait_for(coro, self._config.identification_timeout_seconds)
         return await coro
@@ -83,6 +90,7 @@ class ExtractionOrchestrator:
         blob_key: str,
         job_id: str,
         hints: dict[ConceptType, str] | None = None,
+        user_id: str | None = None,
     ) -> IdentificationResult:
         t0 = time.perf_counter()
         logger.info("Starting identification run for blob_key=%s", blob_key)
@@ -91,7 +99,7 @@ class ExtractionOrchestrator:
             hints = await self._fetch_kb_hints()
         pending, failed_concept_types = await self._identification_pass(transcript, blob_key, job_id, hints)
 
-        nodes = await self._score_and_finalize(pending, transcript)
+        nodes = await self._score_and_finalize(pending, transcript, user_id=user_id)
 
         elapsed_ms = round((time.perf_counter() - t0) * 1000)
         logger.info(
@@ -251,7 +259,9 @@ class ExtractionOrchestrator:
         )
         return pending
 
-    async def _score_and_finalize(self, pending: list[_PendingNode], transcript: str) -> list[KBNode]:
+    async def _score_and_finalize(
+        self, pending: list[_PendingNode], transcript: str, user_id: str | None = None
+    ) -> list[KBNode]:
         """Score pending nodes (heuristics + optional grounding gate), assign status, build KBNodes."""
         grounding_enabled = self._grounder is not None
 
@@ -269,7 +279,7 @@ class ExtractionOrchestrator:
                 grounding_passed=pnode.grounding,
                 grounding_enabled=grounding_enabled,
             )
-            pnode.assign_status(self._config)
+            pnode.assign_status(self._config, user_id=user_id)
 
         nodes = [p.build() for p in pending]
         elapsed_ms = round((time.perf_counter() - t0) * 1000)
@@ -299,6 +309,38 @@ class ExtractionOrchestrator:
                     pnode.grounding = grounding_result.supported
 
         await asyncio.gather(*[_ground(pnode) for pnode in pending])
+
+
+def _deduplicate(pending: list[_PendingNode]) -> list[_PendingNode]:
+    # TOCONSIDER: use a more sophisticated deduplication strategy (e.g. fuzzy matching, cosine similarity)
+    by_type: dict[ConceptType, dict[str, _PendingNode]] = {}
+    for pnode in pending:
+        normalised = " ".join(pnode.title.lower().split())
+        bucket = by_type.setdefault(pnode.concept_type, {})
+        if normalised in bucket:
+            existing = bucket[normalised]
+            if (pnode.heuristics, len(pnode.description)) <= (existing.heuristics, len(existing.description)):
+                logger.warning(
+                    "Dedup collision for %s/%r — keeping existing (score %.2f >= incoming %.2f)",
+                    pnode.concept_type.value,
+                    pnode.title,
+                    existing.heuristics,
+                    pnode.heuristics,
+                    extra={"concept_type": pnode.concept_type.value, "title": pnode.title},
+                )
+                continue
+            logger.warning(
+                "Dedup collision for %s/%r — replacing existing (score %.2f) with higher-scoring incoming (%.2f)",
+                pnode.concept_type.value,
+                pnode.title,
+                existing.heuristics,
+                pnode.heuristics,
+                extra={"concept_type": pnode.concept_type.value, "title": pnode.title},
+            )
+
+        bucket[normalised] = pnode
+
+    return [pnode for group in by_type.values() for pnode in group.values()]
 
 
 def _build_relationship(rel: ResolvedRelationship, job_id: str) -> KBRelationship:

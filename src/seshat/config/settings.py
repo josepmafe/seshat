@@ -116,8 +116,15 @@ class ExtractionConfig(BaseConfig):
     grounding: GroundingLLMConfig | None = Field(
         default=None, description="Optional second LLM used to ground extraction results; None disables grounding."
     )
-    confidence_threshold: float = Field(
-        default=0.7, ge=0, le=1, description="Minimum heuristics score required to retain an identified node."
+    confidence_threshold: float | None = Field(
+        default=0.7,
+        ge=0,
+        le=1,
+        description=(
+            "Minimum heuristics score required to auto-approve an identified node. "
+            "None disables threshold auto-approval — all nodes go to PENDING_REVIEW for human review. "
+            "Incompatible with auto_mode=True."
+        ),
     )
     per_type_thresholds: dict[ConceptType, float] | None = Field(
         default=None, description="Optional per-concept-type confidence thresholds that override the global threshold."
@@ -154,7 +161,12 @@ class ExtractionConfig(BaseConfig):
                 "`grounding.provider` must differ from `identification.provider`"
                 f" (both are '{self.identification.provider}')"
             )
+        return self
 
+    @model_validator(mode="after")
+    def check_threshold_auto_mode(self) -> "ExtractionConfig":
+        if self.confidence_threshold is None and self.auto_mode:
+            raise ValueError("`confidence_threshold=None` is incompatible with `auto_mode=True`")
         return self
 
 
