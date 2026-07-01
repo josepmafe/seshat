@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, cast
 from aiobotocore.session import get_session
 from botocore.exceptions import ClientError
 
-from seshat.blob_store.path_mixin import BlobPathsMixin
 from seshat.utils.log import get_logger
 from seshat.utils.retry import async_retry
 
@@ -47,7 +46,7 @@ class BlobNotFoundError(Exception):
         self.key = key
 
 
-class S3BlobStore(BlobPathsMixin):
+class S3BlobStore:
     def __init__(self, config: BlobStoreConfig) -> None:
         self._bucket = config.bucket
         self._region = config.region

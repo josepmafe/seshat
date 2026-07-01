@@ -14,9 +14,9 @@ from seshat.transcription.factory import get_transcriber
 from seshat.vector_store.factory import get_vector_store
 
 if TYPE_CHECKING:
-    from seshat.blob_store.s3_store import S3BlobStore
     from seshat.config.settings import SeshatConfig
-    from seshat.knowledge_store.pg_store import PostgresKBStore
+    from seshat.repositories.blob_repository import BlobRepository
+    from seshat.repositories.node_repository import NodeRepository
     from seshat.vector_store.base_store import AbstractVectorStore
 
 
@@ -30,9 +30,8 @@ def build_vector_store(seshat_config: SeshatConfig) -> AbstractVectorStore:
 
 def build_extraction_orchestrator(
     config: SeshatConfig,
-    kb_store: PostgresKBStore,
-    vector_store: AbstractVectorStore,
-    blob_store: S3BlobStore,
+    node_repo: NodeRepository,
+    blob_repo: BlobRepository,
 ) -> ExtractionOrchestrator:
     identification_llm = get_identification_llm(config)
     resolution_llm = get_resolution_llm(config)
@@ -53,7 +52,7 @@ def build_extraction_orchestrator(
     resolution_registry = ResolutionRegistry(
         llm=resolution_llm, config=config.extraction, review_llm=resolution_review_llm
     )
-    node_retriever = NodeRetriever(rag_config=config.rag, kb_store=kb_store, vector_store=vector_store)
+    node_retriever = NodeRetriever(rag_config=config.rag, node_repo=node_repo)
 
     grounding_agent = None
     if config.extraction.grounding is not None:
@@ -65,13 +64,12 @@ def build_extraction_orchestrator(
         identification_registry=identification_registry,
         resolution_registry=resolution_registry,
         node_retriever=node_retriever,
-        kb_store=kb_store,
-        blob_store=blob_store,
+        node_repo=node_repo,
+        blob_repo=blob_repo,
         grounding_agent=grounding_agent,
     )
 
 
-def build_ingestion_orchestrator(config: SeshatConfig, blob_store: S3BlobStore) -> IngestionOrchestrator:
+def build_ingestion_orchestrator(config: SeshatConfig, blob_repo: BlobRepository) -> IngestionOrchestrator:
     transcriber = get_transcriber(config)
-    ingestion_orch = IngestionOrchestrator(transcriber, blob_store, config.transcription)
-    return ingestion_orch
+    return IngestionOrchestrator(transcriber, blob_repo, config.transcription)

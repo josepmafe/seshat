@@ -11,8 +11,8 @@ from seshat.utils.log import get_logger
 if TYPE_CHECKING:
     from datetime import date
 
-    from seshat.blob_store.s3_store import S3BlobStore
     from seshat.config.settings import TranscriptionConfig
+    from seshat.repositories.blob_repository import BlobRepository
     from seshat.transcription.base import AbstractTranscriber
 
 logger = get_logger(__name__)
@@ -22,11 +22,11 @@ class IngestionOrchestrator:
     def __init__(
         self,
         transcriber: AbstractTranscriber,
-        blob_store: S3BlobStore,
+        blob_repo: BlobRepository,
         transcription_config: TranscriptionConfig,
     ) -> None:
         self._transcription = transcriber
-        self._blob = blob_store
+        self._blob = blob_repo
         self._config = transcription_config
 
     @track_token_budget("ingestion", uncapped=True)
@@ -42,8 +42,8 @@ class IngestionOrchestrator:
 
         transcript_text = await self._transcription.transcribe(audio_bytes, extension=ext)
 
+        await self._blob.put_raw_transcript(meeting_date, job_id, transcript_text.encode())
         transcript_key = self._blob.raw_transcript_key(meeting_date, job_id)
-        await self._blob.put(transcript_key, transcript_text.encode())
         logger.info("Job: uploaded transcript to %s", transcript_key)
 
         return TranscriptDocument(
@@ -66,8 +66,8 @@ class IngestionOrchestrator:
                 f"meeting_date mismatch: submission says {meeting_date}, file says {parsed.meeting_date}"
             )
 
+        await self._blob.put_raw_transcript(meeting_date, job_id, parsed.content.encode())
         transcript_key = self._blob.raw_transcript_key(meeting_date, job_id)
-        await self._blob.put(transcript_key, parsed.content.encode())
         logger.info("Job: uploaded transcript to %s", transcript_key)
 
         metadata = TranscriptMetadata(
