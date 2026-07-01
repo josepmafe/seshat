@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from seshat.blob_store.s3_store import S3BlobStore
     from seshat.config.settings import SeshatConfig
     from seshat.knowledge_store.pg_store import PostgresKBStore
-    from seshat.ops.ledger import OpsLedger
+    from seshat.repositories.ops_repository import OpsRepository
     from seshat.vector_store.base_store import AbstractVectorStore
     from seshat.worker.bootstrap import WorkerContext
     from seshat.worker.manual_ingestion import ManualIngestionService
@@ -21,7 +21,7 @@ class AppState:
     kb_store: PostgresKBStore
     vector_store: AbstractVectorStore
     manual_ingestion: ManualIngestionService
-    ops: OpsLedger
+    ops: OpsRepository
     queue: AsyncioTaskQueue
     runner: PipelineRunner
     blob_store: S3BlobStore

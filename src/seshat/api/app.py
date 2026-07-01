@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from seshat.config.settings import APIConfig, _LLMConfig
-    from seshat.ops.ledger import OpsLedger
+    from seshat.repositories.ops_repository import OpsRepository
 
 
 logger = get_logger(__name__)
@@ -132,7 +132,7 @@ async def _ping_llms(config: SeshatConfig) -> None:
         raise SystemExit(1)
 
 
-async def _check_stranded_jobs(ops: OpsLedger) -> None:
+async def _check_stranded_jobs(ops: OpsRepository) -> None:
     stranded = await ops.get_stranded_writing_jobs()
     for job_id in stranded:
         await ops.fail_job(job_id, JobStatus.WRITING, "Server crash during write", recoverable=True)

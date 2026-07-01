@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from seshat.api.dependencies import get_app_state
 from seshat.api.state import AppState
 from seshat.models.api_responses import ApiKeyResponse, CreateApiKeyRequest, CreateApiKeyResponse
-from seshat.ops.ledger import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
+from seshat.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
 from seshat.secrets.factory import get_secrets_resolver
 from seshat.utils.concurrency import run_in_thread
 

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from seshat.api.routers.admin import _get_root_key
 from seshat.api.state import AppState
-from seshat.ops.ledger import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
+from seshat.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
 
 
 def _make_app_state() -> AppState:
