@@ -15,6 +15,7 @@ from tests.unit.api.conftest import make_current_user
 def _make_app_state(runner_results: dict | None = None, **overrides) -> AppState:
     ops = MagicMock()
     ops.find_job_by_idempotency_key = AsyncMock(return_value=None)
+    ops.find_job_by_content_hash = AsyncMock(return_value=None)
     ops.count_recent_jobs_for_user = AsyncMock(return_value=0)
     ops.count_running_jobs = AsyncMock(return_value=0)
     ops.create_job = AsyncMock()
@@ -39,9 +40,17 @@ def _make_app_state(runner_results: dict | None = None, **overrides) -> AppState
 
     runner = MagicMock()
     runner.results = runner_results if runner_results is not None else {}
+    kb_store = MagicMock()
+    kb_store.paginated_query = AsyncMock(return_value=[])
+    kb_store.delete_node = AsyncMock()
+
+    vector_store = MagicMock()
+    vector_store.delete = AsyncMock()
+
     state = AppState(
         ops=ops,
-        kb_store=MagicMock(),
+        kb_store=kb_store,
+        vector_store=vector_store,
         config=config,
         queue=queue,
         runner=runner,

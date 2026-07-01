@@ -31,6 +31,7 @@ def _make_app_state() -> AppState:
     return AppState(
         ops=MagicMock(),
         kb_store=kb_store,
+        vector_store=MagicMock(),
         config=MagicMock(),
         queue=MagicMock(),
         runner=MagicMock(),

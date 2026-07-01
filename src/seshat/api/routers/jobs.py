@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
@@ -10,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from seshat.api.dependencies import CurrentUser, get_app_state, require_role
 from seshat.api.state import AppState
+from seshat.models.api_graph import NodeFilter
 from seshat.models.api_jobs import ApproveRequest, BulkApproveRule, NodeDecision, RateLimitError
 from seshat.models.api_responses import JobActionResponse, JobSubmitResponse
 from seshat.models.enums import ApprovalMethod, JobStatus, NodeStatus, UserRole
@@ -53,6 +55,7 @@ async def list_jobs(
         400: {"description": "Invalid file (missing extension)"},
         401: {"description": "Missing or invalid API key"},
         403: {"description": "Insufficient role or overrides require operator"},
+        409: {"description": "Content already ingested (use force=true to re-ingest)"},
         429: {"description": "Rate limit exceeded (per-user or global concurrency cap)"},
     },
 )
@@ -87,6 +90,18 @@ async def submit_job(
     if not file.filename or "." not in file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file must have an extension.")
 
+    file_bytes = await file.read()
+    content_hash = hashlib.sha256(file_bytes).hexdigest()
+
+    existing_job_id = await state.ops.find_job_by_content_hash(content_hash)
+    if existing_job_id:
+        if not submission.force:
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={"detail": "Content already ingested", "existing_job_id": existing_job_id},
+            )
+        await _delete_non_approved_nodes(existing_job_id, state)
+
     job_id = str(uuid.uuid4())
     now = datetime.now(UTC)
     meeting_date = submission.metadata.meeting_date
@@ -102,11 +117,10 @@ async def submit_job(
         meeting_date,
         submission_json,
         raw_key,
+        content_hash,
     )
 
-    file_bytes = await file.read()
     await state.blob_store.put(raw_key, file_bytes)
-
     await state.queue.enqueue(job_id, state.runner.run, job_id, file_bytes, submission)
 
     return JobSubmitResponse(job_id=job_id)
@@ -263,6 +277,21 @@ def _apply_bulk_rule(nodes: list[KBNode], rule: BulkApproveRule, user_id: str, n
             node = node._with(status=NodeStatus.APPROVED, metadata=metadata)
         result.append(node)
     return result
+
+
+async def _delete_non_approved_nodes(job_id: str, state: AppState) -> None:
+    """Delete PENDING_REVIEW and REJECTED nodes from a prior job before re-ingestion.
+
+    APPROVED nodes are intentionally left intact — they may be referenced by resolved
+    relationships and have been human-reviewed. This is the safe-delete path for force re-ingest.
+    """
+    node_filter = NodeFilter(job_id=job_id)
+    nodes = await state.kb_store.paginated_query(node_filter)
+    for node in nodes:
+        if node.status in (NodeStatus.PENDING_REVIEW, NodeStatus.REJECTED):
+            node_id = str(node.id)
+            await state.vector_store.delete(node_id)
+            await state.kb_store.delete_node(node_id)
 
 
 def _apply_decisions(nodes: list[KBNode], decisions: list[NodeDecision], user_id: str, now: datetime) -> list[KBNode]:

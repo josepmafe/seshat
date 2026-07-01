@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from seshat.config.settings import SeshatConfig
     from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.ops.ledger import OpsLedger
+    from seshat.vector_store.base_store import AbstractVectorStore
     from seshat.worker.bootstrap import WorkerContext
     from seshat.worker.manual_ingestion import ManualIngestionService
     from seshat.worker.pipeline_runner import PipelineRunner
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 class AppState:
     config: SeshatConfig
     kb_store: PostgresKBStore
+    vector_store: AbstractVectorStore
     manual_ingestion: ManualIngestionService
     ops: OpsLedger
     queue: AsyncioTaskQueue
@@ -35,6 +37,7 @@ class AppState:
         return cls(
             config=config,
             kb_store=ctx.kb_store,
+            vector_store=ctx.vector_store,
             manual_ingestion=ctx.manual_ingestion,
             ops=ctx.ops,
             queue=queue,

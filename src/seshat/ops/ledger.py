@@ -38,11 +38,12 @@ class OpsLedger:
         meeting_date: date,
         submission_json: str,
         raw_blob_key: str,
+        content_hash: str | None = None,
     ) -> None:
         await self._pool.execute(
             "INSERT INTO ops.jobs "
-            "(job_id, user_id, status, idempotency_key, source_type, created_at, updated_at, meeting_date, submission, raw_blob_key) "  # noqa: E501
-            "VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9)",
+            "(job_id, user_id, status, idempotency_key, source_type, created_at, updated_at, meeting_date, submission, raw_blob_key, content_hash) "  # noqa: E501
+            "VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $10)",
             job_id,
             user_id,
             JobStatus.PENDING,
@@ -52,6 +53,7 @@ class OpsLedger:
             meeting_date,
             submission_json,
             raw_blob_key,
+            content_hash,
         )
 
     # -- Jobs: Read -----------------------------------------------------------
@@ -61,6 +63,12 @@ class OpsLedger:
 
     async def find_job_by_idempotency_key(self, key: str) -> asyncpg.Record | None:
         return await self._pool.fetchrow("SELECT job_id, status FROM ops.jobs WHERE idempotency_key=$1", key)
+
+    async def find_job_by_content_hash(self, content_hash: str) -> str | None:
+        return await self._pool.fetchval(
+            "SELECT job_id FROM ops.jobs WHERE content_hash=$1 AND status!='failed' ORDER BY created_at DESC LIMIT 1",
+            content_hash,
+        )
 
     async def list_jobs(
         self,
