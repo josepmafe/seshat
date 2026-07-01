@@ -10,19 +10,15 @@ from langchain_core.messages import HumanMessage
 from seshat.api.routers import admin, graph, health, jobs
 from seshat.api.state import AppState
 from seshat.config.settings import SeshatConfig, get_config
-from seshat.models.enums import JobStatus
 from seshat.observability.mlflow_setup import setup_mlflow
 from seshat.pipeline.llm_factory import _build_llm
 from seshat.utils.log import configure_logging, get_logger, set_job_id
 from seshat.worker.bootstrap import build_worker_context
-from seshat.worker.pipeline_runner import PipelineRunner
-from seshat.worker.queue import AsyncioTaskQueue
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from seshat.config.settings import APIConfig, _LLMConfig
-    from seshat.repositories.ops_repository import OpsRepository
 
 
 logger = get_logger(__name__)
@@ -55,11 +51,17 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     await _ping_llms(config)
 
     async with build_worker_context(config) as ctx:
-        await _check_stranded_jobs(ctx.ops)
+        await ctx.job_service.recover_stranded()
 
-        runner = PipelineRunner.from_context(ctx)
-        queue = AsyncioTaskQueue()
-        app.state.app_state = AppState.from_context(ctx, config, runner, queue)
+        app.state.app_state = AppState(
+            config=config,
+            kb_store=ctx.kb_store,
+            vector_store=ctx.vector_store,
+            manual_ingestion=ctx.manual_ingestion,
+            ops=ctx.ops_repo,
+            job_service=ctx.job_service,
+            blob_store=ctx.blob_store,
+        )
 
         yield
 
@@ -130,10 +132,3 @@ async def _ping_llms(config: SeshatConfig) -> None:
     if faulty_providers:
         logger.critical("LLM connectivity check failed for providers: %s", ", ".join(faulty_providers))
         raise SystemExit(1)
-
-
-async def _check_stranded_jobs(ops: OpsRepository) -> None:
-    stranded = await ops.get_stranded_writing_jobs()
-    for job_id in stranded:
-        await ops.fail_job(job_id, JobStatus.WRITING, "Server crash during write", recoverable=True)
-        logger.warning("Startup recovery: marked stranded job %s as FAILED", job_id)

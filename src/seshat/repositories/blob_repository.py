@@ -20,31 +20,43 @@ class BlobRepository:
     async def close(self) -> None:
         await self._store.close()
 
+    async def put_by_key(self, key: str, data: bytes) -> None:
+        await self._store.put(key, data)
+
+    async def get_by_key(self, key: str) -> bytes | None:
+        return await self._store.get(key)
+
     async def put_raw_input(self, meeting_date: date, job_id: str, extension: str, data: bytes) -> None:
-        await self._store.put(self._raw_input_key(meeting_date, job_id, extension), data)
+        key = self.raw_input_key(meeting_date, job_id, extension)
+        await self.put_by_key(key, data)
 
     async def get_raw_input(self, meeting_date: date, job_id: str, extension: str) -> bytes | None:
-        return await self._store.get(self._raw_input_key(meeting_date, job_id, extension))
+        key = self.raw_input_key(meeting_date, job_id, extension)
+        return await self.get_by_key(key)
 
     async def put_raw_transcript(self, meeting_date: date, job_id: str, data: bytes) -> None:
-        await self._store.put(self.raw_transcript_key(meeting_date, job_id), data)
+        key = self.raw_transcript_key(meeting_date, job_id)
+        await self.put_by_key(key, data)
 
     async def get_raw_transcript(self, meeting_date: date, job_id: str) -> bytes | None:
-        return await self._store.get(self.raw_transcript_key(meeting_date, job_id))
+        key = self.raw_transcript_key(meeting_date, job_id)
+        return await self.get_by_key(key)
 
     async def put_curated_extraction(self, meeting_date: date, job_id: str, data: bytes) -> None:
-        await self._store.put(self._curated_extraction_key(meeting_date, job_id), data)
+        key = self._curated_extraction_key(meeting_date, job_id)
+        await self.put_by_key(key, data)
 
     async def get_curated_extraction(self, meeting_date: date, job_id: str) -> bytes | None:
-        return await self._store.get(self._curated_extraction_key(meeting_date, job_id))
+        key = self._curated_extraction_key(meeting_date, job_id)
+        return await self.get_by_key(key)
+
+    @staticmethod
+    def raw_input_key(meeting_date: date, job_id: str, extension: str) -> str:
+        return f"jobs/{meeting_date.isoformat()}/{job_id}/raw/input.{extension}"
 
     @staticmethod
     def raw_transcript_key(meeting_date: date, job_id: str) -> str:
         return f"jobs/{meeting_date.isoformat()}/{job_id}/raw/transcript.txt"
-
-    @staticmethod
-    def _raw_input_key(meeting_date: date, job_id: str, extension: str) -> str:
-        return f"jobs/{meeting_date.isoformat()}/{job_id}/raw/input.{extension}"
 
     @staticmethod
     def _curated_extraction_key(meeting_date: date, job_id: str) -> str:

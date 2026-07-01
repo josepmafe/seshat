@@ -33,8 +33,7 @@ def _make_app_state() -> AppState:
         kb_store=kb_store,
         vector_store=MagicMock(),
         config=MagicMock(),
-        queue=MagicMock(),
-        runner=MagicMock(),
+        job_service=MagicMock(),
         manual_ingestion=manual_ingestion,
         blob_store=MagicMock(),
     )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from seshat.api.dependencies import CurrentUser, get_app_state, require_role
 from seshat.api.state import AppState
@@ -69,7 +69,7 @@ async def get_node(
 ) -> NodeDetailResponse:
     node = await state.kb_store.get_node(node_id)
     if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
 
     neighbours = await state.kb_store.get_neighbours(node_id, direction=GraphDirection.BOTH)
     active_neighbours = [n for n in neighbours if _both_current(node, n)]
@@ -156,12 +156,15 @@ async def resolve_nodes(
     for node_id in payload.node_ids:
         node = await state.kb_store.get_node(str(node_id))
         if node is None:
-            raise HTTPException(status_code=404, detail=f"Node {node_id} not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Node {node_id} not found")
         nodes.append(node)
 
     not_approved = [str(n.id) for n in nodes if n.status != NodeStatus.APPROVED]
     if not_approved:
-        raise HTTPException(status_code=422, detail=f"Nodes not in APPROVED status: {not_approved}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Nodes not in APPROVED status: {not_approved}",
+        )
 
     job_id = f"manual_resolve_{uuid4()}"
     relationships = await state.manual_ingestion.resolve(nodes, job_id)
@@ -170,7 +173,7 @@ async def resolve_nodes(
 
 @router.post(
     "",
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
     summary="Manually create a node",
     responses={
         201: {"description": "Node created"},
@@ -207,9 +210,9 @@ async def update_node(
     try:
         node = await state.manual_ingestion.update(node_id, payload, user.user_id)
     except NodeNotFoundError:
-        raise HTTPException(status_code=404, detail="Node not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
     except NodePreconditionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
     return node
 
@@ -235,9 +238,9 @@ async def override_node(
     try:
         node = await state.manual_ingestion.override(node_id, payload, user.user_id, minimum_method=minimum_method)
     except NodeNotFoundError:
-        raise HTTPException(status_code=404, detail="Node not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
     except NodePreconditionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
     return node
 
@@ -263,7 +266,7 @@ async def bulk_delete_nodes(
 
 @router.delete(
     "/{node_id}",
-    status_code=204,
+    status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a node",
     responses={
         204: {"description": "Node deleted"},
@@ -281,7 +284,7 @@ async def delete_node(
     try:
         await state.manual_ingestion.delete(node_id, cascade=cascade)
     except NodePreconditionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
 def _both_current(source: KBNode, target: KBNode) -> bool:

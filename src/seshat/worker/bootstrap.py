@@ -12,7 +12,8 @@ from seshat.repositories.blob_repository import BlobRepository
 from seshat.repositories.node_repository import NodeRepository
 from seshat.repositories.ops_repository import OpsRepository
 from seshat.services.graph_service import GraphService
-from seshat.worker.writing_stage import WritingStage
+from seshat.services.job_service import JobService
+from seshat.worker.queue import AsyncioTaskQueue
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -29,7 +30,6 @@ if TYPE_CHECKING:
 class WorkerContext:
     ingestion_orchestrator: IngestionOrchestrator
     extraction_orchestrator: ExtractionOrchestrator
-    writing_stage: WritingStage
     ops_repo: OpsRepository
     kb_store: PostgresKBStore
     vector_store: AbstractVectorStore
@@ -37,6 +37,7 @@ class WorkerContext:
     blob_store: S3BlobStore
     node_repo: NodeRepository
     blob_repo: BlobRepository
+    job_service: JobService
 
 
 @asynccontextmanager
@@ -55,19 +56,29 @@ async def build_worker_context(seshat_config: SeshatConfig) -> AsyncIterator[Wor
         blob_repo = BlobRepository(blob_store)
         ingestion_orchestrator = build_ingestion_orchestrator(seshat_config, blob_repo)
         extraction_orchestrator = build_extraction_orchestrator(seshat_config, node_repo, blob_repo)
-        writing_stage = WritingStage(kb_store, vector_store)
+        ops_repo = OpsRepository(ops_store)
         manual_ingestion = GraphService(node_repo, extraction_orchestrator)
+        queue = AsyncioTaskQueue()
+        job_service = JobService(
+            seshat_config,
+            ops_repo,
+            blob_repo,
+            node_repo,
+            extraction_orchestrator,
+            ingestion_orchestrator,
+            queue,
+        )
         yield WorkerContext(
             ingestion_orchestrator=ingestion_orchestrator,
             extraction_orchestrator=extraction_orchestrator,
-            writing_stage=writing_stage,
             manual_ingestion=manual_ingestion,
             node_repo=node_repo,
             blob_repo=blob_repo,
-            ops_repo=OpsRepository(ops_store),
+            ops_repo=ops_repo,
             kb_store=kb_store,
             vector_store=vector_store,
             blob_store=blob_store,
+            job_service=job_service,
         )
     finally:
         await kb_store.close()

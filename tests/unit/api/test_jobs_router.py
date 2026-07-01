@@ -6,77 +6,55 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from seshat.api.state import AppState
-from seshat.models.enums import JobStatus, NodeStatus, UserRole
+from seshat.models.api_responses import JobActionResponse, JobSubmitResponse
+from seshat.models.enums import JobStatus, UserRole
 from seshat.models.nodes import ExtractionResult
+from seshat.services.job_service import (
+    JobNotFoundError,
+    JobStateError,
+    RateLimitExceededError,
+)
 from tests.helpers import make_node
 from tests.unit.api.conftest import make_current_user
 
 
-def _make_app_state(runner_results: dict | None = None, **overrides) -> AppState:
-    ops = MagicMock()
-    ops.find_job_by_idempotency_key = AsyncMock(return_value=None)
-    ops.find_job_by_content_hash = AsyncMock(return_value=None)
-    ops.count_recent_jobs_for_user = AsyncMock(return_value=0)
-    ops.count_running_jobs = AsyncMock(return_value=0)
-    ops.create_job = AsyncMock()
-    ops.get_job = AsyncMock(return_value=None)
-    ops.update_job_status = AsyncMock()
-    ops.reset_failed_job = AsyncMock()
-    ops.fail_job = AsyncMock()
-    ops.set_job_submission = AsyncMock()
+def _make_app_state(**overrides) -> AppState:
+    job_service = MagicMock()
+    job_service.submit = AsyncMock(return_value=JobSubmitResponse(job_id="job-1"))
+    job_service.get = AsyncMock(return_value=None)
+    job_service.list = AsyncMock(return_value=[])
+    job_service.get_result = AsyncMock(return_value=None)
+    job_service.approve = AsyncMock(return_value=JobActionResponse(status="accepted"))
+    job_service.retry = AsyncMock(return_value=JobActionResponse(status="accepted"))
 
     config = MagicMock()
     config.api.max_jobs_per_user_per_hour = 10
     config.api.max_concurrent_jobs = 5
 
-    queue = MagicMock()
-    queue.enqueue = AsyncMock()
-
-    blob_store = MagicMock()
-    blob_store.put = AsyncMock()
-    blob_store.get = AsyncMock()
-    blob_store.raw_input_key = MagicMock(return_value="raw/key")
-    blob_store.curated_extraction_key = MagicMock(return_value="curated/key")
-
-    runner = MagicMock()
-    runner.results = runner_results if runner_results is not None else {}
-    kb_store = MagicMock()
-    kb_store.paginated_query = AsyncMock(return_value=[])
-    kb_store.delete_node = AsyncMock()
-
-    vector_store = MagicMock()
-    vector_store.delete = AsyncMock()
-
     state = AppState(
-        ops=ops,
-        kb_store=kb_store,
-        vector_store=vector_store,
+        ops=MagicMock(),
+        kb_store=MagicMock(),
+        vector_store=MagicMock(),
         config=config,
-        queue=queue,
-        runner=runner,
+        job_service=job_service,
         manual_ingestion=MagicMock(),
-        blob_store=blob_store,
+        blob_store=MagicMock(),
     )
     for k, v in overrides.items():
         object.__setattr__(state, k, v)
     return state
 
 
-def _make_job_row(status: str = "pending", *, meeting_date=None, submission=None, raw_blob_key=None) -> dict[str, Any]:
+def _make_job_response(status: str = "pending") -> dict[str, Any]:
+    from seshat.models.jobs import JobResponse
+
     now = datetime.now(UTC)
-    return {
-        "job_id": "job-1",
-        "status": status,
-        "idempotency_key": None,
-        "created_at": now,
-        "updated_at": now,
-        "finished_at": None,
-        "error_payload": None,
-        "mlflow_run_id": None,
-        "meeting_date": meeting_date,
-        "submission": submission,
-        "raw_blob_key": raw_blob_key,
-    }
+    return JobResponse(
+        job_id="job-1",
+        status=status,
+        created_at=now,
+        updated_at=now,
+    )
 
 
 class TestSubmitJob:
@@ -94,7 +72,7 @@ class TestSubmitJob:
 
     async def test_idempotency_returns_existing_job(self, api_client):
         state = _make_app_state()
-        state.ops.find_job_by_idempotency_key = AsyncMock(return_value={"job_id": "existing-job", "status": "pending"})
+        state.job_service.submit = AsyncMock(return_value=JobSubmitResponse(job_id="existing-job"))
         body = json.dumps(
             {"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}, "idempotency_key": "key-abc"}
         )
@@ -102,11 +80,10 @@ class TestSubmitJob:
             resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": body})
         assert resp.status_code == 202
         assert resp.json()["job_id"] == "existing-job"
-        state.ops.create_job.assert_not_called()
 
     async def test_rate_limit_per_user(self, api_client):
         state = _make_app_state()
-        state.ops.count_recent_jobs_for_user = AsyncMock(return_value=10)
+        state.job_service.submit = AsyncMock(side_effect=RateLimitExceededError("per_user_hourly_cap"))
         body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": body})
@@ -115,27 +92,18 @@ class TestSubmitJob:
 
     async def test_rate_limit_global_concurrency(self, api_client):
         state = _make_app_state()
-        state.ops.count_running_jobs = AsyncMock(return_value=5)
+        state.job_service.submit = AsyncMock(side_effect=RateLimitExceededError("global_concurrency_cap"))
         body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": body})
         assert resp.status_code == 429
         assert resp.json()["limit_type"] == "global_concurrency_cap"
 
-    async def test_persists_raw_bytes_and_submission(self, api_client):
+    async def test_rejects_file_without_extension(self, api_client):
         state = _make_app_state()
+        state.job_service.submit = AsyncMock(side_effect=ValueError("Uploaded file must have an extension."))
         body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.post("/jobs", files={"file": ("input.yaml", b"data", "text/plain")}, data={"body": body})
-        assert resp.status_code == 202
-        state.blob_store.put.assert_called_once()
-        assert state.blob_store.put.call_args[0][0] == "raw/key"
-        state.ops.create_job.assert_called_once()
-        assert str(state.ops.create_job.call_args[0][5]) == "2026-01-15"
-
-    async def test_rejects_file_without_extension(self, api_client):
-        body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
-        async with api_client(_make_app_state(), make_current_user()) as ac:
             resp = await ac.post("/jobs", files={"file": ("noextension", b"data", "text/plain")}, data={"body": body})
         assert resp.status_code == 400
 
@@ -153,11 +121,20 @@ class TestSubmitJob:
             resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": body})
         assert resp.status_code == 403
 
+    async def test_delegates_to_job_service(self, api_client):
+        state = _make_app_state()
+        body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
+        async with api_client(state, make_current_user()) as ac:
+            await ac.post("/jobs", files={"file": ("input.yaml", b"data", "text/plain")}, data={"body": body})
+        state.job_service.submit.assert_called_once()
+        call_args = state.job_service.submit.call_args
+        assert call_args.args[3] == "alice"
+
 
 class TestListJobs:
     async def test_returns_jobs(self, api_client):
         state = _make_app_state()
-        state.ops.list_jobs = AsyncMock(return_value=[_make_job_row("pending"), _make_job_row("done")])
+        state.job_service.list = AsyncMock(return_value=[_make_job_response("pending"), _make_job_response("done")])
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.get("/jobs")
         assert resp.status_code == 200
@@ -165,11 +142,11 @@ class TestListJobs:
 
     async def test_filters_by_status(self, api_client):
         state = _make_app_state()
-        state.ops.list_jobs = AsyncMock(return_value=[_make_job_row("done")])
+        state.job_service.list = AsyncMock(return_value=[_make_job_response("done")])
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.get("/jobs", params={"job_status": "done"})
         assert resp.status_code == 200
-        state.ops.list_jobs.assert_called_once_with(status=JobStatus.DONE, limit=50, offset=0)
+        state.job_service.list.assert_called_once_with(status=JobStatus.DONE, limit=50, offset=0)
 
 
 class TestGetJob:
@@ -185,28 +162,12 @@ class TestGetJob:
 
     async def test_returns_job_response(self, api_client):
         state = _make_app_state()
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("pending"))
+        state.job_service.get = AsyncMock(return_value=_make_job_response("pending"))
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.get("/jobs/job-1")
         assert resp.status_code == 200
         assert resp.json()["job_id"] == "job-1"
         assert resp.json()["status"] == "pending"
-
-    async def test_deserialises_error_payload(self, api_client):
-        error_payload = json.dumps(
-            {"stage": "pre_approval", "status": "failed", "reason": "boom", "recoverable": True, "usage": {}}
-        )
-        row = _make_job_row("failed")
-        row["error_payload"] = error_payload
-        state = _make_app_state()
-        state.ops.get_job = AsyncMock(return_value=row)
-        async with api_client(state, make_current_user()) as ac:
-            resp = await ac.get("/jobs/job-1")
-        assert resp.status_code == 200
-        error = resp.json()["error"]
-        assert error["stage"] == "pre_approval"
-        assert error["status"] == "failed"
-        assert error["recoverable"] is True
 
 
 class TestGetJobResults:
@@ -217,7 +178,7 @@ class TestGetJobResults:
 
     async def test_results_not_ready(self, api_client):
         state = _make_app_state()
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("pending"))
+        state.job_service.get_result = AsyncMock(side_effect=JobStateError("Results not yet available"))
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.get("/jobs/job-1/results")
         assert resp.status_code == 409
@@ -225,31 +186,22 @@ class TestGetJobResults:
     async def test_returns_result_when_awaiting_review(self, api_client):
         node = make_node()
         result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(runner_results={"job-1": result})
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
+        state = _make_app_state()
+        state.job_service.get_result = AsyncMock(return_value=result)
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.get("/jobs/job-1/results")
         assert resp.status_code == 200
 
-    async def test_falls_back_to_blob_after_restart(self, api_client):
-        from datetime import date
-
-        node = make_node()
-        result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
+    async def test_not_found_when_service_raises(self, api_client):
         state = _make_app_state()
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("done", meeting_date=date(2026, 1, 15)))
-        state.blob_store.get = AsyncMock(return_value=result.model_dump_json().encode())
+        state.job_service.get_result = AsyncMock(side_effect=JobNotFoundError("job-1"))
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.get("/jobs/job-1/results")
-        assert resp.status_code == 200
-        assert resp.json()["job_id"] == "job-1"
+        assert resp.status_code == 404
 
-    async def test_returns_404_when_blob_also_missing(self, api_client):
-        from datetime import date
-
+    async def test_returns_404_when_result_is_none(self, api_client):
         state = _make_app_state()
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("done", meeting_date=date(2026, 1, 15)))
-        state.blob_store.get = AsyncMock(return_value=None)
+        state.job_service.get_result = AsyncMock(return_value=None)
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.get("/jobs/job-1/results")
         assert resp.status_code == 404
@@ -262,100 +214,43 @@ class TestApproveJob:
         assert resp.status_code == 401
 
     async def test_requires_reviewer_or_operator(self, api_client):
-        state = _make_app_state()
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
-        async with api_client(state, make_current_user(role=UserRole.VIEWER)) as ac:
+        async with api_client(_make_app_state(), make_current_user(role=UserRole.VIEWER)) as ac:
             resp = await ac.post("/jobs/job-1/approve", json={"decisions": [{"node_id": "n1", "action": "approve"}]})
         assert resp.status_code == 403
 
     async def test_not_awaiting_review(self, api_client):
         state = _make_app_state()
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("pending"))
+        state.job_service.approve = AsyncMock(side_effect=JobStateError("Job is not awaiting review"))
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post("/jobs/job-1/approve", json={"decisions": [{"node_id": "n1", "action": "approve"}]})
         assert resp.status_code == 409
 
-    def _result_nodes(self, state: AppState) -> dict:
-        return {str(n.id): n for n in state.runner.results["job-1"].nodes}
-
-    async def test_bulk_rule_approves_above_threshold(self, api_client):
-        node = make_node(confidence=0.9, status=NodeStatus.PENDING_REVIEW)
-        result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(runner_results={"job-1": result})
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
+    async def test_not_found(self, api_client):
+        state = _make_app_state()
+        state.job_service.approve = AsyncMock(side_effect=JobNotFoundError("job-1"))
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.post("/jobs/job-1/approve", json={"approve_above_threshold": {"threshold": 0.8}})
-        assert resp.status_code == 200
-        assert self._result_nodes(state)[str(node.id)].status == NodeStatus.APPROVED
+            resp = await ac.post("/jobs/job-1/approve", json={"decisions": [{"node_id": "n1", "action": "approve"}]})
+        assert resp.status_code == 404
 
-    async def test_bulk_rule_skips_excluded_nodes(self, api_client):
-        node = make_node(confidence=0.9, status=NodeStatus.PENDING_REVIEW)
-        result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(runner_results={"job-1": result})
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
+    async def test_returns_accepted(self, api_client):
+        state = _make_app_state()
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post(
                 "/jobs/job-1/approve",
-                json={"approve_above_threshold": {"threshold": 0.8, "exclude": [str(node.id)]}},
+                json={"decisions": [{"node_id": "n1", "action": "approve"}]},
             )
         assert resp.status_code == 200
-        assert self._result_nodes(state)[str(node.id)].status == NodeStatus.PENDING_REVIEW
+        assert resp.json()["status"] == "accepted"
 
-    async def test_individual_decision_approves(self, api_client):
-        node = make_node(status=NodeStatus.PENDING_REVIEW)
-        result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(runner_results={"job-1": result})
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
+    async def test_passes_user_id_to_service(self, api_client):
+        state = _make_app_state()
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.post(
+            await ac.post(
                 "/jobs/job-1/approve",
-                json={"decisions": [{"node_id": str(node.id), "action": "approve"}]},
+                json={"decisions": [{"node_id": "n1", "action": "approve"}]},
             )
-        assert resp.status_code == 200
-        assert self._result_nodes(state)[str(node.id)].status == NodeStatus.APPROVED
-
-    async def test_individual_decision_rejects(self, api_client):
-        node = make_node(status=NodeStatus.PENDING_REVIEW)
-        result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(runner_results={"job-1": result})
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
-        async with api_client(state, make_current_user()) as ac:
-            resp = await ac.post(
-                "/jobs/job-1/approve",
-                json={"decisions": [{"node_id": str(node.id), "action": "reject"}]},
-            )
-        assert resp.status_code == 200
-        assert self._result_nodes(state)[str(node.id)].status == NodeStatus.REJECTED
-
-    async def test_unknown_node_in_decisions_is_ignored(self, api_client):
-        node = make_node(status=NodeStatus.PENDING_REVIEW)
-        result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(runner_results={"job-1": result})
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
-        async with api_client(state, make_current_user()) as ac:
-            resp = await ac.post(
-                "/jobs/job-1/approve",
-                json={"decisions": [{"node_id": "00000000-0000-0000-0000-000000000000", "action": "approve"}]},
-            )
-        assert resp.status_code == 200
-        assert self._result_nodes(state)[str(node.id)].status == NodeStatus.PENDING_REVIEW
-
-    async def test_transitions_job_to_writing_before_enqueue(self, api_client):
-        node = make_node(status=NodeStatus.PENDING_REVIEW)
-        result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
-        state = _make_app_state(runner_results={"job-1": result})
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("awaiting_review"))
-        call_order = []
-        state.ops.update_job_status = AsyncMock(side_effect=lambda *_: call_order.append("status"))
-        state.queue.enqueue = AsyncMock(side_effect=lambda *_: call_order.append("enqueue"))
-        async with api_client(state, make_current_user()) as ac:
-            resp = await ac.post(
-                "/jobs/job-1/approve",
-                json={"decisions": [{"node_id": str(node.id), "action": "approve"}]},
-            )
-        assert resp.status_code == 200
-        assert call_order == ["status", "enqueue"]
-        state.ops.update_job_status.assert_called_once_with("job-1", JobStatus.WRITING)
+        state.job_service.approve.assert_called_once()
+        assert state.job_service.approve.call_args.args[2] == "alice"
 
 
 class TestRetryJob:
@@ -365,39 +260,36 @@ class TestRetryJob:
         assert resp.status_code == 401
 
     async def test_requires_operator(self, api_client):
-        state = _make_app_state()
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("failed"))
-        async with api_client(state, make_current_user(role=UserRole.REVIEWER)) as ac:
+        async with api_client(_make_app_state(), make_current_user(role=UserRole.REVIEWER)) as ac:
             resp = await ac.post("/jobs/job-1/retry")
         assert resp.status_code == 403
 
     async def test_not_failed(self, api_client):
         state = _make_app_state()
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("pending"))
+        state.job_service.retry = AsyncMock(side_effect=JobStateError("Only failed jobs can be retried"))
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post("/jobs/job-1/retry")
         assert resp.status_code == 409
+
+    async def test_not_found(self, api_client):
+        state = _make_app_state()
+        state.job_service.retry = AsyncMock(side_effect=JobNotFoundError("job-1"))
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.post("/jobs/job-1/retry")
+        assert resp.status_code == 404
 
     async def test_no_stored_input_returns_409(self, api_client):
         state = _make_app_state()
-        state.ops.get_job = AsyncMock(return_value=_make_job_row("failed"))
+        state.job_service.retry = AsyncMock(
+            side_effect=JobStateError("Job has no stored input; re-submit via POST /jobs")
+        )
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post("/jobs/job-1/retry")
         assert resp.status_code == 409
-        state.ops.reset_failed_job.assert_not_called()
 
-    async def test_re_enqueues_from_blob(self, api_client):
+    async def test_returns_accepted(self, api_client):
         state = _make_app_state()
-        state.ops.get_job = AsyncMock(
-            return_value=_make_job_row(
-                "failed",
-                raw_blob_key="jobs/2026-01-15/job-1/raw/input.yaml",
-                submission='{"source_type":"text","metadata":{"meeting_date":"2026-01-15"}}',
-            )
-        )
-        state.blob_store.get = AsyncMock(return_value=b"file data")
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post("/jobs/job-1/retry")
         assert resp.status_code == 200
-        state.ops.reset_failed_job.assert_called_once_with("job-1")
-        state.queue.enqueue.assert_called_once()
+        assert resp.json()["status"] == "accepted"

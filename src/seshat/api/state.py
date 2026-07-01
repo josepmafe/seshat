@@ -9,10 +9,8 @@ if TYPE_CHECKING:
     from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.repositories.ops_repository import OpsRepository
     from seshat.services.graph_service import GraphService
+    from seshat.services.job_service import JobService
     from seshat.vector_store.base_store import AbstractVectorStore
-    from seshat.worker.bootstrap import WorkerContext
-    from seshat.worker.pipeline_runner import PipelineRunner
-    from seshat.worker.queue import AsyncioTaskQueue
 
 
 @dataclass
@@ -22,25 +20,5 @@ class AppState:
     vector_store: AbstractVectorStore
     manual_ingestion: GraphService
     ops: OpsRepository
-    queue: AsyncioTaskQueue
-    runner: PipelineRunner
+    job_service: JobService
     blob_store: S3BlobStore
-
-    @classmethod
-    def from_context(
-        cls,
-        ctx: WorkerContext,
-        config: SeshatConfig,
-        runner: PipelineRunner,
-        queue: AsyncioTaskQueue,
-    ) -> AppState:
-        return cls(
-            config=config,
-            kb_store=ctx.kb_store,
-            vector_store=ctx.vector_store,
-            manual_ingestion=ctx.manual_ingestion,
-            ops=ctx.ops,
-            queue=queue,
-            runner=runner,
-            blob_store=ctx.blob_store,
-        )
