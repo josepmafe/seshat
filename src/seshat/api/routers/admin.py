@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import secrets
 from datetime import UTC, datetime
 from typing import Annotated
@@ -13,12 +12,13 @@ from seshat.api.state import AppState
 from seshat.models.api_responses import ApiKeyResponse, CreateApiKeyRequest, CreateApiKeyResponse
 from seshat.ops.ledger import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
 from seshat.secrets.factory import get_secrets_resolver
+from seshat.utils.concurrency import run_in_thread
 
 
 async def _get_root_key(state: Annotated[AppState, Depends(get_app_state)]) -> str:
     resolver = get_secrets_resolver(state.config)
     secret_key = state.config.api.root_api_key_secret_key
-    return await asyncio.to_thread(resolver.get_secret, secret_key)
+    return await run_in_thread(resolver.get_secret, secret_key)
 
 
 async def _require_root_key(
@@ -88,7 +88,7 @@ async def create_api_key(
     state: Annotated[AppState, Depends(get_app_state)],
 ) -> CreateApiKeyResponse:
     plaintext = secrets.token_urlsafe(32)
-    key_hash = await asyncio.to_thread(bcrypt.hashpw, plaintext.encode(), bcrypt.gensalt())
+    key_hash = await run_in_thread(bcrypt.hashpw, plaintext.encode(), bcrypt.gensalt())
 
     await state.ops.create_api_key(key_hash.decode(), body.user_id, body.role, datetime.now(UTC))
 

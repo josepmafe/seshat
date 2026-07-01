@@ -50,7 +50,7 @@ async def read_or_run(
     The cache directory must exist before calling this function.
     """
     # Cache files are small local JSON blobs; the blocking time is negligible compared to
-    # the LLM calls this function wraps, so asyncio.to_thread is not worth the added noise.
+    # the LLM calls this function wraps, so `utils.concurrency.run_in_thread` is not worth the overhead here.
     if cache_fp.exists():  # noqa: ASYNC240
         coro.close()
         logger.debug("Cache hit in %r call: using result from %s", coro.__name__, cache_fp)

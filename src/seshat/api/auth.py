@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import asyncio
-
 import bcrypt
+
+from seshat.utils.concurrency import run_in_thread
 
 
 class AuthenticationError(Exception):
@@ -18,7 +18,7 @@ async def verify_api_key(
     Returns (user_id, role) on success.
     """
     for key_hash, user_id, role in stored_keys:
-        match = await asyncio.to_thread(bcrypt.checkpw, key.encode(), key_hash.encode())
+        match = await run_in_thread(bcrypt.checkpw, key.encode(), key_hash.encode())
         if match:
             return user_id, role
     raise AuthenticationError("Invalid API key")
