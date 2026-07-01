@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-import httpx
 from fastapi import APIRouter, Depends, Response
 
 from seshat.api.dependencies import get_app_state
@@ -29,42 +28,15 @@ async def health() -> HealthResponse:
     responses={200: {"description": "All components healthy"}, 503: {"description": "One or more components degraded"}},
 )
 async def components_health(state: Annotated[AppState, Depends(get_app_state)], response: Response) -> HealthResponse:
-    config = state.config
-
-    postgres = await _check_postgres(state)
-    mlflow = await _check_http(f"{config.observability.mlflow_tracking_uri}/health")
-    blob = await _check_blob_store(state)
-
-    components = {"postgres": postgres, "mlflow": mlflow, "blob_store": blob}
+    svc = state.health_service
+    components = {
+        "postgres": await svc.check_postgres(),
+        "mlflow": await svc.check_mlflow(),
+        "blob_store": await svc.check_blob(),
+    }
     overall = HealthStatus.OK if all(v == HealthStatus.OK for v in components.values()) else HealthStatus.DEGRADED
 
     if overall != HealthStatus.OK:
         response.status_code = 503
 
     return HealthResponse(status=overall, components=components)
-
-
-async def _check_postgres(state: AppState) -> HealthStatus:
-    postgres_alive = await state.ops.is_alive()
-    return HealthStatus.OK if postgres_alive else HealthStatus.ERROR
-
-
-async def _check_blob_store(state: AppState) -> HealthStatus:
-    config = state.config.blob_store
-    if config.endpoint_url:
-        return await _check_http(f"{config.endpoint_url}/_localstack/health")
-
-    try:
-        await state.blob_store.client.head_bucket(Bucket=config.bucket)
-        return HealthStatus.OK
-    except Exception:
-        return HealthStatus.ERROR
-
-
-async def _check_http(url: str) -> HealthStatus:
-    try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            await client.get(url)
-        return HealthStatus.OK
-    except httpx.HTTPError:
-        return HealthStatus.ERROR

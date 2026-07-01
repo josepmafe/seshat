@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from seshat.api.state import AppState
 from seshat.models.api_responses import HealthStatus
@@ -8,52 +8,36 @@ from seshat.models.enums import UserRole
 from tests.unit.api.conftest import make_current_user
 
 
-def _make_app_state(*, pg_ok: bool = True) -> AppState:
-    pool = MagicMock()
-    pool.fetchval = AsyncMock(return_value=1 if pg_ok else None)
-    if not pg_ok:
-        pool.fetchval.side_effect = RuntimeError("connection refused")
-
-    ops = MagicMock()
-    ops._pool = pool
-    ops.is_alive = AsyncMock(return_value=pg_ok)
-
-    config = MagicMock()
-    config.observability.mlflow_tracking_uri = "http://mlflow:5000"
-    config.blob_store.endpoint_url = "http://localstack:4566"
+def _make_app_state(*, pg_ok: bool = True, mlflow_ok: bool = True, blob_ok: bool = True) -> AppState:
+    health_service = MagicMock()
+    health_service.check_postgres = AsyncMock(return_value=HealthStatus.OK if pg_ok else HealthStatus.ERROR)
+    health_service.check_mlflow = AsyncMock(return_value=HealthStatus.OK if mlflow_ok else HealthStatus.ERROR)
+    health_service.check_blob = AsyncMock(return_value=HealthStatus.OK if blob_ok else HealthStatus.ERROR)
 
     return AppState(
-        ops=ops,
-        kb_store=MagicMock(),
-        vector_store=MagicMock(),
-        config=config,
+        config=MagicMock(),
+        admin_service=MagicMock(),
+        health_service=health_service,
+        graph_service=MagicMock(),
         job_service=MagicMock(),
-        manual_ingestion=MagicMock(),
-        blob_store=MagicMock(),
     )
 
 
 class TestHealthEndpoint:
     async def test_all_ok_returns_200(self, api_client):
-        with patch("seshat.api.routers.health._check_http", new=AsyncMock(return_value="ok")):
-            async with api_client(_make_app_state(), make_current_user(role=UserRole.VIEWER)) as ac:
-                resp = await ac.get("/health/components")
+        async with api_client(_make_app_state(), make_current_user(role=UserRole.VIEWER)) as ac:
+            resp = await ac.get("/health/components")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
 
     async def test_postgres_down_returns_503(self, api_client):
-        with patch("seshat.api.routers.health._check_http", new=AsyncMock(return_value="ok")):
-            async with api_client(_make_app_state(pg_ok=False), make_current_user(role=UserRole.VIEWER)) as ac:
-                resp = await ac.get("/health/components")
+        async with api_client(_make_app_state(pg_ok=False), make_current_user(role=UserRole.VIEWER)) as ac:
+            resp = await ac.get("/health/components")
         assert resp.status_code == 503
         assert resp.json()["components"]["postgres"] == "error"
 
     async def test_external_service_down_returns_503(self, api_client):
-        async def _failing(url: str):
-            return HealthStatus.ERROR
-
-        with patch("seshat.api.routers.health._check_http", new=_failing):
-            async with api_client(_make_app_state(), make_current_user(role=UserRole.VIEWER)) as ac:
-                resp = await ac.get("/health/components")
+        async with api_client(_make_app_state(mlflow_ok=False), make_current_user(role=UserRole.VIEWER)) as ac:
+            resp = await ac.get("/health/components")
         assert resp.status_code == 503
         assert resp.json()["status"] == "degraded"

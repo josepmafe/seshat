@@ -5,14 +5,15 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from seshat.models.api_graph import BulkFailure, BulkNodeCreate, BulkNodeDelete, BulkResult
-from seshat.models.enums import ApprovalMethod, IngestionSource, NodeState, NodeStatus
+from seshat.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse
+from seshat.models.enums import ApprovalMethod, GraphDirection, IngestionSource, NodeState, NodeStatus, RelationshipType
 from seshat.models.nodes import KBNode, KBRelationship, NodeMetadata
 from seshat.observability.latency_tracker import track_latency_profile
 from seshat.observability.usage_tracker import UsageTracker, track_token_budget
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from seshat.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
+    from seshat.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeFilter, NodeOverride, RelationshipInput
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
     from seshat.repositories.node_repository import NodeRepository
 
@@ -36,6 +37,50 @@ class GraphService:
         self._repo = node_repo
         self._extraction_orch = extraction_orch
         self._usage_tracker = UsageTracker.uncapped()
+
+    # -- Read methods ----------------------------------------------------------
+
+    async def query(self, node_filter: NodeFilter) -> list[KBNode]:
+        return await self._repo.query(node_filter)
+
+    async def get_node_detail(self, node_id: str) -> NodeDetailResponse:
+        node = await self._repo.get_node(node_id)
+        if node is None:
+            raise NodeNotFoundError(node_id)
+
+        neighbours = await self._repo.get_neighbours(node_id, direction=GraphDirection.BOTH)
+        active_neighbours = [n for n in neighbours if _both_current(node, n)]
+        return NodeDetailResponse(node=node, neighbours=active_neighbours)
+
+    async def traverse_impact(
+        self,
+        node_id: str,
+        depth: int,
+        rel_types: list[RelationshipType] | None,
+        min_confidence: float,
+    ) -> ImpactResponse:
+        visited: dict[str, int] = {}
+        frontier = [node_id]
+
+        for hop in range(1, depth + 1):
+            next_frontier = []
+            for nid in frontier:
+                neighbours = await self._repo.get_neighbours(nid, rel_types=rel_types, direction=GraphDirection.INBOUND)
+                for n in neighbours:
+                    if str(n.id) not in visited and n.confidence >= min_confidence:
+                        visited[str(n.id)] = hop
+                        next_frontier.append(str(n.id))
+            frontier = next_frontier
+
+        impact_nodes: list[ImpactNode] = []
+        for nid, hop in visited.items():
+            n = await self._repo.get_node(nid)
+            if n:
+                impact_nodes.append(ImpactNode(node=n, traversal_depth=hop))
+
+        return ImpactResponse(nodes=impact_nodes)
+
+    # -- Write methods ---------------------------------------------------------
 
     @track_token_budget("manual_node_create", uncapped=True, accumulate_to_fn=lambda self: self._usage_tracker)
     async def create(self, payload: ManualNodeCreate, user_id: str) -> KBNode:
@@ -119,6 +164,22 @@ class GraphService:
 
         return await self._edit(node, payload, user_id)
 
+    async def resolve_by_ids(self, node_ids: list[UUID]) -> int:
+        nodes = []
+        for node_id in node_ids:
+            node = await self._repo.get_node(str(node_id))
+            if node is None:
+                raise NodeNotFoundError(str(node_id))
+            nodes.append(node)
+
+        not_approved = [str(n.id) for n in nodes if n.status != NodeStatus.APPROVED]
+        if not_approved:
+            raise NodePreconditionError(f"Nodes not in APPROVED status: {not_approved}")
+
+        job_id = f"manual_resolve_{uuid4()}"
+        relationships = await self.resolve(nodes, job_id)
+        return len(relationships)
+
     @track_token_budget("manual_node_resolve", uncapped=True, accumulate_to_fn=lambda self: self._usage_tracker)
     @track_latency_profile("manual_node_resolve")
     async def resolve(self, nodes: list[KBNode], job_id: str) -> list[KBRelationship]:
@@ -161,6 +222,10 @@ class GraphService:
         )
 
         return updated_node
+
+
+def _both_current(source: KBNode, target: KBNode) -> bool:
+    return source.state == NodeState.CURRENT and target.state == NodeState.CURRENT
 
 
 def _build_manual_node(job_id: str, payload: ManualNodeCreate, now: datetime, user_id: str) -> KBNode:

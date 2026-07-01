@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 import secrets
-from datetime import UTC, datetime
 from typing import Annotated
 
-import bcrypt
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from seshat.api.dependencies import get_app_state
 from seshat.api.state import AppState
 from seshat.models.api_responses import ApiKeyResponse, CreateApiKeyRequest, CreateApiKeyResponse
-from seshat.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
 from seshat.secrets.factory import get_secrets_resolver
+from seshat.services.admin_service import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
 from seshat.utils.concurrency import run_in_thread
 
 
@@ -46,7 +44,7 @@ router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(_requi
 async def list_api_keys(
     state: Annotated[AppState, Depends(get_app_state)],
 ) -> list[ApiKeyResponse]:
-    rows = await state.ops.list_api_keys()
+    rows = await state.admin_service.list_api_keys()
     return [ApiKeyResponse.model_validate(dict(row)) for row in rows]
 
 
@@ -66,7 +64,7 @@ async def revoke_api_key(
     state: Annotated[AppState, Depends(get_app_state)],
 ) -> None:
     try:
-        await state.ops.revoke_api_key(key_id, datetime.now(UTC))
+        await state.admin_service.revoke_api_key(key_id)
     except ApiKeyNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
     except ApiKeyAlreadyRevokedError:
@@ -87,9 +85,5 @@ async def create_api_key(
     body: CreateApiKeyRequest,
     state: Annotated[AppState, Depends(get_app_state)],
 ) -> CreateApiKeyResponse:
-    plaintext = secrets.token_urlsafe(32)
-    key_hash = await run_in_thread(bcrypt.hashpw, plaintext.encode(), bcrypt.gensalt())
-
-    await state.ops.create_api_key(key_hash.decode(), body.user_id, body.role, datetime.now(UTC))
-
-    return CreateApiKeyResponse(api_key=plaintext, user_id=body.user_id, role=body.role)
+    plaintext, user_id, role = await state.admin_service.create_api_key(body.user_id, body.role)
+    return CreateApiKeyResponse(api_key=plaintext, user_id=user_id, role=role)

@@ -8,12 +8,11 @@ from fastapi import APIRouter, FastAPI
 from langchain_core.messages import HumanMessage
 
 from seshat.api.routers import admin, graph, health, jobs
-from seshat.api.state import AppState
+from seshat.api.state import build_app_state
 from seshat.config.settings import SeshatConfig, get_config
 from seshat.observability.mlflow_setup import setup_mlflow
 from seshat.pipeline.llm_factory import _build_llm
 from seshat.utils.log import configure_logging, get_logger, set_job_id
-from seshat.worker.bootstrap import build_worker_context
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -50,19 +49,9 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     setup_mlflow(config.observability)
     await _ping_llms(config)
 
-    async with build_worker_context(config) as ctx:
-        await ctx.job_service.recover_stranded()
-
-        app.state.app_state = AppState(
-            config=config,
-            kb_store=ctx.kb_store,
-            vector_store=ctx.vector_store,
-            manual_ingestion=ctx.manual_ingestion,
-            ops=ctx.ops_repo,
-            job_service=ctx.job_service,
-            blob_store=ctx.blob_store,
-        )
-
+    async with build_app_state(config) as app_state:
+        await app_state.job_service.recover_stranded()
+        app.state.app_state = app_state
         yield
 
 
@@ -89,12 +78,24 @@ def _check_eval_gate(config: APIConfig) -> None:
 
 async def _ping_llms(config: SeshatConfig) -> None:
     """Verify connectivity to all configured LLM providers. Raises SystemExit(1) on failure."""
-    # TODO: add embedding and transcription pings
     if config.api.skip_llm_ping:
         logger.warning("`skip_llm_ping=True`: LLM ping check bypassed")
         return
 
-    llm_configs: list[_LLMConfig | None] = [
+    # TODO: add embedding and transcription pings
+    faulty_providers: dict[str, list[str]] = {
+        "chat": await _ping_chat_models(config),
+        "embedding": await _ping_embedding_models(config),
+        "transcription": await _ping_transcription_models(config),
+    }
+
+    if any(faulty_providers.values()):
+        logger.critical("LLM connectivity check failed: %s", json.dumps(faulty_providers, indent=2))
+        raise SystemExit(1)
+
+
+async def _ping_chat_models(config: SeshatConfig) -> list[str]:
+    chat_model_configs: list[_LLMConfig | None] = [
         config.extraction.identification,
         config.extraction.identification_self_review.llm,
         config.extraction.grounding,
@@ -105,7 +106,7 @@ async def _ping_llms(config: SeshatConfig) -> None:
 
     seen: set[tuple[str, str | None]] = set()
     faulty_providers: list[str] = []
-    for llm_cfg in llm_configs:
+    for llm_cfg in chat_model_configs:
         if llm_cfg is None:
             continue
 
@@ -129,6 +130,12 @@ async def _ping_llms(config: SeshatConfig) -> None:
             )
             faulty_providers.append(llm_cfg.provider)
 
-    if faulty_providers:
-        logger.critical("LLM connectivity check failed for providers: %s", ", ".join(faulty_providers))
-        raise SystemExit(1)
+    return faulty_providers
+
+
+async def _ping_embedding_models(config: SeshatConfig) -> list[str]:
+    return []  # TODO: implement embedding model ping
+
+
+async def _ping_transcription_models(config: SeshatConfig) -> list[str]:
+    return []  # TODO: implement transcription model ping

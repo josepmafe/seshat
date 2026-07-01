@@ -32,13 +32,11 @@ def _make_app_state(**overrides) -> AppState:
     config.api.max_concurrent_jobs = 5
 
     state = AppState(
-        ops=MagicMock(),
-        kb_store=MagicMock(),
-        vector_store=MagicMock(),
         config=config,
+        admin_service=MagicMock(),
+        health_service=MagicMock(),
+        graph_service=MagicMock(),
         job_service=job_service,
-        manual_ingestion=MagicMock(),
-        blob_store=MagicMock(),
     )
     for k, v in overrides.items():
         object.__setattr__(state, k, v)

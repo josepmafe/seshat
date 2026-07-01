@@ -5,22 +5,21 @@ from unittest.mock import AsyncMock, MagicMock
 
 from seshat.api.routers.admin import _get_root_key
 from seshat.api.state import AppState
-from seshat.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
+from seshat.services.admin_service import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
 
 
 def _make_app_state() -> AppState:
-    ops = MagicMock()
-    ops.create_api_key = AsyncMock()
-    ops.list_api_keys = AsyncMock(return_value=[])
-    ops.revoke_api_key = AsyncMock()
+    admin_service = MagicMock()
+    admin_service.create_api_key = AsyncMock(return_value=("plaintext-key", "alice", "reviewer"))
+    admin_service.list_api_keys = AsyncMock(return_value=[])
+    admin_service.revoke_api_key = AsyncMock()
+
     return AppState(
-        ops=ops,
-        kb_store=MagicMock(),
-        vector_store=MagicMock(),
         config=MagicMock(),
+        admin_service=admin_service,
+        health_service=MagicMock(),
+        graph_service=MagicMock(),
         job_service=MagicMock(),
-        manual_ingestion=MagicMock(),
-        blob_store=MagicMock(),
     )
 
 
@@ -66,13 +65,13 @@ class TestCreateApiKey:
         assert "api_key" in body
         assert body["user_id"] == "alice"
         assert body["role"] == "reviewer"
-        state.ops.create_api_key.assert_called_once()
+        state.admin_service.create_api_key.assert_called_once()
 
 
 class TestListApiKeys:
     async def test_returns_keys_with_is_active(self, app, api_client):
         state = _make_app_state()
-        state.ops.list_api_keys = AsyncMock(return_value=[_make_key_row(1), _make_key_row(2, revoked=True)])
+        state.admin_service.list_api_keys = AsyncMock(return_value=[_make_key_row(1), _make_key_row(2, revoked=True)])
         app.dependency_overrides[_get_root_key] = lambda: "secret"
         async with api_client(state) as ac:
             resp = await ac.get("/admin/api-keys", headers={"X-API-Key": "secret"})
@@ -96,11 +95,11 @@ class TestRevokeApiKey:
         async with api_client(state) as ac:
             resp = await ac.delete("/admin/api-keys/1", headers={"X-API-Key": "secret"})
         assert resp.status_code == 204
-        state.ops.revoke_api_key.assert_called_once()
+        state.admin_service.revoke_api_key.assert_called_once()
 
     async def test_not_found_returns_404(self, app, api_client):
         state = _make_app_state()
-        state.ops.revoke_api_key = AsyncMock(side_effect=ApiKeyNotFoundError(99))
+        state.admin_service.revoke_api_key = AsyncMock(side_effect=ApiKeyNotFoundError(99))
         app.dependency_overrides[_get_root_key] = lambda: "secret"
         async with api_client(state) as ac:
             resp = await ac.delete("/admin/api-keys/99", headers={"X-API-Key": "secret"})
@@ -108,7 +107,7 @@ class TestRevokeApiKey:
 
     async def test_already_revoked_returns_409(self, app, api_client):
         state = _make_app_state()
-        state.ops.revoke_api_key = AsyncMock(side_effect=ApiKeyAlreadyRevokedError(1))
+        state.admin_service.revoke_api_key = AsyncMock(side_effect=ApiKeyAlreadyRevokedError(1))
         app.dependency_overrides[_get_root_key] = lambda: "secret"
         async with api_client(state) as ac:
             resp = await ac.delete("/admin/api-keys/1", headers={"X-API-Key": "secret"})
