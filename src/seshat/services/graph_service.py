@@ -12,12 +12,9 @@ from seshat.observability.usage_tracker import UsageTracker, track_token_budget
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    import asyncpg
-
-    from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
-    from seshat.vector_store.base_store import AbstractVectorStore
+    from seshat.repositories.node_repository import NodeRepository
 
 logger = get_logger(__name__)
 
@@ -30,15 +27,13 @@ class NodePreconditionError(Exception):
     pass
 
 
-class ManualIngestionService:
+class GraphService:
     def __init__(
         self,
-        kb_store: PostgresKBStore,
-        vector_store: AbstractVectorStore,
+        node_repo: NodeRepository,
         extraction_orch: ExtractionOrchestrator,
     ) -> None:
-        self._kb = kb_store
-        self._vs = vector_store
+        self._repo = node_repo
         self._extraction_orch = extraction_orch
         self._usage_tracker = UsageTracker.uncapped()
 
@@ -51,12 +46,8 @@ class ManualIngestionService:
             logger.warning("blob-based quote anchors are not yet implemented — ignoring source_quote")
 
         node = _build_manual_node(job_id, payload, now, user_id)
-        async with self._kb.transaction() as conn:
-            await self._kb.write_node(node, conn=conn)
-            if payload.relationships is not None:
-                await self._write_relationships(node.id, payload.relationships, now, job_id=job_id, conn=conn)
-
-        await self._vs.upsert(str(node.id), node.vector_store_text, node.metadata.model_dump(mode="json"))
+        relationships = _build_relationships(node.id, payload.relationships or [], now, job_id=job_id)
+        await self._repo.write_node(node, relationships=relationships or None)
 
         return node
 
@@ -77,17 +68,13 @@ class ManualIngestionService:
 
     async def delete(self, node_id: str, *, cascade: bool = True) -> None:
         if not cascade:
-            n = await self._kb.count_inbound_relationships(node_id)
+            n = await self._repo.count_inbound_relationships(node_id)
             if n > 0:
                 raise NodePreconditionError(
                     f"Node is referenced as a target by {n} relationships — delete them first or use cascade=true"
                 )
 
-        async with self._kb.transaction() as conn:
-            await self._kb.delete_relationships_for_node(node_id, cascade=cascade, conn=conn)
-            await self._kb.delete_node(node_id, conn=conn)
-
-        await self._vs.delete(node_id)
+        await self._repo.delete_node(node_id, cascade=cascade)
 
     async def bulk_delete(self, payload: BulkNodeDelete, *, cascade: bool = True) -> BulkResult:
         succeeded: list[str] = []
@@ -105,7 +92,7 @@ class ManualIngestionService:
         return BulkResult(succeeded=succeeded, failed=failed)
 
     async def update(self, node_id: str, payload: ManualNodeUpdate, user_id: str) -> KBNode:
-        node = await self._kb.get_node(node_id)
+        node = await self._repo.get_node(node_id)
         if node is None:
             raise NodeNotFoundError(node_id)
 
@@ -123,7 +110,7 @@ class ManualIngestionService:
         user_id: str,
         minimum_method: ApprovalMethod | None,
     ) -> KBNode:
-        node = await self._kb.get_node(node_id)
+        node = await self._repo.get_node(node_id)
         if node is None:
             raise NodeNotFoundError(node_id)
 
@@ -138,9 +125,8 @@ class ManualIngestionService:
         """Run resolution for the given approved nodes and persist the resulting relationships."""
         result = await self._extraction_orch.run_resolution(job_id=job_id, approved=nodes)
 
-        async with self._kb.transaction() as conn:
-            for rel in result.relationships:
-                await self._kb.write_relationship(rel, conn=conn)
+        for rel in result.relationships:
+            await self._repo.write_relationship(rel)
 
         return result.relationships
 
@@ -166,36 +152,15 @@ class ManualIngestionService:
             metadata=node.metadata._with(**meta_updates),
         )
 
-        async with self._kb.transaction() as conn:
-            await self._kb.update_node(updated_node, conn=conn)
-            if payload.relationships is not None:
-                await self._kb.delete_relationships_for_node(str(node.id), cascade=False, conn=conn)
-                await self._write_relationships(node.id, payload.relationships, now, job_id=job_id, conn=conn)
-
-        await self._vs.upsert(
-            str(updated_node.id), updated_node.vector_store_text, updated_node.metadata.model_dump(mode="json")
+        relationships = _build_relationships(node.id, payload.relationships or [], now, job_id=job_id)
+        replace_rels = payload.relationships is not None
+        await self._repo.update_node(
+            updated_node,
+            relationships=relationships or None,
+            replace_outbound_rels=replace_rels,
         )
 
         return updated_node
-
-    async def _write_relationships(
-        self,
-        source_id: UUID,
-        relationships: list[RelationshipInput],
-        now: datetime,
-        *,
-        job_id: str,
-        conn: asyncpg.Connection | asyncpg.pool.PoolConnectionProxy,
-    ) -> None:
-        for r in relationships:
-            rel = KBRelationship(
-                source_id=source_id,
-                target_id=UUID(r.target_id),
-                rel_type=r.rel_type,
-                job_id=job_id,
-                created_at=now,
-            )
-            await self._kb.write_relationship(rel, conn=conn)
 
 
 def _build_manual_node(job_id: str, payload: ManualNodeCreate, now: datetime, user_id: str) -> KBNode:
@@ -224,3 +189,22 @@ def _build_manual_node(job_id: str, payload: ManualNodeCreate, now: datetime, us
         state=NodeState.CURRENT,
         metadata=metadata,
     )
+
+
+def _build_relationships(
+    source_id: UUID,
+    relationships: list[RelationshipInput],
+    now: datetime,
+    *,
+    job_id: str,
+) -> list[KBRelationship]:
+    return [
+        KBRelationship(
+            source_id=source_id,
+            target_id=UUID(r.target_id),
+            rel_type=r.rel_type,
+            job_id=job_id,
+            created_at=now,
+        )
+        for r in relationships
+    ]

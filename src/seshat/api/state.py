@@ -8,9 +8,9 @@ if TYPE_CHECKING:
     from seshat.config.settings import SeshatConfig
     from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.repositories.ops_repository import OpsRepository
+    from seshat.services.graph_service import GraphService
     from seshat.vector_store.base_store import AbstractVectorStore
     from seshat.worker.bootstrap import WorkerContext
-    from seshat.worker.manual_ingestion import ManualIngestionService
     from seshat.worker.pipeline_runner import PipelineRunner
     from seshat.worker.queue import AsyncioTaskQueue
 
@@ -20,7 +20,7 @@ class AppState:
     config: SeshatConfig
     kb_store: PostgresKBStore
     vector_store: AbstractVectorStore
-    manual_ingestion: ManualIngestionService
+    manual_ingestion: GraphService
     ops: OpsRepository
     queue: AsyncioTaskQueue
     runner: PipelineRunner

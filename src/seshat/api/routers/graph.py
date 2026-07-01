@@ -33,7 +33,7 @@ from seshat.models.enums import (
     UserRole,
 )
 from seshat.models.nodes import KBNode
-from seshat.worker.manual_ingestion import NodeNotFoundError, NodePreconditionError
+from seshat.services.graph_service import NodeNotFoundError, NodePreconditionError
 
 router = APIRouter(prefix="/graph", tags=["graph"], dependencies=[Depends(require_role(UserRole.VIEWER))])
 

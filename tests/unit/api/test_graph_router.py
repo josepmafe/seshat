@@ -8,7 +8,7 @@ from seshat.api.state import AppState
 from seshat.models.api_graph import BulkFailure, BulkResult
 from seshat.models.enums import ApprovalMethod, NodeState, NodeStatus, RelationshipType, UserRole
 from seshat.models.nodes import KBRelationship
-from seshat.worker.manual_ingestion import NodeNotFoundError, NodePreconditionError
+from seshat.services.graph_service import NodeNotFoundError, NodePreconditionError
 from tests.helpers import make_node
 from tests.unit.api.conftest import make_current_user
 

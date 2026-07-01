@@ -11,7 +11,7 @@ from seshat.pipeline.bootstrap import build_extraction_orchestrator, build_inges
 from seshat.repositories.blob_repository import BlobRepository
 from seshat.repositories.node_repository import NodeRepository
 from seshat.repositories.ops_repository import OpsRepository
-from seshat.worker.manual_ingestion import ManualIngestionService
+from seshat.services.graph_service import GraphService
 from seshat.worker.writing_stage import WritingStage
 
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ class WorkerContext:
     ops_repo: OpsRepository
     kb_store: PostgresKBStore
     vector_store: AbstractVectorStore
-    manual_ingestion: ManualIngestionService
+    manual_ingestion: GraphService
     blob_store: S3BlobStore
     node_repo: NodeRepository
     blob_repo: BlobRepository
@@ -56,7 +56,7 @@ async def build_worker_context(seshat_config: SeshatConfig) -> AsyncIterator[Wor
         ingestion_orchestrator = build_ingestion_orchestrator(seshat_config, blob_repo)
         extraction_orchestrator = build_extraction_orchestrator(seshat_config, node_repo, blob_repo)
         writing_stage = WritingStage(kb_store, vector_store)
-        manual_ingestion = ManualIngestionService(kb_store, vector_store, extraction_orchestrator)
+        manual_ingestion = GraphService(node_repo, extraction_orchestrator)
         yield WorkerContext(
             ingestion_orchestrator=ingestion_orchestrator,
             extraction_orchestrator=extraction_orchestrator,

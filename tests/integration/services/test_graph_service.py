@@ -16,7 +16,8 @@ from seshat.models.enums import (
     RelationshipType,
 )
 from seshat.models.nodes import NodeMetadata
-from seshat.worker.manual_ingestion import ManualIngestionService, NodeNotFoundError, NodePreconditionError
+from seshat.repositories.node_repository import NodeRepository
+from seshat.services.graph_service import GraphService, NodeNotFoundError, NodePreconditionError
 from tests.helpers import make_node
 from tests.integration.conftest import SKIP_IF_NO_POSTGRES
 from tests.integration.helpers import make_relationship
@@ -51,7 +52,8 @@ def fake_extraction_orch():
 
 @pytest.fixture
 def svc(kb_store, fake_vector_store, fake_extraction_orch):
-    return ManualIngestionService(kb_store, fake_vector_store, fake_extraction_orch)
+    node_repo = NodeRepository(kb_store, fake_vector_store)
+    return GraphService(node_repo, fake_extraction_orch)
 
 
 def _create_payload(
@@ -208,7 +210,6 @@ class TestDeleteIntegration:
         await svc.delete(str(node.id), cascade=True)
 
         assert await kb_store.get_node(str(node.id)) is None
-        # verify the inbound relationship row (other → node) was also removed
         assert await kb_store.get_neighbours(str(other.id), direction=GraphDirection.OUTBOUND) == []
 
     async def test_safe_delete_succeeds_when_no_inbound(self, svc, kb_store):
