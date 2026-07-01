@@ -20,6 +20,7 @@ from seshat.observability.latency_tracker import track_latency_profile
 from seshat.observability.usage_tracker import UsageTracker, track_token_budget
 from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
 from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _PendingNode, _quote_text
+from seshat.repositories.blob_repository import BlobRepository
 from seshat.utils.log import get_logger
 from seshat.utils.tokens import count_tokens
 
@@ -30,11 +31,10 @@ if TYPE_CHECKING:
     from seshat.agents.identification.registry import IdentificationAgentRegistry
     from seshat.agents.resolution.base import ResolvedRelationship
     from seshat.agents.resolution.registry import ResolutionRegistry
-    from seshat.blob_store.s3_store import S3BlobStore
     from seshat.config.settings import ExtractionConfig
-    from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.models.transcript import TranscriptDocument
     from seshat.pipeline.extraction.node_retriever import NodeRetriever
+    from seshat.repositories.node_repository import NodeRepository
 
 logger = get_logger(__name__)
 
@@ -46,16 +46,16 @@ class ExtractionOrchestrator:
         identification_registry: IdentificationAgentRegistry,
         resolution_registry: ResolutionRegistry,
         node_retriever: NodeRetriever,
-        kb_store: PostgresKBStore,
-        blob_store: S3BlobStore,
+        node_repo: NodeRepository,
+        blob_repo: BlobRepository,
         grounding_agent: GroundingAgent | None = None,
     ) -> None:
         self._config = config
         self._identification_registry = identification_registry
         self._resolution_registry = resolution_registry
         self._retriever = node_retriever
-        self._kb = kb_store
-        self._blob = blob_store
+        self._repo = node_repo
+        self._blob = blob_repo
         self._grounder = grounding_agent
         self._heuristics_scorer = HeuristicsScorer()
         self._job_tracker = UsageTracker.uncapped()
@@ -74,9 +74,9 @@ class ExtractionOrchestrator:
     async def run_identification(
         self, doc: TranscriptDocument, job_id: str, user_id: str | None = None
     ) -> IdentificationResult:
-        raw = await self._blob.get(doc.blob_key)
+        raw = await self._blob.get_raw_transcript(doc.metadata.meeting_date, job_id)
         if raw is None:
-            raise BlobNotFoundError(self._blob._bucket, doc.blob_key)
+            raise BlobNotFoundError("", BlobRepository.raw_transcript_key(doc.metadata.meeting_date, job_id))
 
         transcript = raw.decode()
         coro = self._run_identification(transcript, doc.blob_key, job_id, user_id=user_id)
@@ -131,7 +131,7 @@ class ExtractionOrchestrator:
     @track_latency_profile("resolution")
     async def run_resolution(self, job_id: str, *, approved: list[KBNode] | None = None) -> ResolutionResult:
         if approved is None:
-            approved = await self._kb.paginated_query(NodeFilter(job_id=job_id, status=NodeStatus.APPROVED))
+            approved = await self._repo.paginated_query(NodeFilter(job_id=job_id, status=NodeStatus.APPROVED))
 
         logger.info("Resolution run: %d approved nodes", len(approved))
 
@@ -192,7 +192,7 @@ class ExtractionOrchestrator:
 
     async def _fetch_kb_hints(self) -> dict[ConceptType, str]:
         async def _hint_for(concept_type: ConceptType) -> tuple[ConceptType, str]:
-            recent = await self._kb.paginated_query(
+            recent = await self._repo.paginated_query(
                 NodeFilter(node_type=concept_type, limit=self._config.max_hint_nodes)
             )
             recent.sort(key=lambda n: n.metadata.meeting_date or date.min, reverse=True)

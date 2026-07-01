@@ -52,19 +52,19 @@ def _make_orchestrator(
     node_retriever.retrieve = AsyncMock(return_value=targets or [])
     node_retriever.max_concurrent_retrievals = 10
 
-    kb_store = MagicMock()
-    kb_store.paginated_query = AsyncMock(return_value=kb_approved_nodes or [])
+    node_repo = MagicMock()
+    node_repo.paginated_query = AsyncMock(return_value=kb_approved_nodes or [])
 
-    blob_store = MagicMock()
-    blob_store.get = AsyncMock(return_value=TRANSCRIPT.encode())
+    blob_repo = MagicMock()
+    blob_repo.get_raw_transcript = AsyncMock(return_value=TRANSCRIPT.encode())
 
     return ExtractionOrchestrator(
         config=config,
         identification_registry=extraction_registry,
         resolution_registry=resolution_registry,
         node_retriever=node_retriever,
-        kb_store=kb_store,
-        blob_store=blob_store,
+        node_repo=node_repo,
+        blob_repo=blob_repo,
         grounding_agent=grounder,
     )
 
@@ -306,7 +306,7 @@ class TestExtractionOrchestrator:
 
     async def test_run_resolution_with_no_approved_nodes_returns_empty(self):
         orchestrator = _make_orchestrator()
-        orchestrator._kb.paginated_query = AsyncMock(return_value=[])
+        orchestrator._repo.paginated_query = AsyncMock(return_value=[])
 
         result = await orchestrator.run_resolution(job_id="job-1")
 
@@ -365,7 +365,7 @@ class TestKbHintIsolation:
             TRANSCRIPT, "blob-key", ConceptType.DECISION, "job-1", kb_hint="prebuilt hint"
         )
 
-        orchestrator._kb.paginated_query.assert_not_called()
+        orchestrator._repo.paginated_query.assert_not_called()
         args, _ = agent.identify.call_args
         assert args[1] == "prebuilt hint"
 
@@ -390,7 +390,7 @@ class TestKbHintIsolation:
             extraction_registry=registry,
             concept_types=[ConceptType.DECISION, ConceptType.RISK],
         )
-        orchestrator._kb.paginated_query = tracking_query
+        orchestrator._repo.paginated_query = tracking_query
 
         await orchestrator.run_identification(make_doc(), job_id="job-1")
 

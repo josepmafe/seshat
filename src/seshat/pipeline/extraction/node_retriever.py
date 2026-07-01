@@ -10,10 +10,9 @@ from seshat.utils.tokens import count_tokens
 
 if TYPE_CHECKING:
     from seshat.config.settings import RAGConfig
-    from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.models.api_graph import SearchResult
     from seshat.models.nodes import KBNode
-    from seshat.vector_store.base_store import AbstractVectorStore
+    from seshat.repositories.node_repository import NodeRepository
 
 logger = get_logger(__name__)
 
@@ -26,13 +25,11 @@ class NodeRetriever:
     def __init__(
         self,
         rag_config: RAGConfig,
-        kb_store: PostgresKBStore,
-        vector_store: AbstractVectorStore,
+        node_repo: NodeRepository,
         reranker: Reranker | None = None,
     ) -> None:
         self._config = rag_config
-        self._kb = kb_store
-        self._vs = vector_store
+        self._repo = node_repo
         self._reranker = reranker
 
     @property
@@ -100,7 +97,7 @@ class NodeRetriever:
             if len(seen) >= self.node_retrieval_cap or budget.exhausted:
                 break
 
-            kb_node = await self._kb.get_node(result.node_id)
+            kb_node = await self._repo.get_node(result.node_id)
             if kb_node is None:
                 logger.warning("Node id=%s found in vector search but missing from KB store", result.node_id)
                 continue
@@ -125,7 +122,7 @@ class NodeRetriever:
             if result.node_id not in seen:
                 continue
 
-            neighbours = await self._kb.get_neighbours(
+            neighbours = await self._repo.get_neighbours(
                 result.node_id, rel_types=self._config.traversal_rel_types, direction=GraphDirection.BOTH
             )
             for neighbour in neighbours:
@@ -151,7 +148,7 @@ class NodeRetriever:
     async def _vector_search(
         self, query: str, node_filter: NodeFilter, *, exclude_job_id: str | None
     ) -> list[SearchResult]:
-        return await self._vs.search(
+        return await self._repo.search(
             query,
             top_k=self._config.top_k,
             node_filter=node_filter,

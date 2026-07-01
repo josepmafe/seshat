@@ -28,14 +28,14 @@ def _make_retriever(
         rag_kwargs["search_mode"] = search_mode
     rag_config = RAGConfig(**rag_kwargs)
 
-    vector_store = MagicMock()
-    vector_store.search = AsyncMock(return_value=search_results or [])
+    node_repo = MagicMock()
+    node_repo.search = AsyncMock(return_value=search_results or [])
+    node_repo.get_node = AsyncMock(
+        side_effect=lambda nid: next((n for n in (kb_nodes or []) if str(n.id) == nid), None)
+    )
+    node_repo.get_neighbours = AsyncMock(return_value=neighbour_nodes or [])
 
-    kb_store = MagicMock()
-    kb_store.get_node = AsyncMock(side_effect=lambda nid: next((n for n in (kb_nodes or []) if str(n.id) == nid), None))
-    kb_store.get_neighbours = AsyncMock(return_value=neighbour_nodes or [])
-
-    return NodeRetriever(rag_config=rag_config, kb_store=kb_store, vector_store=vector_store, reranker=reranker)
+    return NodeRetriever(rag_config=rag_config, node_repo=node_repo, reranker=reranker)
 
 
 class TestNodeRetriever:
@@ -77,7 +77,7 @@ class TestNodeRetriever:
 
         await retriever.retrieve(source, node_filter=override)
 
-        call_kwargs = retriever._vs.search.call_args.kwargs
+        call_kwargs = retriever._repo.search.call_args.kwargs
         node_filter: NodeFilter = call_kwargs["node_filter"]
         assert node_filter.status == NodeStatus.PENDING_REVIEW
 
@@ -98,7 +98,7 @@ class TestNodeRetriever:
 
         await retriever.retrieve(source, exclude_job_id="job-42")
 
-        call_kwargs = retriever._vs.search.call_args.kwargs
+        call_kwargs = retriever._repo.search.call_args.kwargs
         assert call_kwargs["exclude_job_id"] == "job-42"
 
     async def test_fetch_loop_stops_at_cap_without_fetching_remaining_results(self):
@@ -109,7 +109,7 @@ class TestNodeRetriever:
 
         await retriever.retrieve(make_node("n1"))
 
-        assert retriever._kb.get_node.call_count == 2
+        assert retriever._repo.get_node.call_count == 2
 
     async def test_token_budget_stops_fetch_before_top_k_cap(self):
         # each node costs ~9 tokens (title + description); budget of 18 allows 2 nodes
@@ -126,7 +126,7 @@ class TestNodeRetriever:
         result = await retriever.retrieve(make_node("n1"))
 
         assert len(result) == 2
-        assert retriever._kb.get_node.call_count == 2
+        assert retriever._repo.get_node.call_count == 2
 
     async def test_cap_limits_neighbour_expansion(self):
         # top_k=1 → cap=2; one vector hit plus three neighbours — only 2 total should be kept
@@ -159,7 +159,7 @@ class TestNodeRetriever:
 
         await retriever.retrieve(source, node_filter=override_filter)
 
-        call_kwargs = retriever._vs.search.call_args.kwargs
+        call_kwargs = retriever._repo.search.call_args.kwargs
         node_filter = call_kwargs["node_filter"]
         assert node_filter.node_type == expected_type
 
@@ -227,7 +227,7 @@ class TestNodeRetriever:
 
         await retriever.retrieve(make_node("n1"))
 
-        assert retriever._kb.get_neighbours.call_count == 0
+        assert retriever._repo.get_neighbours.call_count == 0
 
     async def test_no_duplicates_in_result(self):
         candidate = make_node("n2", title="Use Redis")
@@ -249,7 +249,7 @@ class TestNodeRetriever:
 
         retriever = _make_retriever(search_mode=SearchMode.HYBRID)
         await retriever.retrieve(make_node("n1"))
-        call_kwargs = retriever._vs.search.call_args.kwargs
+        call_kwargs = retriever._repo.search.call_args.kwargs
         assert call_kwargs["mode"] == SearchMode.HYBRID
 
     async def test_search_mode_defaults_semantic(self):
@@ -257,7 +257,7 @@ class TestNodeRetriever:
 
         retriever = _make_retriever()
         await retriever.retrieve(make_node("n1"))
-        call_kwargs = retriever._vs.search.call_args.kwargs
+        call_kwargs = retriever._repo.search.call_args.kwargs
         assert call_kwargs["mode"] == SearchMode.SEMANTIC
 
     async def test_reranker_called_with_query_and_results(self):
