@@ -127,3 +127,32 @@ class TestOpsRepository:
         repo._store.set_job_submission.assert_called_once_with(
             "job-1", meeting_date, '{"source_type": "audio"}', "raw/key.yaml"
         )
+
+    async def test_find_job_by_content_hash_hit(self):
+        repo = _make_repo(find_job_by_content_hash="job-1")
+        result = await repo.find_job_by_content_hash("sha256abc")
+        assert result == "job-1"
+
+    async def test_find_job_by_content_hash_miss(self):
+        repo = _make_repo(find_job_by_content_hash=None)
+        result = await repo.find_job_by_content_hash("sha256abc")
+        assert result is None
+
+    async def test_find_job_by_idempotency_key_hit(self):
+        row = {"job_id": "job-1", "status": "done"}
+        repo = _make_repo(find_job_by_idempotency_key=row)
+        result = await repo.find_job_by_idempotency_key("key-abc")
+        assert result == row
+
+    async def test_find_job_by_idempotency_key_miss(self):
+        repo = _make_repo(find_job_by_idempotency_key=None)
+        result = await repo.find_job_by_idempotency_key("key-abc")
+        assert result is None
+
+    async def test_is_alive_true(self):
+        repo = _make_repo(is_alive=True)
+        assert await repo.is_alive() is True
+
+    async def test_is_alive_false(self):
+        repo = _make_repo(is_alive=False)
+        assert await repo.is_alive() is False

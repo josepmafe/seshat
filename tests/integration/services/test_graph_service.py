@@ -232,3 +232,29 @@ class TestDeleteIntegration:
         node = await svc.create(_create_payload(), user_id="alice")
         await svc.delete(str(node.id), cascade=True)
         fake_vector_store.delete.assert_called_once_with(str(node.id))
+
+    async def test_delete_superseding_node_reverts_target_to_current(self, svc, kb_store):
+        """Deleting the only superseding node must revert the target back to CURRENT."""
+        from seshat.models.enums import NodeState
+
+        target = make_node("revert-target")
+        await kb_store.write_node(target)
+
+        superseder = await svc.create(
+            _create_payload(
+                relationships=[RelationshipInput(target_id=str(target.id), rel_type=RelationshipType.SUPERSEDES)]
+            ),
+            user_id="alice",
+        )
+
+        # Manually set target to SUPERSEDED (as the pipeline would)
+        await kb_store.update_node_state(str(target.id), NodeState.SUPERSEDED)
+        fetched_before = await kb_store.get_node(str(target.id))
+        assert fetched_before is not None
+        assert fetched_before.state == NodeState.SUPERSEDED
+
+        await svc.delete(str(superseder.id), cascade=True)
+
+        fetched_after = await kb_store.get_node(str(target.id))
+        assert fetched_after is not None
+        assert fetched_after.state == NodeState.CURRENT

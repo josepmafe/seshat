@@ -54,3 +54,34 @@ class TestCreateJob:
                 "audio",
                 datetime.now(UTC),
             )
+
+
+class TestUpdateJobStatus:
+    async def test_status_transitions(self, repo: OpsRepository):
+        meeting_date = date(2026, 6, 1)
+        submission = '{"source_type": "text", "metadata": {"meeting_date": "2026-06-01"}}'
+        raw_key = "jobs/2026-06-01/job-2/raw/input.txt"
+
+        from seshat.models.enums import JobStatus
+
+        await repo.create_job("job-2", "user-1", "text", None, datetime.now(UTC), meeting_date, submission, raw_key)
+        await repo.update_job_status("job-2", JobStatus.EXTRACTING)
+
+        row = await repo.get_job("job-2")
+        assert row is not None
+        assert row["status"] == "extracting"
+
+
+class TestFailJob:
+    async def test_fail_job_sets_status_and_error(self, repo: OpsRepository):
+        meeting_date = date(2026, 6, 1)
+        submission = '{"source_type": "text", "metadata": {"meeting_date": "2026-06-01"}}'
+        raw_key = "jobs/2026-06-01/job-3/raw/input.txt"
+
+        await repo.create_job("job-3", "user-1", "text", None, datetime.now(UTC), meeting_date, submission, raw_key)
+        await repo.fail_job("job-3", "pipeline", "something broke", recoverable=True)
+
+        row = await repo.get_job("job-3")
+        assert row is not None
+        assert row["status"] == "failed"
+        assert row["error_payload"] is not None

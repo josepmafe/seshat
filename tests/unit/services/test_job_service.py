@@ -1,16 +1,23 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 
-from seshat.models.enums import JobStatus, NodeStatus
+from seshat.models.api_jobs import BulkApproveRule, NodeDecision
+from seshat.models.enums import ApprovalMethod, JobStatus, NodeStatus
 from seshat.models.nodes import ExtractionResult, IdentificationResult, ResolutionResult
 from seshat.services.job_service import (
+    ContentAlreadyIngestedError,
     JobNotFoundError,
     JobService,
     JobStateError,
+    RateLimitExceededError,
+    _apply_auto_mode,
+    _apply_bulk_rule,
+    _apply_decisions,
 )
 from tests.helpers import make_node
 
@@ -232,3 +239,313 @@ class TestRecoverStranded:
         assert svc._ops.fail_job.call_count == 2
         svc._ops.fail_job.assert_any_call("job-a", JobStatus.WRITING, "Server crash during write", recoverable=True)
         svc._ops.fail_job.assert_any_call("job-b", JobStatus.WRITING, "Server crash during write", recoverable=True)
+
+
+_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+_NODE_UUID = UUID("00000000-0000-0000-0000-000000000001")
+
+
+class TestApplyAutoMode:
+    def test_pending_nodes_become_approved(self):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        result = IdentificationResult(job_id="j", nodes=[node], confidence_breakdowns={})
+
+        updated = _apply_auto_mode(result, _NOW)
+
+        assert all(n.status == NodeStatus.APPROVED for n in updated.nodes)
+
+    def test_already_approved_nodes_unchanged(self):
+        node = make_node(status=NodeStatus.APPROVED)
+        result = IdentificationResult(job_id="j", nodes=[node], confidence_breakdowns={})
+
+        updated = _apply_auto_mode(result, _NOW)
+
+        assert updated.nodes[0].status == NodeStatus.APPROVED
+        assert updated.nodes[0].metadata.approval_method == node.metadata.approval_method
+
+    def test_sets_approval_method_to_auto(self):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        result = IdentificationResult(job_id="j", nodes=[node], confidence_breakdowns={})
+
+        updated = _apply_auto_mode(result, _NOW)
+
+        assert updated.nodes[0].metadata.approval_method == ApprovalMethod.AUTO
+
+
+class TestApplyBulkRule:
+    def test_approves_nodes_above_threshold(self):
+        node = make_node(confidence=0.9, status=NodeStatus.PENDING_REVIEW)
+        rule = BulkApproveRule(threshold=0.8)
+
+        result = _apply_bulk_rule([node], rule, "alice", _NOW)
+
+        assert result[0].status == NodeStatus.APPROVED
+
+    def test_skips_nodes_below_threshold(self):
+        node = make_node(confidence=0.5, status=NodeStatus.PENDING_REVIEW)
+        rule = BulkApproveRule(threshold=0.8)
+
+        result = _apply_bulk_rule([node], rule, "alice", _NOW)
+
+        assert result[0].status == NodeStatus.PENDING_REVIEW
+
+    def test_excludes_specified_node_ids(self):
+        node = make_node(confidence=0.9, status=NodeStatus.PENDING_REVIEW)
+        rule = BulkApproveRule(threshold=0.7, exclude=[str(node.id)])
+
+        result = _apply_bulk_rule([node], rule, "alice", _NOW)
+
+        assert result[0].status == NodeStatus.PENDING_REVIEW
+
+    def test_sets_approval_method_to_bulk(self):
+        node = make_node(confidence=0.9, status=NodeStatus.PENDING_REVIEW)
+        rule = BulkApproveRule(threshold=0.7)
+
+        result = _apply_bulk_rule([node], rule, "alice", _NOW)
+
+        assert result[0].metadata.approval_method == ApprovalMethod.BULK
+        assert result[0].metadata.approved_by == "alice"
+
+
+class TestApplyDecisions:
+    def test_approve_action_sets_status(self):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        decisions = [NodeDecision(node_id=str(node.id), action="approve")]
+
+        result = _apply_decisions([node], decisions, "alice", _NOW)
+
+        assert result[0].status == NodeStatus.APPROVED
+
+    def test_reject_action_sets_status(self):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        decisions = [NodeDecision(node_id=str(node.id), action="reject")]
+
+        result = _apply_decisions([node], decisions, "alice", _NOW)
+
+        assert result[0].status == NodeStatus.REJECTED
+
+    def test_unknown_node_id_is_silently_skipped(self):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        decisions = [NodeDecision(node_id="nonexistent-id", action="approve")]
+
+        result = _apply_decisions([node], decisions, "alice", _NOW)
+
+        assert result[0].status == NodeStatus.PENDING_REVIEW
+
+    def test_edited_content_updates_title_and_description(self):
+        from seshat.models.api_jobs import KBNodeEdit
+
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        edited = KBNodeEdit(title="New Title", description="New Desc")
+        decisions = [NodeDecision(node_id=str(node.id), action="approve", edited_content=edited)]
+
+        result = _apply_decisions([node], decisions, "alice", _NOW)
+
+        assert result[0].title == "New Title"
+        assert result[0].description == "New Desc"
+        assert result[0].metadata.corrected_by == "alice"
+
+    def test_approve_sets_individual_method(self):
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        decisions = [NodeDecision(node_id=str(node.id), action="approve")]
+
+        result = _apply_decisions([node], decisions, "alice", _NOW)
+
+        assert result[0].metadata.approval_method == ApprovalMethod.INDIVIDUAL
+        assert result[0].metadata.approved_by == "alice"
+
+
+class TestGetResult:
+    async def test_raises_not_found_when_job_missing(self):
+        svc, *_ = _make_service()
+        svc._ops.get_job = AsyncMock(return_value=None)
+
+        with pytest.raises(JobNotFoundError):
+            await svc.get_result("job-1")
+
+    async def test_raises_state_error_for_non_review_status(self):
+        svc, *_ = _make_service()
+        svc._ops.get_job = AsyncMock(return_value={"status": JobStatus.PENDING})
+
+        with pytest.raises(JobStateError):
+            await svc.get_result("job-1")
+
+    async def test_returns_in_memory_result_when_present(self):
+        svc, *_ = _make_service()
+        node = make_node()
+        result = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
+        svc._results["job-1"] = result
+        svc._ops.get_job = AsyncMock(return_value={"status": JobStatus.AWAITING_REVIEW})
+
+        fetched = await svc.get_result("job-1")
+
+        assert fetched is result
+
+    async def test_returns_none_when_no_meeting_date(self):
+        svc, *_ = _make_service()
+        svc._ops.get_job = AsyncMock(return_value={"status": JobStatus.DONE, "meeting_date": None})
+
+        result = await svc.get_result("job-1")
+
+        assert result is None
+
+
+class TestSubmitContentHash:
+    async def test_raises_content_already_ingested_when_hash_matches(self):
+        svc, *_ = _make_service()
+        svc._ops.find_job_by_content_hash = AsyncMock(return_value="existing-job")
+        svc._ops.find_job_by_idempotency_key = AsyncMock(return_value=None)
+        svc._ops.count_recent_jobs_for_user = AsyncMock(return_value=0)
+        svc._ops.count_running_jobs = AsyncMock(return_value=0)
+
+        sub = _make_submission()
+        sub.force = False
+
+        with pytest.raises(ContentAlreadyIngestedError) as exc_info:
+            await svc.submit(b"data", "file.txt", sub, "alice")
+
+        assert exc_info.value.existing_job_id == "existing-job"
+
+    async def test_idempotency_key_returns_existing_job_without_resubmit(self):
+        svc, *_ = _make_service()
+        svc._ops.find_job_by_idempotency_key = AsyncMock(
+            return_value={"job_id": "existing-job", "status": JobStatus.DONE}
+        )
+
+        sub = _make_submission()
+        sub.idempotency_key = "key-abc"
+
+        response = await svc.submit(b"data", "file.txt", sub, "alice")
+
+        assert response.job_id == "existing-job"
+        svc._ops.create_job.assert_not_called()
+
+    async def test_idempotency_bypasses_failed_job(self):
+        svc, *_ = _make_service()
+        svc._ops.find_job_by_idempotency_key = AsyncMock(
+            return_value={"job_id": "failed-job", "status": JobStatus.FAILED}
+        )
+        svc._ops.find_job_by_content_hash = AsyncMock(return_value=None)
+        svc._ops.count_recent_jobs_for_user = AsyncMock(return_value=0)
+        svc._ops.count_running_jobs = AsyncMock(return_value=0)
+        svc._blob.put_by_key = AsyncMock()
+        svc._blob.raw_input_key = MagicMock(return_value="raw/key.txt")
+
+        sub = _make_submission()
+        sub.idempotency_key = "key-abc"
+
+        # A FAILED idempotency match should not short-circuit — a new job is created.
+        response = await svc.submit(b"data", "file.txt", sub, "alice")
+
+        svc._ops.create_job.assert_called_once()
+        assert response.job_id != "failed-job"
+
+
+class TestSubmitRateLimit:
+    async def test_per_user_cap_raises(self):
+        svc, *_ = _make_service()
+        svc._ops.count_recent_jobs_for_user = AsyncMock(return_value=10)  # equals max
+
+        with pytest.raises(RateLimitExceededError) as exc_info:
+            await svc.submit(b"data", "file.txt", _make_submission(), "alice")
+
+        assert exc_info.value.limit_type == "per_user_hourly_cap"
+        svc._ops.create_job.assert_not_called()
+
+    async def test_global_cap_raises(self):
+        svc, *_ = _make_service()
+        svc._ops.count_running_jobs = AsyncMock(return_value=5)  # equals max
+
+        with pytest.raises(RateLimitExceededError) as exc_info:
+            await svc.submit(b"data", "file.txt", _make_submission(), "alice")
+
+        assert exc_info.value.limit_type == "global_concurrency_cap"
+        svc._ops.create_job.assert_not_called()
+
+    async def test_missing_extension_raises_value_error(self):
+        svc, *_ = _make_service()
+
+        with pytest.raises(ValueError, match="extension"):
+            await svc.submit(b"data", "noextension", _make_submission(), "alice")
+
+        svc._ops.create_job.assert_not_called()
+
+    async def test_force_resubmit_deletes_non_approved_nodes(self):
+        svc, *_ = _make_service()
+        from seshat.models.enums import NodeStatus
+
+        pending = make_node(status=NodeStatus.PENDING_REVIEW)
+        svc._ops.find_job_by_content_hash = AsyncMock(return_value="old-job")
+        svc._node_repo.paginated_query = AsyncMock(return_value=[pending])
+        svc._blob.raw_input_key = MagicMock(return_value="raw/key.txt")
+        svc._blob.put_by_key = AsyncMock()
+
+        sub = _make_submission()
+        sub.force = True
+
+        await svc.submit(b"data", "file.txt", sub, "alice")
+
+        svc._node_repo.delete_node.assert_called_once_with(pending.id)
+
+
+class TestRetry:
+    async def test_not_found_raises(self):
+        svc, *_ = _make_service()
+        svc._ops.get_job = AsyncMock(return_value=None)
+
+        with pytest.raises(JobNotFoundError):
+            await svc.retry("job-1")
+
+    async def test_non_failed_job_raises_state_error(self):
+        svc, *_ = _make_service()
+        svc._ops.get_job = AsyncMock(return_value={"status": JobStatus.DONE})
+
+        with pytest.raises(JobStateError):
+            await svc.retry("job-1")
+
+    async def test_no_stored_input_raises_state_error(self):
+        svc, *_ = _make_service()
+        svc._ops.get_job = AsyncMock(
+            return_value={"status": JobStatus.FAILED, "raw_blob_key": None, "submission": None}
+        )
+
+        with pytest.raises(JobStateError, match="no stored input"):
+            await svc.retry("job-1")
+
+    async def test_valid_failed_job_re_enqueues(self):
+        import json
+
+        svc, *_ = _make_service()
+        submission_json = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
+        svc._ops.get_job = AsyncMock(
+            return_value={
+                "status": JobStatus.FAILED,
+                "raw_blob_key": "raw/key.txt",
+                "submission": submission_json,
+            }
+        )
+        svc._blob.get_by_key = AsyncMock(return_value=b"data")
+
+        await svc.retry("job-1")
+
+        svc._ops.reset_failed_job.assert_called_once_with("job-1")
+        svc._queue.enqueue.assert_called_once()
+
+
+class TestListJobs:
+    async def test_returns_empty_list(self):
+        svc, *_ = _make_service()
+        svc._ops.list_jobs = AsyncMock(return_value=[])
+
+        result = await svc.list()
+
+        assert result == []
+
+    async def test_caps_limit_at_200(self):
+        svc, *_ = _make_service()
+        svc._ops.list_jobs = AsyncMock(return_value=[])
+
+        await svc.list(limit=500)
+
+        call_args = svc._ops.list_jobs.call_args
+        assert call_args.kwargs.get("limit", call_args.args[1] if len(call_args.args) > 1 else None) <= 200
