@@ -214,6 +214,36 @@ class PostgresKBStore:
         return row[0] if row else 0
 
     @_PG_ASYNC_RETRY
+    async def get_outbound_state_transition_targets(self, node_id: str, *, conn: _Conn | None = None) -> list[str]:
+        """Return target_ids of outbound SUPERSEDES/AMENDS relationships from node_id."""
+        executor = conn or self.pool
+        rows = await executor.fetch(
+            f"SELECT target_id FROM {self._schema}.kb_relationships WHERE source_id=$1 AND rel_type = ANY($2::text[])",
+            node_id,
+            ["supersedes", "amends"],
+        )
+        return [str(r["target_id"]) for r in rows]
+
+    @_PG_ASYNC_RETRY
+    async def count_remaining_state_transition_sources(
+        self, target_id: str, excluding_source_id: str, *, conn: _Conn | None = None
+    ) -> int:
+        """Count inbound SUPERSEDES/AMENDS edges on target_id that do NOT come from excluding_source_id.
+
+        Used during deletion to decide whether reverting target to CURRENT is safe: if this
+        returns 0, no other node still supersedes/amends the target, so it can be reverted.
+        """
+        executor = conn or self.pool
+        row = await executor.fetchrow(
+            f"SELECT COUNT(*) FROM {self._schema}.kb_relationships"
+            f" WHERE target_id=$1 AND rel_type = ANY($2::text[]) AND source_id != $3",
+            target_id,
+            ["supersedes", "amends"],
+            excluding_source_id,
+        )
+        return row[0] if row else 0
+
+    @_PG_ASYNC_RETRY
     async def delete_relationships_for_node(
         self, node_id: str, *, cascade: bool = True, conn: _Conn | None = None
     ) -> None:

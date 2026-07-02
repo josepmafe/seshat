@@ -62,7 +62,22 @@ class NodeRepository:
         await self._vs.upsert(str(node.id), node.vector_store_text, node.metadata.model_dump(mode="json"))
 
     async def delete_node(self, node_id: str, *, cascade: bool = True) -> None:
+        # Before deleting, find nodes whose state was set by an outbound SUPERSEDES/AMENDS
+        # relationship from this node. If no other source still supersedes/amends them after
+        # this deletion, revert them to CURRENT.
+        # Alternative: introduce NodeState.ORPHANED instead of reverting, to signal that a
+        # human should review the node's status — deferred until there is evidence of need.
+        targets = await self._kb.get_outbound_state_transition_targets(node_id)
+
         async with self._kb.transaction() as conn:
+            for target_id in targets:
+                remaining = await self._kb.count_remaining_state_transition_sources(
+                    target_id, excluding_source_id=node_id, conn=conn
+                )
+                if remaining == 0:
+                    await self._kb.update_node_state(target_id, NodeState.CURRENT, conn=conn)
+                    logger.info("Reverted node %s to CURRENT (source %s deleted)", target_id, node_id)
+
             await self._kb.delete_relationships_for_node(node_id, cascade=cascade, conn=conn)
             await self._kb.delete_node(node_id, conn=conn)
 

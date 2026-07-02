@@ -18,6 +18,8 @@ def _make_repo() -> tuple[NodeRepository, MagicMock, MagicMock]:
     kb_store.update_node_state = AsyncMock()
     kb_store.delete_node = AsyncMock()
     kb_store.delete_relationships_for_node = AsyncMock()
+    kb_store.get_outbound_state_transition_targets = AsyncMock(return_value=[])
+    kb_store.count_remaining_state_transition_sources = AsyncMock(return_value=0)
 
     @asynccontextmanager
     async def _fake_transaction():
@@ -115,3 +117,34 @@ class TestDeleteNode:
         kb.delete_relationships_for_node.assert_called_once()
         kb.delete_node.assert_called_once()
         vs.delete.assert_called_once_with("node-1")
+
+    async def test_reverts_superseded_target_to_current(self):
+        repo, kb, _vs = _make_repo()
+        kb.get_outbound_state_transition_targets = AsyncMock(return_value=["target-1"])
+        kb.count_remaining_state_transition_sources = AsyncMock(return_value=0)
+
+        await repo.delete_node("source-1")
+
+        kb.update_node_state.assert_called_once()
+        args, _kwargs = kb.update_node_state.call_args
+        assert args == ("target-1", NodeState.CURRENT)
+
+    async def test_does_not_revert_if_another_source_remains(self):
+        repo, kb, _vs = _make_repo()
+        kb.get_outbound_state_transition_targets = AsyncMock(return_value=["target-1"])
+        kb.count_remaining_state_transition_sources = AsyncMock(return_value=1)
+
+        await repo.delete_node("source-1")
+
+        kb.update_node_state.assert_not_called()
+
+    async def test_reverts_only_targets_with_no_remaining_sources(self):
+        repo, kb, _vs = _make_repo()
+        kb.get_outbound_state_transition_targets = AsyncMock(return_value=["target-1", "target-2"])
+        kb.count_remaining_state_transition_sources = AsyncMock(side_effect=[0, 1])
+
+        await repo.delete_node("source-1")
+
+        assert kb.update_node_state.call_count == 1
+        args, _ = kb.update_node_state.call_args
+        assert args[0] == "target-1"
