@@ -64,19 +64,21 @@ class GraphService:
 
         for hop in range(1, depth + 1):
             next_frontier = []
-            for nid in frontier:
-                neighbours = await self._repo.get_neighbours(nid, rel_types=rel_types, direction=GraphDirection.INBOUND)
-                for n in neighbours:
-                    if n.id not in visited and n.confidence >= min_confidence:
-                        visited[n.id] = hop
-                        next_frontier.append(n.id)
+            for node_id in frontier:
+                neighbours = await self._repo.get_neighbours(
+                    node_id, rel_types=rel_types, direction=GraphDirection.INBOUND
+                )
+                for neighbour_node in neighbours:
+                    if neighbour_node.id not in visited and neighbour_node.confidence >= min_confidence:
+                        visited[neighbour_node.id] = hop
+                        next_frontier.append(neighbour_node.id)
             frontier = next_frontier
 
         impact_nodes: list[ImpactNode] = []
-        for nid, hop in visited.items():
-            n = await self._repo.get_node(nid)
-            if n:
-                impact_nodes.append(ImpactNode(node=n, traversal_depth=hop))
+        for node_id, hop in visited.items():
+            node = await self._repo.get_node(node_id)
+            if node is not None:
+                impact_nodes.append(ImpactNode(node=node, traversal_depth=hop))
 
         return ImpactResponse(nodes=impact_nodes)
 

@@ -4,7 +4,7 @@ import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from seshat.models.api_responses import JobActionResponse, JobSubmitResponse
 from seshat.models.enums import ApprovalMethod, JobStatus, NodeStatus
@@ -36,7 +36,7 @@ class JobStateError(Exception):
 
 
 class RateLimitExceededError(Exception):
-    def __init__(self, limit_type: str) -> None:
+    def __init__(self, limit_type: Literal["per_user_hourly_cap", "global_concurrency_cap"]) -> None:
         self.limit_type = limit_type
         super().__init__(limit_type)
 
@@ -174,7 +174,7 @@ class JobService:
             return None
         return _job_response_from_row(row)
 
-    async def list(
+    async def list_jobs(
         self,
         status: JobStatus | None = None,
         limit: int = 50,

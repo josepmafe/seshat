@@ -14,12 +14,6 @@ class BlobRepository:
     def __init__(self, store: S3BlobStore) -> None:
         self._store = store
 
-    async def connect(self) -> None:
-        await self._store.connect()
-
-    async def close(self) -> None:
-        await self._store.close()
-
     async def put_by_key(self, key: str, data: bytes) -> None:
         await self._store.put(key, data)
 

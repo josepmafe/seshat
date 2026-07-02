@@ -71,6 +71,7 @@ class _PendingNode:
     def assign_status(self, config: ExtractionConfig, user_id: str | None = None) -> None:
         assert self.breakdown is not None
 
+        threshold = config.confidence_threshold
         if config.per_type_thresholds and self.concept_type in config.per_type_thresholds:
             threshold = config.per_type_thresholds[self.concept_type]
             logger.debug(
@@ -79,8 +80,6 @@ class _PendingNode:
                 threshold,
                 extra={"concept_type": self.concept_type, "threshold": threshold},
             )
-        else:
-            threshold = config.confidence_threshold
 
         if threshold is None:
             # No threshold configured — all nodes go to manual review regardless of score.

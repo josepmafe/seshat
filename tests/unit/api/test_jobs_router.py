@@ -22,7 +22,7 @@ def _make_app_state(**overrides) -> AppState:
     job_service = MagicMock()
     job_service.submit = AsyncMock(return_value=JobSubmitResponse(job_id="job-1"))
     job_service.get = AsyncMock(return_value=None)
-    job_service.list = AsyncMock(return_value=[])
+    job_service.list_jobs = AsyncMock(return_value=[])
     job_service.get_result = AsyncMock(return_value=None)
     job_service.approve = AsyncMock(return_value=JobActionResponse(status="accepted"))
     job_service.retry = AsyncMock(return_value=JobActionResponse(status="accepted"))
@@ -132,7 +132,9 @@ class TestSubmitJob:
 class TestListJobs:
     async def test_returns_jobs(self, api_client):
         state = _make_app_state()
-        state.job_service.list = AsyncMock(return_value=[_make_job_response("pending"), _make_job_response("done")])
+        state.job_service.list_jobs = AsyncMock(
+            return_value=[_make_job_response("pending"), _make_job_response("done")]
+        )
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.get("/jobs")
         assert resp.status_code == 200
@@ -140,11 +142,11 @@ class TestListJobs:
 
     async def test_filters_by_status(self, api_client):
         state = _make_app_state()
-        state.job_service.list = AsyncMock(return_value=[_make_job_response("done")])
+        state.job_service.list_jobs = AsyncMock(return_value=[_make_job_response("done")])
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.get("/jobs", params={"job_status": "done"})
         assert resp.status_code == 200
-        state.job_service.list.assert_called_once_with(status=JobStatus.DONE, limit=50, offset=0)
+        state.job_service.list_jobs.assert_called_once_with(status=JobStatus.DONE, limit=50, offset=0)
 
 
 class TestGetJob:

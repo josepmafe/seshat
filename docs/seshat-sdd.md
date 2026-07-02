@@ -168,6 +168,8 @@ On startup, detects jobs stranded in `WRITING` and marks them `FAILED(recoverabl
 
 **`NodeRepository`** — single persistence façade for all node operations; coordinates the KB store and vector store so callers never access them independently. Write operations (`write_node`, `write_relationship`, `update_node`, `update_node_state`, `delete_node`, `write_batch`) keep both stores in sync within a transaction. Read operations (`get_node`, `query`, `paginated_query`, `get_neighbours`, `count_inbound_relationships`) delegate to the KB store. `BlobRepository` is the equivalent façade for the blob store.
 
+**Repository convention** — repositories are stateless coordination wrappers; they hold no connection state of their own. Connection lifecycle (`connect`/`close`) belongs to the underlying stores and is managed at the composition root (`api/state.py`, `eval/bootstrap.py`). No repository exposes `connect` or `close`.
+
 **`PGVectorStore`** — pgvector in a separate `store` schema, accessed via `langchain-postgres`. Stores embeddings and metadata (node id, concept type). Used for both RAG retrieval in Pass 2 and deduplication similarity checks.
 
 **`S3BlobStore`** — S3-compatible storage (LocalStack in MVP, AWS S3 in production). Concrete class — no abstract base; single MVP implementation. Path layout is date + job-ID based for human-readable, chronologically browsable paths — see the design spec §2 for the full structure.

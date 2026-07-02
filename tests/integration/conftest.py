@@ -274,10 +274,10 @@ async def blob_store(localstack_s3_url):
         region=LOCALSTACK_REGION,
         endpoint_url=localstack_s3_url,
     )
-    repo = BlobRepository(S3BlobStore(config))
-    await repo.connect()
-    yield repo
-    await repo.close()
+    store = S3BlobStore(config)
+    await store.connect()
+    yield BlobRepository(store)
+    await store.close()
 
 
 def _get_localstack_url():

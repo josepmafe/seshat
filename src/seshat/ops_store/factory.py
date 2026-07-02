@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from seshat.config.settings import SeshatConfig
 
 
-async def get_ops_store(seshat_config: SeshatConfig) -> PostgresOpsStore:
+def get_ops_store(seshat_config: SeshatConfig) -> PostgresOpsStore:
     secrets = get_secrets_resolver(seshat_config)
     connection_string = secrets.get_secret(seshat_config.ops_store.connection_secret_key)
     return PostgresOpsStore(seshat_config.ops_store, connection_string)

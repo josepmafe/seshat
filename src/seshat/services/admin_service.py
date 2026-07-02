@@ -27,6 +27,9 @@ class AdminService:
         await self._ops.create_api_key(key_hash.decode(), user_id, role, datetime.now(UTC))
         return plaintext, user_id, role
 
+    async def get_api_keys(self) -> list[tuple[str, str, str]]:
+        return await self._ops.get_api_keys()
+
     async def list_api_keys(self) -> list[Any]:
         return await self._ops.list_api_keys()
 

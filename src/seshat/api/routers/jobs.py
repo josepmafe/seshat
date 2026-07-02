@@ -38,7 +38,7 @@ async def list_jobs(
     limit: int = 50,
     offset: int = 0,
 ) -> list[JobResponse]:
-    return await state.job_service.list(status=job_status, limit=limit, offset=offset)
+    return await state.job_service.list_jobs(status=job_status, limit=limit, offset=offset)
 
 
 @router.post(

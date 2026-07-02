@@ -537,7 +537,7 @@ class TestListJobs:
         svc, *_ = _make_service()
         svc._ops.list_jobs = AsyncMock(return_value=[])
 
-        result = await svc.list()
+        result = await svc.list_jobs()
 
         assert result == []
 
@@ -545,7 +545,7 @@ class TestListJobs:
         svc, *_ = _make_service()
         svc._ops.list_jobs = AsyncMock(return_value=[])
 
-        await svc.list(limit=500)
+        await svc.list_jobs(limit=500)
 
         call_args = svc._ops.list_jobs.call_args
         assert call_args.kwargs.get("limit", call_args.args[1] if len(call_args.args) > 1 else None) <= 200

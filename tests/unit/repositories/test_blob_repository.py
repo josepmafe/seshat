@@ -15,20 +15,6 @@ def _make_repo(**store_returns) -> tuple[BlobRepository, MagicMock]:
     return BlobRepository(store), store
 
 
-class TestBlobRepositoryLifecycle:
-    async def test_connect_delegates(self):
-        repo, store = _make_repo()
-        store.connect = AsyncMock()
-        await repo.connect()
-        store.connect.assert_awaited_once()
-
-    async def test_close_delegates(self):
-        repo, store = _make_repo()
-        store.close = AsyncMock()
-        await repo.close()
-        store.close.assert_awaited_once()
-
-
 class TestPutByKey:
     async def test_delegates_put(self):
         repo, store = _make_repo()
