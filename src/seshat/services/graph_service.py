@@ -43,7 +43,7 @@ class GraphService:
     async def query(self, node_filter: NodeFilter) -> list[KBNode]:
         return await self._repo.query(node_filter)
 
-    async def get_node_detail(self, node_id: str) -> NodeDetailResponse:
+    async def get_node_detail(self, node_id: UUID) -> NodeDetailResponse:
         node = await self._repo.get_node(node_id)
         if node is None:
             raise NodeNotFoundError(node_id)
@@ -54,12 +54,12 @@ class GraphService:
 
     async def traverse_impact(
         self,
-        node_id: str,
+        node_id: UUID,
         depth: int,
         rel_types: list[RelationshipType] | None,
         min_confidence: float,
     ) -> ImpactResponse:
-        visited: dict[str, int] = {}
+        visited: dict[UUID, int] = {}
         frontier = [node_id]
 
         for hop in range(1, depth + 1):
@@ -67,9 +67,9 @@ class GraphService:
             for nid in frontier:
                 neighbours = await self._repo.get_neighbours(nid, rel_types=rel_types, direction=GraphDirection.INBOUND)
                 for n in neighbours:
-                    if str(n.id) not in visited and n.confidence >= min_confidence:
-                        visited[str(n.id)] = hop
-                        next_frontier.append(str(n.id))
+                    if n.id not in visited and n.confidence >= min_confidence:
+                        visited[n.id] = hop
+                        next_frontier.append(n.id)
             frontier = next_frontier
 
         impact_nodes: list[ImpactNode] = []
@@ -111,7 +111,7 @@ class GraphService:
 
         return BulkResult(succeeded=succeeded, failed=failed)
 
-    async def delete(self, node_id: str, *, cascade: bool = True) -> None:
+    async def delete(self, node_id: UUID, *, cascade: bool = True) -> None:
         if not cascade:
             n = await self._repo.count_inbound_relationships(node_id)
             if n > 0:
@@ -128,15 +128,15 @@ class GraphService:
         for node_id in payload.node_ids:
             try:
                 await self.delete(node_id, cascade=cascade)
-                succeeded.append(node_id)
+                succeeded.append(str(node_id))
             except Exception as exc:
                 if payload.on_error == "stop":
                     raise
-                failed.append(BulkFailure(node_id=node_id, error=str(exc)))
+                failed.append(BulkFailure(node_id=str(node_id), error=str(exc)))
 
         return BulkResult(succeeded=succeeded, failed=failed)
 
-    async def update(self, node_id: str, payload: ManualNodeUpdate, user_id: str) -> KBNode:
+    async def update(self, node_id: UUID, payload: ManualNodeUpdate, user_id: str) -> KBNode:
         node = await self._repo.get_node(node_id)
         if node is None:
             raise NodeNotFoundError(node_id)
@@ -150,7 +150,7 @@ class GraphService:
 
     async def override(
         self,
-        node_id: str,
+        node_id: UUID,
         payload: NodeOverride,
         user_id: str,
         minimum_method: ApprovalMethod | None,
@@ -167,7 +167,7 @@ class GraphService:
     async def resolve_by_ids(self, node_ids: list[UUID]) -> int:
         nodes = []
         for node_id in node_ids:
-            node = await self._repo.get_node(str(node_id))
+            node = await self._repo.get_node(node_id)
             if node is None:
                 raise NodeNotFoundError(str(node_id))
             nodes.append(node)
@@ -266,7 +266,7 @@ def _build_relationships(
     return [
         KBRelationship(
             source_id=source_id,
-            target_id=UUID(r.target_id),
+            target_id=r.target_id,
             rel_type=r.rel_type,
             job_id=job_id,
             created_at=now,

@@ -9,7 +9,6 @@ from seshat.eval.calibration.models import RetrievalSweepPoint, RetrievalSweepRe
 from seshat.eval.models import RetrievalScoredResult
 from seshat.eval.retrieval.corpus_loader import load_corpus
 from seshat.eval.retrieval.scorers import TOP_K
-from seshat.models.api_graph import SearchResult
 from seshat.models.enums import SearchMode
 from seshat.observability.usage_tracker import track_eval_usage
 from seshat.utils.hashing import fingerprint
@@ -18,8 +17,10 @@ if TYPE_CHECKING:
     from seshat.config.eval_settings import EvalConfig
     from seshat.vector_store.base_store import AbstractVectorStore
 
-# corpus_id → (results sorted desc by score, expected_ids)
-type _Cache = dict[str, tuple[list[SearchResult], list[str]]]
+type _Slug = str
+type _ScoredResult = tuple[_Slug, float]  # (corpus slug, similarity score)
+type _CacheEntry = tuple[list[_ScoredResult], list[_Slug]]  # (results desc by score, expected slugs)
+type _Cache = dict[str, _CacheEntry]  # corpus_id → entry
 
 
 class RetrievalMetaScorer:
@@ -88,8 +89,7 @@ class RetrievalMetaScorer:
                 RetrievalScoredResult,
                 runner._fetch_example(ex),
             )
-            slug_results = [SearchResult(node_id=slug, score=score) for slug, score in scored.results]
-            cache[ex.corpus_id] = (slug_results, list(ex.expected_relevant_ids))
+            cache[ex.corpus_id] = (list(scored.results), list(ex.expected_relevant_ids))
             touched.add(used)
 
         sweep_stale_entries(
@@ -102,8 +102,8 @@ class RetrievalMetaScorer:
 
 
 def _compute_metrics(
-    results: list[SearchResult],
-    expected_ids: list[str],
+    results: list[_ScoredResult],
+    expected_ids: list[_Slug],
     threshold: float,
 ) -> tuple[float, float, float]:
     """Return (recall_at_5, precision_at_5, score) for one corpus example at one threshold.
@@ -111,8 +111,8 @@ def _compute_metrics(
     score is F2 for positive examples and specificity for negative examples.
     Both are in [0, 1] and feed the macro_f2 average on RetrievalSweepPoint.
     """
-    filtered = [r for r in results if r.score >= threshold][:TOP_K]
-    returned_ids = {r.node_id for r in filtered}
+    filtered = [slug for slug, score in results if score >= threshold][:TOP_K]
+    returned_ids = set(filtered)
 
     if not expected_ids:
         # Negative example: specificity = 1 if nothing returned, 0 otherwise.

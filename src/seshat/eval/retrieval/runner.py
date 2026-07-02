@@ -140,7 +140,7 @@ class RetrievalEvalRunner:
         uuid_to_slug = {str(v): k for k, v in slug_map.items()}
         try:
             results = await self._search(query, node_filter, top_k=len(candidate_kb_nodes))
-            return RetrievalScoredResult(results=[(uuid_to_slug[r.node_id], r.score) for r in results])
+            return RetrievalScoredResult(results=[(uuid_to_slug[str(r.node_id)], r.score) for r in results])
         finally:
             await self._teardown_candidates(candidate_kb_nodes)
 

@@ -30,9 +30,7 @@ def _make_retriever(
 
     node_repo = MagicMock()
     node_repo.search = AsyncMock(return_value=search_results or [])
-    node_repo.get_node = AsyncMock(
-        side_effect=lambda nid: next((n for n in (kb_nodes or []) if str(n.id) == nid), None)
-    )
+    node_repo.get_node = AsyncMock(side_effect=lambda nid: next((n for n in (kb_nodes or []) if n.id == nid), None))
     node_repo.get_neighbours = AsyncMock(return_value=neighbour_nodes or [])
 
     return NodeRetriever(rag_config=rag_config, node_repo=node_repo, reranker=reranker)

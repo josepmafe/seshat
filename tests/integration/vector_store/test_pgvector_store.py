@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 import pytest
 from langchain_core.embeddings import Embeddings
 
@@ -12,7 +14,11 @@ pytestmark = [pytest.mark.integration, SKIP_IF_NO_POSTGRES]
 
 _EMBEDDING_MARKS = [pytest.mark.llm, pytest.mark.embedding, SKIP_IF_NO_EMBEDDINGS_API]
 
-_TEST_NODE_ID = "test-node-1"
+
+_TEST_NODE_ID = "00000000-0000-0000-0000-000000000001"
+_TEST_NODE_UUID = UUID(_TEST_NODE_ID)
+_NODE_B_ID = "00000000-0000-0000-0000-000000000002"
+_NODE_B_UUID = UUID(_NODE_B_ID)
 _DISTINCTIVE_TERM = "zymurgy"  # rare term unlikely to match unrelated documents
 
 
@@ -60,7 +66,7 @@ class TestPGVectorStoreSearch:
             {"node_type": "decision", "confidence": 0.9},
         )
         results = await vector_store.search("PostgreSQL session storage", top_k=5)
-        assert any(r.node_id == _TEST_NODE_ID for r in results)
+        assert any(r.node_id == _TEST_NODE_UUID for r in results)
 
     async def test_with_node_type_filter_matching(self, vector_store: PGVectorStore):
         await vector_store.upsert(
@@ -73,7 +79,7 @@ class TestPGVectorStoreSearch:
             top_k=5,
             node_filter=NodeFilter(node_type=ConceptType.DECISION),
         )
-        assert any(r.node_id == _TEST_NODE_ID for r in results)
+        assert any(r.node_id == _TEST_NODE_UUID for r in results)
 
     async def test_with_node_type_filter_nonmatching(self, vector_store: PGVectorStore):
         await vector_store.upsert(
@@ -86,7 +92,7 @@ class TestPGVectorStoreSearch:
             top_k=5,
             node_filter=NodeFilter(node_type=ConceptType.RISK),
         )
-        assert not any(r.node_id == _TEST_NODE_ID for r in results)
+        assert not any(r.node_id == _TEST_NODE_UUID for r in results)
 
 
 class TestPGVectorStoreDelete:
@@ -100,7 +106,7 @@ class TestPGVectorStoreDelete:
         )
         await vector_store.delete(_TEST_NODE_ID)
         results = await vector_store.search("Redis caching", top_k=5)
-        assert not any(r.node_id == _TEST_NODE_ID for r in results)
+        assert not any(r.node_id == _TEST_NODE_UUID for r in results)
 
 
 class TestKeywordSearch:
@@ -111,7 +117,7 @@ class TestKeywordSearch:
             {"node_type": "decision", "confidence": 0.9},
         )
         results = await keyword_store.search(_DISTINCTIVE_TERM, top_k=5, mode=SearchMode.KEYWORD)
-        assert any(r.node_id == _TEST_NODE_ID for r in results)
+        assert any(r.node_id == _TEST_NODE_UUID for r in results)
 
     async def test_absent_term_returns_empty(self, keyword_store: PGVectorStore):
         await keyword_store.upsert(
@@ -123,20 +129,19 @@ class TestKeywordSearch:
         assert results == []
 
     async def test_does_not_return_node_missing_the_term(self, keyword_store: PGVectorStore):
-        node_b = "test-node-2"
         await keyword_store.upsert(
             _TEST_NODE_ID,
             f"Decision about {_DISTINCTIVE_TERM}",
             {"node_type": "decision", "confidence": 0.9},
         )
         await keyword_store.upsert(
-            node_b,
+            _NODE_B_ID,
             "Decision about caching strategy",
             {"node_type": "decision", "confidence": 0.9},
         )
         results = await keyword_store.search(_DISTINCTIVE_TERM, top_k=5, mode=SearchMode.KEYWORD)
-        assert any(r.node_id == _TEST_NODE_ID for r in results)
-        assert not any(r.node_id == node_b for r in results)
+        assert any(r.node_id == _TEST_NODE_UUID for r in results)
+        assert not any(r.node_id == _NODE_B_UUID for r in results)
 
     async def test_results_have_positive_score(self, keyword_store: PGVectorStore):
         await keyword_store.upsert(
@@ -153,15 +158,14 @@ class TestHybridSearch:
         text = f"Use Redis for caching sessions {_DISTINCTIVE_TERM}"
         await hybrid_store.upsert(_TEST_NODE_ID, text, {"node_type": "decision", "confidence": 0.9})
         results = await hybrid_store.search(text, top_k=5, mode=SearchMode.HYBRID)
-        assert any(r.node_id == _TEST_NODE_ID for r in results)
+        assert any(r.node_id == _TEST_NODE_UUID for r in results)
 
     async def test_node_in_both_legs_ranks_first(self, hybrid_store: PGVectorStore):
-        node_b = "test-node-2"
         shared_text = f"Use Redis for caching {_DISTINCTIVE_TERM}"
         await hybrid_store.upsert(_TEST_NODE_ID, shared_text, {"node_type": "decision", "confidence": 0.9})
         # node_b text is semantically similar but lacks the distinctive term
-        await hybrid_store.upsert(node_b, "Use Redis for caching", {"node_type": "decision", "confidence": 0.9})
+        await hybrid_store.upsert(_NODE_B_ID, "Use Redis for caching", {"node_type": "decision", "confidence": 0.9})
 
         results = await hybrid_store.search(shared_text, top_k=5, mode=SearchMode.HYBRID)
 
-        assert results[0].node_id == _TEST_NODE_ID
+        assert results[0].node_id == _TEST_NODE_UUID

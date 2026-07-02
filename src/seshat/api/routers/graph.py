@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID  # noqa: TC003  — FastAPI resolves path-param annotations at runtime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -55,7 +56,7 @@ async def query_graph(
     },
 )
 async def get_node(
-    node_id: str,
+    node_id: UUID,
     state: Annotated[AppState, Depends(get_app_state)],
 ) -> NodeDetailResponse:
     try:
@@ -74,7 +75,7 @@ async def get_node(
     },
 )
 async def impact_traversal(
-    node_id: str,
+    node_id: UUID,
     state: Annotated[AppState, Depends(get_app_state)],
     depth: Annotated[int, Query(ge=1, le=3)] = 2,
     rel_types: str | None = None,
@@ -156,7 +157,7 @@ async def create_node(
     },
 )
 async def update_node(
-    node_id: str,
+    node_id: UUID,
     payload: ManualNodeUpdate,
     state: Annotated[AppState, Depends(get_app_state)],
     user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
@@ -181,7 +182,7 @@ async def update_node(
     },
 )
 async def override_node(
-    node_id: str,
+    node_id: UUID,
     payload: NodeOverride,
     state: Annotated[AppState, Depends(get_app_state)],
     user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
@@ -225,7 +226,7 @@ async def bulk_delete_nodes(
     },
 )
 async def delete_node(
-    node_id: str,
+    node_id: UUID,
     state: Annotated[AppState, Depends(get_app_state)],
     _user: Annotated[CurrentUser, Depends(require_role(UserRole.ADMIN))],
     cascade: bool = True,

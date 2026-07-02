@@ -27,6 +27,9 @@ class NodeRepository:
     Coordinates PostgresKBStore and AbstractVectorStore — callers never touch
     the raw stores directly. The two-phase commit pattern (KB transaction →
     VS operation) is handled internally.
+
+    Public methods accept UUID for node identifiers; string conversion to the
+    store layer happens here at the boundary.
     """
 
     def __init__(self, kb_store: PostgresKBStore, vector_store: AbstractVectorStore) -> None:
@@ -61,35 +64,36 @@ class NodeRepository:
 
         await self._vs.upsert(str(node.id), node.vector_store_text, node.metadata.model_dump(mode="json"))
 
-    async def delete_node(self, node_id: str, *, cascade: bool = True) -> None:
+    async def delete_node(self, node_id: UUID, *, cascade: bool = True) -> None:
         # Before deleting, find nodes whose state was set by an outbound SUPERSEDES/AMENDS
         # relationship from this node. If no other source still supersedes/amends them after
         # this deletion, revert them to CURRENT.
         # Alternative: introduce NodeState.ORPHANED instead of reverting, to signal that a
         # human should review the node's status — deferred until there is evidence of need.
-        targets = await self._kb.get_outbound_state_transition_targets(node_id)
+        sid = str(node_id)
+        targets = await self._kb.get_outbound_state_transition_targets(sid)
 
         async with self._kb.transaction() as conn:
             for target_id in targets:
                 remaining = await self._kb.count_remaining_state_transition_sources(
-                    target_id, excluding_source_id=node_id, conn=conn
+                    target_id, excluding_source_id=sid, conn=conn
                 )
                 if remaining == 0:
                     await self._kb.update_node_state(target_id, NodeState.CURRENT, conn=conn)
-                    logger.info("Reverted node %s to CURRENT (source %s deleted)", target_id, node_id)
+                    logger.info("Reverted node %s to CURRENT (source %s deleted)", target_id, sid)
 
-            await self._kb.delete_relationships_for_node(node_id, cascade=cascade, conn=conn)
-            await self._kb.delete_node(node_id, conn=conn)
+            await self._kb.delete_relationships_for_node(sid, cascade=cascade, conn=conn)
+            await self._kb.delete_node(sid, conn=conn)
 
-        await self._vs.delete(node_id)
+        await self._vs.delete(sid)
 
     # -- Write (KB only) -------------------------------------------------------
 
     async def write_relationship(self, rel: KBRelationship) -> None:
         await self._kb.write_relationship(rel)
 
-    async def update_node_state(self, node_id: str, state: NodeState) -> None:
-        await self._kb.update_node_state(node_id, state)
+    async def update_node_state(self, node_id: UUID, state: NodeState) -> None:
+        await self._kb.update_node_state(str(node_id), state)
 
     # -- Batch -----------------------------------------------------------------
 
@@ -159,8 +163,8 @@ class NodeRepository:
 
     # -- Read (delegates to KB) ------------------------------------------------
 
-    async def get_node(self, node_id: str) -> KBNode | None:
-        return await self._kb.get_node(node_id)
+    async def get_node(self, node_id: UUID) -> KBNode | None:
+        return await self._kb.get_node(str(node_id))
 
     async def query(self, node_filter: NodeFilter) -> list[KBNode]:
         return await self._kb.query(node_filter)
@@ -170,14 +174,14 @@ class NodeRepository:
 
     async def get_neighbours(
         self,
-        node_id: str,
+        node_id: UUID,
         rel_types: list[RelationshipType] | None = None,
         direction: GraphDirection = GraphDirection.BOTH,
     ) -> list[KBNode]:
-        return await self._kb.get_neighbours(node_id, rel_types=rel_types, direction=direction)
+        return await self._kb.get_neighbours(str(node_id), rel_types=rel_types, direction=direction)
 
-    async def count_inbound_relationships(self, node_id: str) -> int:
-        return await self._kb.count_inbound_relationships(node_id)
+    async def count_inbound_relationships(self, node_id: UUID) -> int:
+        return await self._kb.count_inbound_relationships(str(node_id))
 
     async def search(
         self,

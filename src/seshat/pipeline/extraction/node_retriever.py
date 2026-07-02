@@ -9,6 +9,8 @@ from seshat.utils.retry import async_retry
 from seshat.utils.tokens import count_tokens
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from seshat.config.settings import RAGConfig
     from seshat.models.api_graph import SearchResult
     from seshat.models.nodes import KBNode
@@ -65,13 +67,12 @@ class NodeRetriever:
             results = await self._reranker.rerank(query, results)
 
         budget = _ContextBudget(self._config.max_context_tokens)
-        node_id = str(node.id)
-        seen: dict[str, KBNode] = {}
+        seen: dict[UUID, KBNode] = {}
 
         # TOCONSIDER: retrieve direct hits in parallel: faster but potential wasted KB calls on nodes we'd discard
-        await self._fetch_direct_hits(seen, results, node_id, budget)
+        await self._fetch_direct_hits(seen, results, node.id, budget)
         # TOCONSIDER: retrieved neighbours in parallel, re-rerank them and take top-k.
-        await self._expand_with_neighbours(seen, results, node_id, budget)
+        await self._expand_with_neighbours(seen, results, node.id, budget)
 
         targets = list(seen.values())
         logger.debug("target retrieval done: %d targets for node id=%s", len(targets), node.id)
@@ -79,9 +80,9 @@ class NodeRetriever:
 
     async def _fetch_direct_hits(
         self,
-        seen: dict[str, KBNode],
+        seen: dict[UUID, KBNode],
         results: list[SearchResult],
-        node_id: str,
+        node_id: UUID,
         budget: _ContextBudget,
     ) -> None:
         # Sequential fetch to allow early exit on node cap or budget;
@@ -110,9 +111,9 @@ class NodeRetriever:
 
     async def _expand_with_neighbours(
         self,
-        seen: dict[str, KBNode],
+        seen: dict[UUID, KBNode],
         results: list[SearchResult],
-        node_id: str,
+        node_id: UUID,
         budget: _ContextBudget,
     ) -> None:
         for result in results:
@@ -131,8 +132,7 @@ class NodeRetriever:
                 if len(seen) >= self.node_retrieval_cap:
                     break
 
-                neighbour_id = str(neighbour.id)
-                if neighbour_id == node_id or neighbour_id in seen:
+                if neighbour.id == node_id or neighbour.id in seen:
                     continue
 
                 if not budget.consume(neighbour):
@@ -140,7 +140,7 @@ class NodeRetriever:
                     # instead of just skipping all remaining neighbours once we hit the first expensive one
                     continue
 
-                seen[neighbour_id] = neighbour
+                seen[neighbour.id] = neighbour
 
     # Retry kept here (not in the vector store) because retryable exceptions are
     # provider-specific (httpx, openai) and don't belong in the store abstraction

@@ -309,7 +309,7 @@ class JobService:
         nodes = await self._node_repo.paginated_query(NodeFilter(job_id=job_id))
         for node in nodes:
             if node.status in (NodeStatus.PENDING_REVIEW, NodeStatus.REJECTED):
-                await self._node_repo.delete_node(str(node.id))
+                await self._node_repo.delete_node(node.id)
 
     async def _store_result(
         self,

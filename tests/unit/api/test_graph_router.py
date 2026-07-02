@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 from seshat.api.state import AppState
 from seshat.models.api_graph import BulkFailure, BulkResult
@@ -9,6 +10,10 @@ from seshat.models.enums import ApprovalMethod, RelationshipType, UserRole
 from seshat.services.graph_service import NodeNotFoundError, NodePreconditionError
 from tests.helpers import make_node
 from tests.unit.api.conftest import make_current_user
+
+_NODE_ID = UUID("00000000-0000-0000-0000-000000000001")
+_NODE_PATH = str(_NODE_ID)
+_OVERRIDE_PAYLOAD = {"title": "T", "description": "D", "reason": "fix"}
 
 
 def _make_app_state() -> AppState:
@@ -67,12 +72,12 @@ class TestQueryGraph:
 class TestGetNode:
     async def test_requires_auth(self, api_client):
         async with api_client(_make_app_state()) as ac:
-            resp = await ac.get("/graph/some-node-id")
+            resp = await ac.get(f"/graph/{_NODE_PATH}")
         assert resp.status_code == 401
 
     async def test_not_found(self, api_client):
         async with api_client(_make_app_state(), make_current_user()) as ac:
-            resp = await ac.get("/graph/nonexistent")
+            resp = await ac.get(f"/graph/{_NODE_PATH}")
         assert resp.status_code == 404
 
     async def test_returns_node_with_neighbours(self, api_client):
@@ -101,12 +106,12 @@ class TestGetNode:
 class TestImpactTraversal:
     async def test_requires_auth(self, api_client):
         async with api_client(_make_app_state()) as ac:
-            resp = await ac.get("/graph/some-node-id/impact")
+            resp = await ac.get(f"/graph/{_NODE_PATH}/impact")
         assert resp.status_code == 401
 
     async def test_returns_empty_when_no_neighbours(self, api_client):
         async with api_client(_make_app_state(), make_current_user()) as ac:
-            resp = await ac.get("/graph/some-node-id/impact")
+            resp = await ac.get(f"/graph/{_NODE_PATH}/impact")
         assert resp.status_code == 200
         assert resp.json()["nodes"] == []
 
@@ -125,15 +130,15 @@ class TestImpactTraversal:
 
     async def test_depth_out_of_range(self, api_client):
         async with api_client(_make_app_state(), make_current_user()) as ac:
-            resp = await ac.get("/graph/some-node-id/impact?depth=10")
+            resp = await ac.get(f"/graph/{_NODE_PATH}/impact?depth=10")
         assert resp.status_code == 422
 
     async def test_passes_args_to_service(self, api_client):
         state = _make_app_state()
         async with api_client(state, make_current_user()) as ac:
-            await ac.get("/graph/node-1/impact?depth=3&rel_types=mitigates&min_confidence=0.5")
+            await ac.get(f"/graph/{_NODE_PATH}/impact?depth=3&rel_types=mitigates&min_confidence=0.5")
         call = state.graph_service.traverse_impact.call_args
-        assert call.args[0] == "node-1"
+        assert call.args[0] == _NODE_ID
         assert call.args[1] == 3
         assert call.args[2] == [RelationshipType.MITIGATES]
         assert call.args[3] == 0.5
@@ -172,12 +177,12 @@ class TestCreateNode:
 class TestUpdateNode:
     async def test_requires_auth(self, api_client):
         async with api_client(_make_app_state()) as ac:
-            resp = await ac.put("/graph/node-1", json={"title": "T", "description": "D", "reason": None})
+            resp = await ac.put(f"/graph/{_NODE_PATH}", json={"title": "T", "description": "D", "reason": None})
         assert resp.status_code == 401
 
     async def test_viewer_cannot_update(self, api_client):
         async with api_client(_make_app_state(), make_current_user(role=UserRole.VIEWER)) as ac:
-            resp = await ac.put("/graph/node-1", json={"title": "T", "description": "D", "reason": None})
+            resp = await ac.put(f"/graph/{_NODE_PATH}", json={"title": "T", "description": "D", "reason": None})
         assert resp.status_code == 403
 
     async def test_returns_updated_node(self, api_client):
@@ -185,22 +190,22 @@ class TestUpdateNode:
         state = _make_app_state()
         state.graph_service.update = AsyncMock(return_value=node)
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.put("/graph/node-1", json={"title": "T", "description": "D", "reason": None})
+            resp = await ac.put(f"/graph/{_NODE_PATH}", json={"title": "T", "description": "D", "reason": None})
         assert resp.status_code == 200
         assert resp.json()["id"] == str(node.id)
 
     async def test_not_found_returns_404(self, api_client):
         state = _make_app_state()
-        state.graph_service.update = AsyncMock(side_effect=NodeNotFoundError("node-1"))
+        state.graph_service.update = AsyncMock(side_effect=NodeNotFoundError(_NODE_PATH))
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.put("/graph/node-1", json={"title": "T", "description": "D", "reason": None})
+            resp = await ac.put(f"/graph/{_NODE_PATH}", json={"title": "T", "description": "D", "reason": None})
         assert resp.status_code == 404
 
     async def test_precondition_failure_returns_409(self, api_client):
         state = _make_app_state()
         state.graph_service.update = AsyncMock(side_effect=NodePreconditionError("not manual"))
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.put("/graph/node-1", json={"title": "T", "description": "D", "reason": None})
+            resp = await ac.put(f"/graph/{_NODE_PATH}", json={"title": "T", "description": "D", "reason": None})
         assert resp.status_code == 409
         assert "not manual" in resp.json()["detail"]
 
@@ -208,12 +213,12 @@ class TestUpdateNode:
 class TestOverrideNode:
     async def test_requires_auth(self, api_client):
         async with api_client(_make_app_state()) as ac:
-            resp = await ac.put("/graph/node-1/override", json={"title": "T", "description": "D", "reason": "fix"})
+            resp = await ac.put(f"/graph/{_NODE_PATH}/override", json=_OVERRIDE_PAYLOAD)
         assert resp.status_code == 401
 
     async def test_viewer_cannot_override(self, api_client):
         async with api_client(_make_app_state(), make_current_user(role=UserRole.VIEWER)) as ac:
-            resp = await ac.put("/graph/node-1/override", json={"title": "T", "description": "D", "reason": "fix"})
+            resp = await ac.put(f"/graph/{_NODE_PATH}/override", json=_OVERRIDE_PAYLOAD)
         assert resp.status_code == 403
 
     async def test_returns_updated_node(self, api_client):
@@ -221,7 +226,7 @@ class TestOverrideNode:
         state = _make_app_state()
         state.graph_service.override = AsyncMock(return_value=node)
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.put("/graph/node-1/override", json={"title": "T", "description": "D", "reason": "fix"})
+            resp = await ac.put(f"/graph/{_NODE_PATH}/override", json=_OVERRIDE_PAYLOAD)
         assert resp.status_code == 200
         assert resp.json()["id"] == str(node.id)
 
@@ -230,7 +235,7 @@ class TestOverrideNode:
         state = _make_app_state()
         state.graph_service.override = AsyncMock(return_value=node)
         async with api_client(state, make_current_user(role=UserRole.OPERATOR)) as ac:
-            await ac.put("/graph/node-1/override", json={"title": "T", "description": "D", "reason": "fix"})
+            await ac.put(f"/graph/{_NODE_PATH}/override", json=_OVERRIDE_PAYLOAD)
         assert state.graph_service.override.call_args.kwargs["minimum_method"] == ApprovalMethod.AUTO
 
     async def test_admin_gets_none_minimum_method(self, api_client):
@@ -238,58 +243,58 @@ class TestOverrideNode:
         state = _make_app_state()
         state.graph_service.override = AsyncMock(return_value=node)
         async with api_client(state, make_current_user(role=UserRole.ADMIN)) as ac:
-            await ac.put("/graph/node-1/override", json={"title": "T", "description": "D", "reason": "fix"})
+            await ac.put(f"/graph/{_NODE_PATH}/override", json=_OVERRIDE_PAYLOAD)
         assert state.graph_service.override.call_args.kwargs["minimum_method"] is None
 
     async def test_not_found_returns_404(self, api_client):
         state = _make_app_state()
-        state.graph_service.override = AsyncMock(side_effect=NodeNotFoundError("node-1"))
+        state.graph_service.override = AsyncMock(side_effect=NodeNotFoundError(_NODE_PATH))
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.put("/graph/node-1/override", json={"title": "T", "description": "D", "reason": "fix"})
+            resp = await ac.put(f"/graph/{_NODE_PATH}/override", json=_OVERRIDE_PAYLOAD)
         assert resp.status_code == 404
 
     async def test_precondition_failure_returns_409(self, api_client):
         state = _make_app_state()
         state.graph_service.override = AsyncMock(side_effect=NodePreconditionError("insufficient role"))
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.put("/graph/node-1/override", json={"title": "T", "description": "D", "reason": "fix"})
+            resp = await ac.put(f"/graph/{_NODE_PATH}/override", json=_OVERRIDE_PAYLOAD)
         assert resp.status_code == 409
 
 
 class TestDeleteNode:
     async def test_requires_auth(self, api_client):
         async with api_client(_make_app_state()) as ac:
-            resp = await ac.delete("/graph/node-1")
+            resp = await ac.delete(f"/graph/{_NODE_PATH}")
         assert resp.status_code == 401
 
     async def test_operator_cannot_delete(self, api_client):
         async with api_client(_make_app_state(), make_current_user(role=UserRole.OPERATOR)) as ac:
-            resp = await ac.delete("/graph/node-1")
+            resp = await ac.delete(f"/graph/{_NODE_PATH}")
         assert resp.status_code == 403
 
     async def test_returns_204(self, api_client):
         async with api_client(_make_app_state(), make_current_user(role=UserRole.ADMIN)) as ac:
-            resp = await ac.delete("/graph/node-1")
+            resp = await ac.delete(f"/graph/{_NODE_PATH}")
         assert resp.status_code == 204
 
     async def test_cascade_true_by_default(self, api_client):
         state = _make_app_state()
         async with api_client(state, make_current_user(role=UserRole.ADMIN)) as ac:
-            await ac.delete("/graph/node-1")
+            await ac.delete(f"/graph/{_NODE_PATH}")
         state.graph_service.delete.assert_called_once()
         assert state.graph_service.delete.call_args.kwargs.get("cascade") is True
 
     async def test_cascade_false_when_specified(self, api_client):
         state = _make_app_state()
         async with api_client(state, make_current_user(role=UserRole.ADMIN)) as ac:
-            await ac.delete("/graph/node-1?cascade=false")
+            await ac.delete(f"/graph/{_NODE_PATH}?cascade=false")
         assert state.graph_service.delete.call_args.kwargs.get("cascade") is False
 
     async def test_precondition_failure_returns_409(self, api_client):
         state = _make_app_state()
         state.graph_service.delete = AsyncMock(side_effect=NodePreconditionError("has inbound"))
         async with api_client(state, make_current_user(role=UserRole.ADMIN)) as ac:
-            resp = await ac.delete("/graph/node-1?cascade=false")
+            resp = await ac.delete(f"/graph/{_NODE_PATH}?cascade=false")
         assert resp.status_code == 409
         assert "has inbound" in resp.json()["detail"]
 
@@ -332,21 +337,21 @@ class TestBulkCreateNodes:
 class TestBulkDeleteNodes:
     async def test_requires_auth(self, api_client):
         async with api_client(_make_app_state()) as ac:
-            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": ["id-1"]})
+            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": [_NODE_PATH]})
         assert resp.status_code == 401
 
     async def test_operator_cannot_bulk_delete(self, api_client):
         async with api_client(_make_app_state(), make_current_user(role=UserRole.OPERATOR)) as ac:
-            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": ["id-1"]})
+            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": [_NODE_PATH]})
         assert resp.status_code == 403
 
     async def test_returns_bulk_result(self, api_client):
         state = _make_app_state()
-        state.graph_service.bulk_delete = AsyncMock(return_value=BulkResult(succeeded=["id-1"], failed=[]))
+        state.graph_service.bulk_delete = AsyncMock(return_value=BulkResult(succeeded=[_NODE_PATH], failed=[]))
         async with api_client(state, make_current_user(role=UserRole.ADMIN)) as ac:
-            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": ["id-1"]})
+            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": [_NODE_PATH]})
         assert resp.status_code == 200
-        assert resp.json()["succeeded"] == ["id-1"]
+        assert resp.json()["succeeded"] == [_NODE_PATH]
 
     async def test_cascade_passed_to_service(self, api_client):
         state = _make_app_state()
@@ -356,16 +361,17 @@ class TestBulkDeleteNodes:
         assert state.graph_service.bulk_delete.call_args.kwargs.get("cascade") is False
 
     async def test_partial_failure_in_result(self, api_client):
+        _node_id_2 = str(UUID("00000000-0000-0000-0000-000000000002"))
         state = _make_app_state()
         state.graph_service.bulk_delete = AsyncMock(
             return_value=BulkResult(
-                succeeded=["id-1"],
-                failed=[BulkFailure(node_id="id-2", error="not found")],
+                succeeded=[_NODE_PATH],
+                failed=[BulkFailure(node_id=_node_id_2, error="not found")],
             )
         )
         async with api_client(state, make_current_user(role=UserRole.ADMIN)) as ac:
-            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": ["id-1", "id-2"]})
-        assert resp.json()["failed"][0]["node_id"] == "id-2"
+            resp = await ac.request("DELETE", "/graph/bulk", json={"node_ids": [_NODE_PATH, _node_id_2]})
+        assert resp.json()["failed"][0]["node_id"] == _node_id_2
 
 
 class TestResolveNodes:
@@ -384,7 +390,7 @@ class TestResolveNodes:
         state = _make_app_state()
         state.graph_service.resolve_by_ids = AsyncMock(side_effect=NodeNotFoundError("missing"))
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.post("/graph/nodes/resolve", json={"node_ids": ["00000000-0000-0000-0000-000000000001"]})
+            resp = await ac.post("/graph/nodes/resolve", json={"node_ids": [_NODE_PATH]})
         assert resp.status_code == 404
 
     async def test_422_when_node_not_approved(self, api_client):
@@ -393,7 +399,7 @@ class TestResolveNodes:
             side_effect=NodePreconditionError("Nodes not in APPROVED status: [...]")
         )
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.post("/graph/nodes/resolve", json={"node_ids": ["00000000-0000-0000-0000-000000000001"]})
+            resp = await ac.post("/graph/nodes/resolve", json={"node_ids": [_NODE_PATH]})
         assert resp.status_code == 422
 
     async def test_returns_relationship_count(self, api_client):

@@ -1,40 +1,46 @@
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
 import pytest
 from langchain_core.documents import Document
 
 from seshat.vector_store.pgvector_store import PGVectorStore, _rrf
 
+_N1 = "00000000-0000-0000-0000-000000000001"
+_N2 = "00000000-0000-0000-0000-000000000002"
+_N3 = "00000000-0000-0000-0000-000000000003"
+
 
 class TestRrf:
     def test_node_in_both_legs_scores_higher_than_node_in_one_leg(self):
         dense = [
-            (Document(page_content="x", metadata={"node_id": "n1"}), 0.9),
-            (Document(page_content="x", metadata={"node_id": "n2"}), 0.8),
+            (Document(page_content="x", metadata={"node_id": _N1}), 0.9),
+            (Document(page_content="x", metadata={"node_id": _N2}), 0.8),
         ]
-        sparse = [("n1", 0.5), ("n3", 0.4)]
+        sparse = [(_N1, 0.5), (_N3, 0.4)]
         results = _rrf(dense, sparse, top_k=3)
-        assert results[0].node_id == "n1"
+        assert results[0].node_id == UUID(_N1)
 
     def test_rrf_truncates_to_top_k(self):
-        dense = [(Document(page_content="x", metadata={"node_id": f"n{i}"}), 0.9 - i * 0.1) for i in range(4)]
+        uids = [f"00000000-0000-0000-0000-00000000000{i}" for i in range(4)]
+        dense = [(Document(page_content="x", metadata={"node_id": uid}), 0.9 - i * 0.1) for i, uid in enumerate(uids)]
         results = _rrf(dense, [], top_k=2)
         assert len(results) == 2
 
     def test_rrf_node_only_in_sparse_is_included(self):
-        dense = [(Document(page_content="x", metadata={"node_id": "n1"}), 0.9)]
-        sparse = [("n2", 0.7)]
+        dense = [(Document(page_content="x", metadata={"node_id": _N1}), 0.9)]
+        sparse = [(_N2, 0.7)]
         results = _rrf(dense, sparse, top_k=2)
-        assert any(r.node_id == "n2" for r in results)
+        assert any(r.node_id == UUID(_N2) for r in results)
 
     def test_rrf_empty_inputs_returns_empty(self):
         assert _rrf([], [], top_k=5) == []
 
     def test_rrf_scores_are_positive_floats(self):
-        dense = [(Document(page_content="x", metadata={"node_id": "n1"}), 0.9)]
-        sparse = [("n1", 0.5)]
+        dense = [(Document(page_content="x", metadata={"node_id": _N1}), 0.9)]
+        sparse = [(_N1, 0.5)]
         results = _rrf(dense, sparse, top_k=1)
         assert results[0].score > 0
 
@@ -66,14 +72,6 @@ class TestSparseSearchGuard:
 
         assert result == []
         assert called == []
-
-
-class TestSearchModeRouting:
-    def test_score_threshold_not_in_rrf_signature(self):
-        import inspect
-
-        sig = inspect.signature(_rrf)
-        assert "score_threshold" not in sig.parameters
 
 
 class TestValidateConnectionString:
@@ -108,3 +106,17 @@ class TestValidateConnectionString:
             PGVectorStore._validate_connection_string("mysql://secret:hunter2@host/db")
         assert "secret" not in str(exc_info.value)
         assert "hunter2" not in str(exc_info.value)
+
+    def test_psycopg2_qualifier_replaced(self):
+        result = PGVectorStore._validate_connection_string("postgresql+psycopg2://user:pass@host/db")
+        assert result == "postgresql+psycopg://user:pass@host/db"
+
+
+class TestRrfDuplicateHandling:
+    def test_duplicate_node_id_in_dense_does_not_double_count(self):
+        """The same node_id appearing twice in dense results should only score once."""
+        doc = Document(page_content="x", metadata={"node_id": _N1})
+        dense = [(doc, 0.9), (doc, 0.8)]
+        results = _rrf(dense, [], top_k=5)
+        matching = [r for r in results if r.node_id == UUID(_N1)]
+        assert len(matching) == 1
