@@ -1,7 +1,6 @@
 import os
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
 
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
@@ -13,6 +12,7 @@ from seshat.config.settings import (
 )
 from seshat.models.enums import LLMProvider, RelationshipType
 from seshat.models.nodes import KBNode, KBRelationship
+from seshat.repositories.node_repository import NodeRepository
 from tests.integration.conftest import _BEDROCK_PROFILE, _anthropic_reachable, _azure_available, _bedrock_available
 
 _PROVIDER2CHEAP_MODEL_MAPPING: dict[LLMProvider, str] = {
@@ -73,33 +73,18 @@ def cheap_grounding_config() -> GroundingLLMConfig:
     return GroundingLLMConfig(provider=provider, model=_get_cheap_model(provider), max_retries=1)
 
 
-async def upload_transcript(blob_store, content: str) -> str:
-    blob_key = f"transcripts/{uuid4()}.txt"
-    await blob_store.put(blob_key, content.encode())
-    return blob_key
-
-
 async def seed_node(
     node,
-    kb_store,
-    vector_store,
+    node_repo: NodeRepository,
     *,
     job_id: str | None = None,
-    write_to_kb: bool = True,
-    write_to_vector: bool = True,
 ) -> None:
     stored = (
         node
         if job_id is None
         else node.model_copy(update={"metadata": node.metadata.model_copy(update={"job_id": job_id})})
     )
-    if write_to_kb:
-        await kb_store.write_node(stored)
-    if write_to_vector:
-        metadata = {"node_type": node.type.value, "confidence": node.confidence}
-        if job_id is not None:
-            metadata["job_id"] = job_id
-        await vector_store.upsert(str(node.id), node.vector_store_text, metadata)
+    await node_repo.write_node(stored)
 
 
 def make_relationship(
