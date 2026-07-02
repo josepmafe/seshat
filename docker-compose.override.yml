@@ -1,0 +1,13 @@
+services:
+  migrate:
+    volumes:
+      - ./alembic:/app/alembic
+      - ./src:/app/src
+
+  seshat-api:
+    volumes:
+      - ./src:/app/src
+    command: >
+      uv run --no-sync uvicorn seshat.api.app:create_app
+      --factory --host 0.0.0.0 --port 8000
+      --no-access-log --reload

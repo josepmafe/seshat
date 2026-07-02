@@ -3550,6 +3550,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiobotocore" },
     { name = "alembic" },
+    { name = "anyio" },
     { name = "assemblyai" },
     { name = "asyncpg" },
     { name = "bcrypt" },
@@ -3623,6 +3624,7 @@ test = [
 requires-dist = [
     { name = "aiobotocore", specifier = ">=3.7" },
     { name = "alembic", specifier = ">=1.18.5" },
+    { name = "anyio", specifier = ">=4.13.0" },
     { name = "assemblyai", specifier = ">=0.64.21" },
     { name = "asyncpg", specifier = ">=0.31" },
     { name = "bcrypt", specifier = ">=5.0" },

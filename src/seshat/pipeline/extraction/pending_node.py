@@ -44,6 +44,7 @@ class _PendingNode:
     status: NodeStatus = NodeStatus.PENDING_REVIEW
     approval_method: ApprovalMethod | None = None
     approved_at: datetime | None = None
+    approved_by: str | None = None
     pending_reason: str | None = None
 
     def build(self) -> KBNode:
@@ -61,19 +62,31 @@ class _PendingNode:
                 confidence_breakdown=self.breakdown,
                 approval_method=self.approval_method,
                 approved_at=self.approved_at,
+                approved_by=self.approved_by,
                 pending_reason=self.pending_reason,
                 concept_fields=self.concept_fields or None,
             ),
         )
 
-    def assign_status(self, config: ExtractionConfig) -> None:
+    def assign_status(self, config: ExtractionConfig, user_id: str | None = None) -> None:
         assert self.breakdown is not None
 
         threshold = config.confidence_threshold
         if config.per_type_thresholds and self.concept_type in config.per_type_thresholds:
             threshold = config.per_type_thresholds[self.concept_type]
+            logger.debug(
+                "Using per-type threshold for %s: %.2f",
+                self.concept_type.value,
+                threshold,
+                extra={"concept_type": self.concept_type, "threshold": threshold},
+            )
 
-        # TODO: set approved_by to job submitter once user_id is threaded through ExtractionConfig
+        if threshold is None:
+            # No threshold configured — all nodes go to manual review regardless of score.
+            self.status = NodeStatus.PENDING_REVIEW
+            self.pending_reason = f"threshold auto-approval not configured for {self.concept_type.value}"
+            return
+
         passes_grounding = self.breakdown.grounding_passed is None or self.breakdown.grounding_passed
         passes_threshold = self.breakdown.heuristics >= threshold
 
@@ -83,6 +96,7 @@ class _PendingNode:
                 self.status = NodeStatus.APPROVED
                 self.approval_method = ApprovalMethod.AUTO
                 self.approved_at = datetime.now(UTC)
+                self.approved_by = user_id
             else:
                 self.status = NodeStatus.REJECTED
         else:
@@ -92,6 +106,7 @@ class _PendingNode:
                 self.status = NodeStatus.APPROVED
                 self.approval_method = ApprovalMethod.THRESHOLD
                 self.approved_at = datetime.now(UTC)
+                self.approved_by = user_id
             elif not passes_threshold:
                 self.status = NodeStatus.PENDING_REVIEW
                 self.pending_reason = f"heuristics {self.breakdown.heuristics:.2f} < threshold {threshold:.2f}"
@@ -156,36 +171,3 @@ class PendingNodeBuilder:
             else:
                 result.append(self.from_anchored(item))
         return result
-
-
-def _deduplicate(pending: list[_PendingNode]) -> list[_PendingNode]:
-    by_type: dict[ConceptType, dict[str, _PendingNode]] = {}
-    for pnode in pending:
-        normalised = " ".join(pnode.title.lower().split())
-        bucket = by_type.setdefault(pnode.concept_type, {})
-        if normalised in bucket:
-            existing = bucket[normalised]
-
-            # Keep higher heuristics score; break ties by longer description.
-            if (pnode.heuristics, len(pnode.description)) <= (existing.heuristics, len(existing.description)):
-                logger.warning(
-                    "Dedup collision for %s/%r — keeping existing (score %.2f >= incoming %.2f)",
-                    pnode.concept_type.value,
-                    pnode.title,
-                    existing.heuristics,
-                    pnode.heuristics,
-                    extra={"concept_type": pnode.concept_type.value, "title": pnode.title},
-                )
-                continue
-
-            logger.warning(
-                "Dedup collision for %s/%r — replacing existing (score %.2f) with higher-scoring incoming (%.2f)",
-                pnode.concept_type.value,
-                pnode.title,
-                existing.heuristics,
-                pnode.heuristics,
-                extra={"concept_type": pnode.concept_type.value, "title": pnode.title},
-            )
-
-        bucket[normalised] = pnode
-    return [pnode for group in by_type.values() for pnode in group.values()]

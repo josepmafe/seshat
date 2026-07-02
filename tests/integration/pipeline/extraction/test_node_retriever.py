@@ -17,19 +17,19 @@ pytestmark = [
 
 
 @pytest.fixture
-def node_retriever(kb_store, vector_store) -> NodeRetriever:
-    return NodeRetriever(RAGConfig(), kb_store, vector_store)
+def node_retriever(node_repo) -> NodeRetriever:
+    return NodeRetriever(RAGConfig(), node_repo)
 
 
 class TestNodeRetrieverRetrieveCandidates:
-    async def test_returns_seeded_node_for_similar_query(self, node_retriever, kb_store, vector_store):
+    async def test_returns_seeded_node_for_similar_query(self, node_retriever, node_repo):
         seeded = make_node(
             node_id="rag-seed",
             title="Use PostgreSQL for the user database",
             description="The team agreed to use PostgreSQL v15 due to its JSON support and performance.",
             status=NodeStatus.APPROVED,
         )
-        await seed_node(seeded, kb_store, vector_store)
+        await seed_node(seeded, node_repo)
 
         query_node = make_node(
             node_id="rag-query",
@@ -43,14 +43,19 @@ class TestNodeRetrieverRetrieveCandidates:
 
         assert any(r.id == seeded.id for r in results)
 
-    async def test_orphan_vector_hit_is_silently_skipped(self, node_retriever, kb_store, vector_store):
+    async def test_orphan_vector_hit_is_silently_skipped(self, node_retriever, vector_store):
         orphan = make_node(
             node_id="rag-orphan",
             title="Use Kafka for the event bus",
             description="The team decided to use Kafka as the event streaming backbone.",
             status=NodeStatus.APPROVED,
         )
-        await seed_node(orphan, kb_store, vector_store, write_to_kb=False)
+        # Write to VS only — intentionally no KB entry to simulate a stale/dangling vector
+        await vector_store.upsert(
+            str(orphan.id),
+            orphan.vector_store_text,
+            {"node_type": orphan.type.value, "confidence": orphan.confidence},
+        )
 
         query_node = make_node(
             node_id="rag-query-orphan",
@@ -64,7 +69,7 @@ class TestNodeRetrieverRetrieveCandidates:
 
         assert all(r.id != orphan.id for r in results)
 
-    async def test_exclude_job_id_filters_nodes_from_same_job(self, node_retriever, kb_store, vector_store):
+    async def test_exclude_job_id_filters_nodes_from_same_job(self, node_retriever, node_repo):
         current_job = "job-current"
         prior_job = "job-prior"
 
@@ -80,8 +85,8 @@ class TestNodeRetrieverRetrieveCandidates:
             description="Earlier decision to adopt PostgreSQL for the project.",
             status=NodeStatus.APPROVED,
         )
-        await seed_node(current_node, kb_store, vector_store, job_id=current_job)
-        await seed_node(prior_node, kb_store, vector_store, job_id=prior_job)
+        await seed_node(current_node, node_repo, job_id=current_job)
+        await seed_node(prior_node, node_repo, job_id=prior_job)
 
         query_node = make_node(
             node_id="rag-query-jobfilter",
@@ -95,7 +100,7 @@ class TestNodeRetrieverRetrieveCandidates:
 
         assert all(r.id != current_node.id for r in results)
 
-    async def test_neighbour_expansion_includes_graph_hop(self, kb_store, vector_store):
+    async def test_neighbour_expansion_includes_graph_hop(self, node_repo, kb_store):
         # direct_hit is in both vector store and KB — retrieved by vector search
         direct_hit = make_node(
             node_id="rag-neighbour-direct",
@@ -103,8 +108,8 @@ class TestNodeRetrieverRetrieveCandidates:
             description="The team agreed to use PostgreSQL v15 due to its JSON support.",
             status=NodeStatus.APPROVED,
         )
-        await seed_node(direct_hit, kb_store, vector_store)
-        # neighbour is KB-only — reachable only via graph traversal, not vector search. the assymetry is intentional
+        await seed_node(direct_hit, node_repo)
+        # neighbour is KB-only — reachable only via graph traversal, not vector search. the asymmetry is intentional
         # to verify that neighbours are included even if they wouldn't be retrieved by vector search alone
         neighbour = make_node(
             node_id="rag-neighbour-hop",
@@ -112,13 +117,13 @@ class TestNodeRetrieverRetrieveCandidates:
             description="Earlier decision to use PostgreSQL v12, superseded by v15.",
             status=NodeStatus.APPROVED,
         )
-        await seed_node(neighbour, kb_store, vector_store, write_to_vector=False)
-        await kb_store.write_relationship(
+        await kb_store.write_node(neighbour)
+        await node_repo.write_relationship(
             make_relationship(direct_hit, neighbour, rel_type=RelationshipType.SUPERSEDES, job_id="job-neighbour")
         )
 
         # top_k=1 → cap=2; direct_hit fills seen (len=1 < cap=2) so neighbour expansion runs
-        retriever = NodeRetriever(RAGConfig(top_k=1), kb_store, vector_store)
+        retriever = NodeRetriever(RAGConfig(top_k=1), node_repo)
         query_node = make_node(
             node_id="rag-query-neighbour",
             title="Switch to PostgreSQL",
@@ -130,7 +135,7 @@ class TestNodeRetrieverRetrieveCandidates:
 
         assert any(r.id == neighbour.id for r in results)
 
-    async def test_token_budget_truncation_limits_results(self, kb_store, vector_store):
+    async def test_token_budget_truncation_limits_results(self, node_repo):
         nodes = [
             make_node(
                 node_id=f"rag-budget-{i}",
@@ -141,10 +146,10 @@ class TestNodeRetrieverRetrieveCandidates:
             for i in range(5)
         ]
         for node in nodes:
-            await seed_node(node, kb_store, vector_store)
+            await seed_node(node, node_repo)
 
         # max_context_tokens=1 forces exit after the first node's token cost is counted
-        retriever = NodeRetriever(RAGConfig(max_context_tokens=1), kb_store, vector_store)
+        retriever = NodeRetriever(RAGConfig(max_context_tokens=1), node_repo)
         query_node = make_node(
             node_id="rag-query-budget",
             title="PostgreSQL database decision",

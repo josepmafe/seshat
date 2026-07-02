@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import io
 from typing import TYPE_CHECKING, Any
 
 import assemblyai as aai
 
 from seshat.transcription.base import AbstractTranscriber
+from seshat.utils.concurrency import run_in_thread
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
@@ -31,7 +31,7 @@ class AssemblyAITranscriber(AbstractTranscriber):
     async def transcribe(self, audio_bytes: bytes, extension: str) -> str:
         extension = extension.lstrip(".")
         logger.debug("Transcribing %s audio (%d bytes) via AssemblyAI", extension, len(audio_bytes))
-        transcript = await asyncio.to_thread(self._transcriber.transcribe, io.BytesIO(audio_bytes))
+        transcript = await run_in_thread(self._transcriber.transcribe, io.BytesIO(audio_bytes))
         if transcript.status == aai.TranscriptStatus.error:
             raise RuntimeError(f"AssemblyAI transcription failed: {transcript.error}")
 

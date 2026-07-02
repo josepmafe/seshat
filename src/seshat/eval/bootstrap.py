@@ -7,6 +7,8 @@ from seshat.blob_store.factory import get_blob_store
 from seshat.knowledge_store.factory import get_kb_store
 from seshat.pipeline.bootstrap import build_extraction_orchestrator as _build_extraction_orchestrator
 from seshat.pipeline.bootstrap import build_vector_store
+from seshat.repositories.blob_repository import BlobRepository
+from seshat.repositories.node_repository import NodeRepository
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -27,8 +29,11 @@ async def build_extraction_orchestrator(
     blob_store = get_blob_store(seshat_config)
     await blob_store.connect()
 
+    node_repo = NodeRepository(kb_store, vector_store)
+    blob_repo = BlobRepository(blob_store)
+
     try:
-        yield _build_extraction_orchestrator(seshat_config, kb_store, vector_store, blob_store)
+        yield _build_extraction_orchestrator(seshat_config, node_repo, blob_repo)
     finally:
         await kb_store.close()
         await blob_store.close()

@@ -105,10 +105,23 @@ Streamlit UI → FastAPI → Pipeline Worker → Storage Layer
 
 Uses a task queue abstraction: `enqueue(fn, *args, **kwargs) → job_id`, `get_status(job_id) → JobStatus`, `cancel(job_id) → bool`. Queue implementation (asyncio vs ARQ/Redis) is not visible to API handlers beyond the interface.
 
+**Service layer**
+
+Business logic is encapsulated in four services, one per router:
+
+- `AdminService` — API key lifecycle (create, list, revoke); wraps `OpsRepository`.
+- `HealthService` — component health probes (`check_postgres`, `check_mlflow`, `check_blob`); returns `HealthStatus` directly.
+- `GraphService` — all graph read and write operations (query, node detail, impact traversal, CRUD, bulk ops, resolution); wraps `NodeRepository` and `ExtractionOrchestrator`.
+- `JobService` — job submission, approval, retry, and recovery; coordinates `OpsRepository`, `BlobRepository`, `NodeRepository`, and the task queue.
+
+Routers are pure HTTP translation: they validate inputs, call the relevant service method, map domain exceptions to HTTP status codes, and return responses. No business logic lives in routers.
+
+`AppState` holds exactly five fields: `config`, `admin_service`, `health_service`, `graph_service`, `job_service`. It is constructed by `build_app_state()` in `api/state.py`, which owns all store lifecycle (connect/close).
+
 **Boundaries**
 
 - Does not call LLMs or implement pipeline stages.
-- Does not access KB node/relationship tables directly except for job metadata where necessary.
+- Does not access KB node/relationship tables directly except via `GraphService` and `JobService`.
 - Treats the worker as the sole owner of pipeline execution logic.
 
 ---
@@ -151,7 +164,11 @@ On startup, detects jobs stranded in `WRITING` and marks them `FAILED(recoverabl
 
 **`PostgresKBStore`** — `kb_nodes` and `kb_relationships` tables in the `ops` schema. Concrete class — no abstract base; single MVP implementation. Provides insert/update and query-by-id, meeting, type, or relationship. KB rows and their associated embeddings are written in a single transaction.
 
-**`OpsLedger`** — owns all reads and writes to `ops.jobs` and `ops.api_keys`. Exposes typed CRUD methods; no raw SQL leaks into higher layers. `finished_at` is set on terminal transitions (`DONE`, `FAILED`) and cleared on `reset_failed_job`.
+**`OpsStore` / `OpsRepository`** — `OpsStore` (`PostgresOpsStore`) owns all reads and writes to `ops.jobs` and `ops.api_keys` at the SQL level. `OpsRepository` is the domain-facing façade: exposes typed CRUD methods; no raw SQL leaks into higher layers. `finished_at` is set on terminal transitions (`DONE`, `FAILED`) and cleared on `reset_failed_job`.
+
+**`NodeRepository`** — single persistence façade for all node operations; coordinates the KB store and vector store so callers never access them independently. Write operations (`write_node`, `write_relationship`, `update_node`, `update_node_state`, `delete_node`, `write_batch`) keep both stores in sync within a transaction. Read operations (`get_node`, `query`, `paginated_query`, `get_neighbours`, `count_inbound_relationships`) delegate to the KB store. `BlobRepository` is the equivalent façade for the blob store.
+
+**Repository convention** — repositories are stateless coordination wrappers; they hold no connection state of their own. Connection lifecycle (`connect`/`close`) belongs to the underlying stores and is managed at the composition root (`api/state.py`, `eval/bootstrap.py`). No repository exposes `connect` or `close`.
 
 **`PGVectorStore`** — pgvector in a separate `store` schema, accessed via `langchain-postgres`. Stores embeddings and metadata (node id, concept type). Used for both RAG retrieval in Pass 2 and deduplication similarity checks.
 
@@ -161,7 +178,7 @@ Exact paths are centralised in config to avoid scatter.
 
 **Boundaries**
 
-KB store and vector store share the same Postgres instance but remain logically independent (different schemas). Blob store is accessed directly via `S3BlobStore` from pipeline stages.
+KB store and vector store share the same Postgres instance but remain logically independent (different schemas). All node persistence is mediated by `NodeRepository`; no code above the repository layer touches raw stores directly.
 
 ---
 

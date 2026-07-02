@@ -17,6 +17,13 @@ class JobSubmissionRequest(BaseModel):
     idempotency_key: str | None = Field(
         default=None, description="Client-supplied key; re-submitting with the same key returns the existing job."
     )
+    force: bool = Field(
+        default=False,
+        description=(
+            "When True, re-ingest content even if a matching content_hash exists. "
+            "PENDING_REVIEW and REJECTED nodes from the prior job are deleted before re-running."
+        ),
+    )
     overrides: SeshatConfigOverride | None = Field(
         default=None, description="Per-request config overrides applied on top of the service defaults."
     )

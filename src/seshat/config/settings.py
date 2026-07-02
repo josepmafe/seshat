@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -116,8 +117,15 @@ class ExtractionConfig(BaseConfig):
     grounding: GroundingLLMConfig | None = Field(
         default=None, description="Optional second LLM used to ground extraction results; None disables grounding."
     )
-    confidence_threshold: float = Field(
-        default=0.7, ge=0, le=1, description="Minimum heuristics score required to retain an identified node."
+    confidence_threshold: float | None = Field(
+        default=0.7,
+        ge=0,
+        le=1,
+        description=(
+            "Minimum heuristics score required to auto-approve an identified node. "
+            "None disables threshold auto-approval — all nodes go to PENDING_REVIEW for human review. "
+            "Incompatible with auto_mode=True."
+        ),
     )
     per_type_thresholds: dict[ConceptType, float] | None = Field(
         default=None, description="Optional per-concept-type confidence thresholds that override the global threshold."
@@ -154,7 +162,12 @@ class ExtractionConfig(BaseConfig):
                 "`grounding.provider` must differ from `identification.provider`"
                 f" (both are '{self.identification.provider}')"
             )
+        return self
 
+    @model_validator(mode="after")
+    def check_threshold_auto_mode(self) -> "ExtractionConfig":
+        if self.confidence_threshold is None and self.auto_mode:
+            raise ValueError("`confidence_threshold=None` is incompatible with `auto_mode=True`")
         return self
 
 
@@ -224,17 +237,30 @@ class VectorStoreConfig(BaseConfig):
     )
 
 
-class KBStoreConfig(BaseConfig):
-    schema_name: str = Field(
-        default="ops",
-        pattern=r"^[a-z_][a-z0-9_]*$",
-        description="PostgreSQL schema name used by the KB store.",
-    )
+class _PostgresStoreConfig(BaseConfig):
+    schema_name: str = Field(description="PostgreSQL schema name.")
     pool_min_size: int = Field(default=2, gt=0)
     pool_max_size: int = Field(default=10, gt=0)
     connection_secret_key: str = Field(
-        default="postgres_url", description="Secrets key for the KB store connection string."
+        default="postgres_url", description="Secrets key for the Postgres connection string."
     )
+
+    @model_validator(mode="after")
+    def _check_schema_name(self) -> "_PostgresStoreConfig":
+        if re.match(r"^[a-z_][a-z0-9_]*$", self.schema_name) is None:
+            raise ValueError(
+                f"Invalid schema name {self.schema_name!r}: "
+                f"must start with a letter or underscore and contain only lowercase letters, digits, and underscores."
+            )
+        return self
+
+
+class KBStoreConfig(_PostgresStoreConfig):
+    schema_name: str = Field(default="knowledge_base", description="PostgreSQL schema name used by the KB store.")
+
+
+class OpsStoreConfig(_PostgresStoreConfig):
+    schema_name: str = Field(default="ops", description="PostgreSQL schema name used by the Ops store.")
 
 
 class BlobStoreConfig(BaseConfig):
@@ -332,6 +358,7 @@ class SeshatConfig(BaseSettings):
     vector_store: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
     vector_index: VectorIndexConfig = Field(default_factory=VectorIndexConfig)
     kb_store: KBStoreConfig = Field(default_factory=KBStoreConfig)
+    ops_store: OpsStoreConfig = Field(default_factory=OpsStoreConfig)
     blob_store: BlobStoreConfig = Field(default_factory=BlobStoreConfig)
     extraction: ExtractionConfig = Field(default_factory=ExtractionConfig)
     rag: RAGConfig = Field(default_factory=RAGConfig)

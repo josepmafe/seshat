@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import sqlalchemy as sa
 from langchain_core.documents import Document
@@ -93,8 +94,6 @@ class PGVectorStore(AbstractVectorStore):
         self._ts_content_ready = True
 
     async def upsert(self, node_id: str, text: str, metadata: dict) -> None:
-        # TODO: assert metadata keys are a subset of get_supported_filter_fields()
-        # TODO: delete embedding when node is archived/rejected (lifecycle sync)
         doc = Document(page_content=text, metadata={**metadata, "node_id": node_id})
         await self._store.aadd_documents([doc], ids=[node_id])
 
@@ -123,7 +122,7 @@ class PGVectorStore(AbstractVectorStore):
         exclude_job_id: str | None,
     ) -> list[SearchResult]:
         sparse = await self._sparse_search(query, top_k=top_k, node_filter=node_filter, exclude_job_id=exclude_job_id)
-        return [SearchResult(node_id=nid, score=score) for nid, score in sparse]
+        return [SearchResult(node_id=UUID(node_id), score=score) for node_id, score in sparse]
 
     async def _semantic_search(
         self,
@@ -308,12 +307,12 @@ def _rrf(
     https://dl.acm.org/doi/10.1145/1571941.1572114
     """
     scores: dict[str, float] = {}
-    for rank, (doc, _) in enumerate(dense):
-        nid = doc.metadata["node_id"]
-        scores[nid] = scores.get(nid, 0.0) + 1.0 / (k + rank)
+    for rank, (doc, _score) in enumerate(dense):
+        node_id = doc.metadata["node_id"]
+        scores[node_id] = scores.get(node_id, 0.0) + 1.0 / (k + rank)
 
-    for rank, (nid, _) in enumerate(sparse):
-        scores[nid] = scores.get(nid, 0.0) + 1.0 / (k + rank)
+    for rank, (node_id, _score) in enumerate(sparse):
+        scores[node_id] = scores.get(node_id, 0.0) + 1.0 / (k + rank)
 
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    return [SearchResult(node_id=nid, score=score) for nid, score in ranked[:top_k]]
+    return [SearchResult(node_id=UUID(node_id), score=score) for node_id, score in ranked[:top_k]]

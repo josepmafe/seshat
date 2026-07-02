@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from seshat.blob_store.s3_store import S3BlobStore
 from seshat.config.settings import BlobStoreConfig
+from seshat.repositories.blob_repository import BlobRepository
 
 load_dotenv()
 
@@ -111,12 +112,26 @@ SKIP_IF_NO_EMBEDDINGS_API = pytest.mark.skipif(
 
 
 def _assemblyai_reachable() -> bool:
-    return bool(os.environ.get("ASSEMBLYAI_API_KEY"))
+    key = os.environ.get("ASSEMBLYAI_API_KEY")
+    if not key:
+        return False
+
+    import httpx
+
+    try:
+        response = httpx.get(
+            "https://api.assemblyai.com/v2",
+            headers={"Authorization": key},
+            timeout=5,
+        )
+        return response.status_code < 500
+    except httpx.RequestError:
+        return False
 
 
 SKIP_IF_NO_ASSEMBLYAI_API = pytest.mark.skipif(
     not _assemblyai_reachable(),
-    reason="AssemblyAI API not reachable — ASSEMBLYAI_API_KEY not set",
+    reason="AssemblyAI API not reachable — ASSEMBLYAI_API_KEY not set or network issue",
 )
 
 SKIP_IF_NO_OPENAI_API = pytest.mark.skipif(
@@ -261,7 +276,7 @@ async def blob_store(localstack_s3_url):
     )
     store = S3BlobStore(config)
     await store.connect()
-    yield store
+    yield BlobRepository(store)
     await store.close()
 
 

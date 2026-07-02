@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "GenAI pipeline for structured meeting knowledge bases"
 requires-python = ">=3.13"
 dependencies = [
+    # Async runtime
+    "anyio>=4.13.0",
     # Data & persistence (Postgres, migrations, S3)
     "aiobotocore>=3.7",
     "alembic>=1.18.5",

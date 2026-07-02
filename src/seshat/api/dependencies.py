@@ -28,7 +28,7 @@ async def _get_current_user(
 ) -> CurrentUser:
     if not x_api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="X-API-Key required")
-    stored_keys = await state.ops.get_api_keys()
+    stored_keys = await state.admin_service.get_api_keys()
     try:
         user_id, role = await verify_api_key(x_api_key, stored_keys)
     except AuthenticationError:

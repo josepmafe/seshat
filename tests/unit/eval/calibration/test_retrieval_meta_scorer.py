@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 
 from seshat.eval.calibration.retrieval_meta_scorer import RetrievalMetaScorer
-from seshat.models.api_graph import SearchResult
 
 
 def _make_scorer(cache: dict, step: float = 0.5) -> tuple[RetrievalMetaScorer, dict]:
@@ -12,8 +11,8 @@ def _make_scorer(cache: dict, step: float = 0.5) -> tuple[RetrievalMetaScorer, d
     return scorer, cache
 
 
-def _results(scores: list[float]) -> list[SearchResult]:
-    return [SearchResult(node_id=f"node-{i}", score=s) for i, s in enumerate(scores)]
+def _results(scores: list[float]) -> list[tuple[str, float]]:
+    return [(f"node-{i}", s) for i, s in enumerate(scores)]
 
 
 class TestSweepThreshold:

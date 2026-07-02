@@ -39,12 +39,12 @@ class NodeFilter(BaseModel):
 
 
 class SearchResult(BaseModel):
-    node_id: str
+    node_id: UUID
     score: float = Field(ge=0)
 
 
 class RelationshipInput(BaseModel):
-    target_id: str
+    target_id: UUID
     rel_type: RelationshipType
 
 
@@ -92,7 +92,7 @@ class BulkNodeCreate(BaseModel):
 
 
 class BulkNodeDelete(BaseModel):
-    node_ids: list[str]
+    node_ids: list[UUID]
     on_error: Literal["stop", "continue"] = "stop"
 
 

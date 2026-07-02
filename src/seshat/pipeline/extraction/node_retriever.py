@@ -9,11 +9,12 @@ from seshat.utils.retry import async_retry
 from seshat.utils.tokens import count_tokens
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from seshat.config.settings import RAGConfig
-    from seshat.knowledge_store.pg_store import PostgresKBStore
     from seshat.models.api_graph import SearchResult
     from seshat.models.nodes import KBNode
-    from seshat.vector_store.base_store import AbstractVectorStore
+    from seshat.repositories.node_repository import NodeRepository
 
 logger = get_logger(__name__)
 
@@ -26,13 +27,11 @@ class NodeRetriever:
     def __init__(
         self,
         rag_config: RAGConfig,
-        kb_store: PostgresKBStore,
-        vector_store: AbstractVectorStore,
+        node_repo: NodeRepository,
         reranker: Reranker | None = None,
     ) -> None:
         self._config = rag_config
-        self._kb = kb_store
-        self._vs = vector_store
+        self._repo = node_repo
         self._reranker = reranker
 
     @property
@@ -68,13 +67,12 @@ class NodeRetriever:
             results = await self._reranker.rerank(query, results)
 
         budget = _ContextBudget(self._config.max_context_tokens)
-        node_id = str(node.id)
-        seen: dict[str, KBNode] = {}
+        seen: dict[UUID, KBNode] = {}
 
         # TOCONSIDER: retrieve direct hits in parallel: faster but potential wasted KB calls on nodes we'd discard
-        await self._fetch_direct_hits(seen, results, node_id, budget)
+        await self._fetch_direct_hits(seen, results, node.id, budget)
         # TOCONSIDER: retrieved neighbours in parallel, re-rerank them and take top-k.
-        await self._expand_with_neighbours(seen, results, node_id, budget)
+        await self._expand_with_neighbours(seen, results, node.id, budget)
 
         targets = list(seen.values())
         logger.debug("target retrieval done: %d targets for node id=%s", len(targets), node.id)
@@ -82,9 +80,9 @@ class NodeRetriever:
 
     async def _fetch_direct_hits(
         self,
-        seen: dict[str, KBNode],
+        seen: dict[UUID, KBNode],
         results: list[SearchResult],
-        node_id: str,
+        node_id: UUID,
         budget: _ContextBudget,
     ) -> None:
         # Sequential fetch to allow early exit on node cap or budget;
@@ -100,7 +98,7 @@ class NodeRetriever:
             if len(seen) >= self.node_retrieval_cap or budget.exhausted:
                 break
 
-            kb_node = await self._kb.get_node(result.node_id)
+            kb_node = await self._repo.get_node(result.node_id)
             if kb_node is None:
                 logger.warning("Node id=%s found in vector search but missing from KB store", result.node_id)
                 continue
@@ -113,9 +111,9 @@ class NodeRetriever:
 
     async def _expand_with_neighbours(
         self,
-        seen: dict[str, KBNode],
+        seen: dict[UUID, KBNode],
         results: list[SearchResult],
-        node_id: str,
+        node_id: UUID,
         budget: _ContextBudget,
     ) -> None:
         for result in results:
@@ -125,7 +123,7 @@ class NodeRetriever:
             if result.node_id not in seen:
                 continue
 
-            neighbours = await self._kb.get_neighbours(
+            neighbours = await self._repo.get_neighbours(
                 result.node_id, rel_types=self._config.traversal_rel_types, direction=GraphDirection.BOTH
             )
             for neighbour in neighbours:
@@ -134,8 +132,7 @@ class NodeRetriever:
                 if len(seen) >= self.node_retrieval_cap:
                     break
 
-                neighbour_id = str(neighbour.id)
-                if neighbour_id == node_id or neighbour_id in seen:
+                if neighbour.id == node_id or neighbour.id in seen:
                     continue
 
                 if not budget.consume(neighbour):
@@ -143,7 +140,7 @@ class NodeRetriever:
                     # instead of just skipping all remaining neighbours once we hit the first expensive one
                     continue
 
-                seen[neighbour_id] = neighbour
+                seen[neighbour.id] = neighbour
 
     # Retry kept here (not in the vector store) because retryable exceptions are
     # provider-specific (httpx, openai) and don't belong in the store abstraction
@@ -151,7 +148,7 @@ class NodeRetriever:
     async def _vector_search(
         self, query: str, node_filter: NodeFilter, *, exclude_job_id: str | None
     ) -> list[SearchResult]:
-        return await self._vs.search(
+        return await self._repo.search(
             query,
             top_k=self._config.top_k,
             node_filter=node_filter,

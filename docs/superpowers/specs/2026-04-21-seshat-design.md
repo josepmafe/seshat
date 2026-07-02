@@ -754,6 +754,20 @@ Consequences:
 - **Concurrent pipeline runs:** `api.max_concurrent_jobs=1` (default) prevents two jobs from running the pipeline simultaneously, which eliminates concurrent `update_node_state()` races at MVP scale. If `api.max_concurrent_jobs` is raised, `update_node_state()` transitions remain safe — setting `state=SUPERSEDED` twice on the same node is idempotent — but resolution quality may degrade because both jobs read the KB before either writes to it.
 - **Human corrections:** edits happen at review time via `ApproveRequest.decisions[].edited_content`. When `edited_content` is non-null, the node's `title` and `description` are updated with the human-supplied values, and `NodeMetadata.corrected_by` / `corrected_at` are set alongside `approved_by` / `approved_at`. `corrected_by` is the single field distinguishing human-corrected content from unmodified LLM output — queries on the KB can filter on it to assess how often auto-extraction required correction. A post-approval `PATCH /graph/{node_id}` is deferred to v2.
 
+#### Soft-Delete / Archival (Deferred)
+
+`NodeStatus` currently has three values: `APPROVED`, `PENDING_REVIEW`, `REJECTED`. A fourth value `ARCHIVED` is deferred to a future tier.
+
+`ARCHIVED` would model a soft-delete for approved nodes that have already been through resolution and carry relationships — a hard delete would orphan those edges and remove provenance. An archived node remains in the KB for audit purposes but is excluded from retrieval (VS embedding deleted on archival, filter added to all query paths).
+
+When implemented, the required changes are:
+- Add `NodeStatus.ARCHIVED` to the enum
+- Add a `PATCH /graph/nodes/{id}/archive` endpoint (operator-only)
+- Delete the VS embedding when the status transitions to `ARCHIVED`
+- Exclude `ARCHIVED` nodes from all `NodeFilter` query paths by default
+
+Until then, the only node removal path is hard delete via `DELETE /graph/nodes/{id}` (admin only). Hard deletion is safe for nodes with no relationship history. For nodes that were the source of `SUPERSEDES` or `AMENDS` relationships, `NodeRepository.delete_node` automatically reverts any affected targets back to `CURRENT` state — provided no other surviving node still supersedes/amends them. This applies to both manual and pipeline nodes, since manual nodes can also accumulate resolved relationships via `POST /graph/nodes/resolve`.
+
 ---
 
 ## 5. RAG + Resolution Layer
@@ -1039,7 +1053,7 @@ Three operational tables in the `ops` schema, all managed by Alembic:
 
 **`ops.api_keys`** — one row per issued API key. Fields: `id` (PK, serial integer), `key_hash` (bcrypt), `user_id`, `role` (`viewer | reviewer | operator | admin`), `created_at`, `revoked_at` (NULL while active). The PK changed from `key_hash` to `id` (migration 006) to enable stable foreign-key referencing and revocation by integer ID.
 
-**`ops.jobs`** — authoritative job state. Fields: `job_id` (PK, UUID4), `user_id` (FK → api_keys.user_id), `status` (mirrors `JobStatus`), `idempotency_key` (UNIQUE nullable), `source_type`, `created_at`, `updated_at`, `finished_at` (TIMESTAMP, set when status transitions to `DONE` or `FAILED`; cleared on `reset_failed_job`), `error_payload` (JSONB, null until FAILED), `mlflow_run_id` (null while PENDING), `meeting_date` (DATE NOT NULL), `submission` (JSONB NOT NULL — the full `JobSubmissionRequest` JSON), `raw_blob_key` (TEXT NOT NULL — S3 key of the raw uploaded file). Index on `(user_id, created_at)` for the per-user rate-limit query. The three `meeting_date`/`submission`/`raw_blob_key` columns are written atomically by `OpsLedger.set_job_submission()` immediately after the raw file is stored — they power both `GET /jobs/{id}/results` blob fallback and `POST /jobs/{id}/retry` without additional DB calls.
+**`ops.jobs`** — authoritative job state. Fields: `job_id` (PK, UUID4), `user_id` (FK → api_keys.user_id), `status` (mirrors `JobStatus`), `idempotency_key` (UNIQUE nullable), `source_type`, `created_at`, `updated_at`, `finished_at` (TIMESTAMP, set when status transitions to `DONE` or `FAILED`; cleared on `reset_failed_job`), `error_payload` (JSONB, null until FAILED), `mlflow_run_id` (null while PENDING), `meeting_date` (DATE NOT NULL), `submission` (JSONB NOT NULL — the full `JobSubmissionRequest` JSON), `raw_blob_key` (TEXT NOT NULL — S3 key of the raw uploaded file). Index on `(user_id, created_at)` for the per-user rate-limit query. The three `meeting_date`/`submission`/`raw_blob_key` columns are written atomically by `OpsRepository.set_job_submission()` immediately after the raw file is stored — they power both `GET /jobs/{id}/results` blob fallback and `POST /jobs/{id}/retry` without additional DB calls.
 
 **`ops.init_runs`** — coordination for `seshat init`. Fields: `job_id` (PK, UUID4), `status` (`running | done | failed`), `source_path`, `created_at`, `updated_at`.
 
@@ -1377,13 +1391,13 @@ class ResolveResponse(BaseModel):
 - 404 if any `node_id` is not found in the KB.
 - 422 if any node is not in `APPROVED` status.
 
-**Processing:** delegates to `ManualIngestionService.resolve()`, which calls `ExtractionOrchestrator.run_resolution(job_id=f"manual_resolve_{uuid4()}", approved=nodes)` and persists the resulting `KBRelationship` objects via `kb_store.write_relationship()`.
+**Processing:** delegates to `GraphService.resolve_by_ids()`, which calls `ExtractionOrchestrator.run_resolution(job_id=f"manual_resolve_{uuid4()}", approved=nodes)` and persists the resulting `KBRelationship` objects via `NodeRepository.write_relationship()`.
 
 Role requirement: `operator`.
 
 ### Reviewer Data Contract
 
-`GET /jobs/{id}/results` returns `ExtractionResult`. The result is served from `PipelineRunner.results` (in-memory dict, owned by the runner) while the server is running. After a server restart, the endpoint falls back to the curated extraction blob (`blob_store.curated_extraction_key(meeting_date, job_id)`) written by `PipelineRunner.run_post_approval()` at the start of the WRITING stage — this blob is the durable source of truth for completed jobs. Returns HTTP 409 if the job is not yet in a reviewable or completed state; HTTP 404 if neither in-memory result nor blob is available.
+`GET /jobs/{id}/results` returns `ExtractionResult`. The result is served from the in-memory job state (owned by `JobService`) while the server is running. After a server restart, the endpoint falls back to the curated extraction blob (`blob_store.curated_extraction_key(meeting_date, job_id)`) written by `ExtractionOrchestrator` at the start of the WRITING stage — this blob is the durable source of truth for completed jobs. Returns HTTP 409 if the job is not yet in a reviewable or completed state; HTTP 404 if neither in-memory result nor blob is available.
 
 The Streamlit review screen is the only consumer of this endpoint for MVP — the data contract between the API and the UI is:
 
