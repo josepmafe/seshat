@@ -15,6 +15,7 @@ from seshat.services.job_service import (
     JobService,
     JobStateError,
     RateLimitExceededError,
+    TranscriptNotFoundError,
     _apply_auto_mode,
     _apply_bulk_rule,
     _apply_decisions,
@@ -549,3 +550,42 @@ class TestListJobs:
 
         call_args = svc._ops.list_jobs.call_args
         assert call_args.kwargs.get("limit", call_args.args[1] if len(call_args.args) > 1 else None) <= 200
+
+
+class TestGetTranscriptExcerpt:
+    async def test_returns_slice(self):
+        svc, _, _, _, ops, blob = _make_service()
+        ops.get_job = AsyncMock(return_value={"job_id": "job-1", "meeting_date": date(2025, 1, 1), "status": "done"})
+        blob.get_raw_transcript = AsyncMock(return_value=b"Hello world")
+
+        result = await svc.get_transcript_excerpt("job-1", 0, 5)
+
+        assert result == "Hello"
+
+    async def test_raises_job_not_found(self):
+        svc, _, _, _, ops, _ = _make_service()
+        ops.get_job = AsyncMock(return_value=None)
+
+        with pytest.raises(JobNotFoundError):
+            await svc.get_transcript_excerpt("job-1", 0, 5)
+
+    async def test_raises_transcript_not_found_when_meeting_date_missing(self):
+        svc, _, _, _, ops, _ = _make_service()
+        ops.get_job = AsyncMock(return_value={"job_id": "job-1", "meeting_date": None, "status": "done"})
+
+        with pytest.raises(TranscriptNotFoundError):
+            await svc.get_transcript_excerpt("job-1", 0, 5)
+
+    async def test_raises_transcript_not_found_when_blob_missing(self):
+        svc, _, _, _, ops, blob = _make_service()
+        ops.get_job = AsyncMock(return_value={"job_id": "job-1", "meeting_date": date(2025, 1, 1), "status": "done"})
+        blob.get_raw_transcript = AsyncMock(return_value=None)
+
+        with pytest.raises(TranscriptNotFoundError):
+            await svc.get_transcript_excerpt("job-1", 0, 5)
+
+    async def test_raises_value_error_when_start_not_less_than_end(self):
+        svc, _, _, _, _, _ = _make_service()
+
+        with pytest.raises(ValueError, match="char_start"):
+            await svc.get_transcript_excerpt("job-1", 10, 5)

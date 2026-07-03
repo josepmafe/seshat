@@ -47,6 +47,10 @@ class ContentAlreadyIngestedError(Exception):
         super().__init__(existing_job_id)
 
 
+class TranscriptNotFoundError(Exception):
+    pass
+
+
 class JobService:
     def __init__(
         self,
@@ -203,6 +207,25 @@ class JobService:
             return None
 
         return ExtractionResult.model_validate_json(raw)
+
+    async def get_transcript_excerpt(self, job_id: str, char_start: int, char_end: int) -> str:
+        if char_start >= char_end:
+            raise ValueError(f"char_start ({char_start}) must be less than char_end ({char_end})")
+
+        row = await self._ops.get_job(job_id)
+        if not row:
+            raise JobNotFoundError(job_id)
+
+        meeting_date = row["meeting_date"]
+        if meeting_date is None:
+            raise TranscriptNotFoundError(job_id)
+
+        blob = await self._blob.get_raw_transcript(meeting_date, job_id)
+        if blob is None:
+            raise TranscriptNotFoundError(job_id)
+
+        text = blob.decode("utf-8", errors="replace")
+        return text[char_start:char_end]
 
     async def recover_stranded(self) -> None:
         stranded = await self._ops.get_stranded_writing_jobs()

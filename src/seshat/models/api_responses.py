@@ -61,3 +61,13 @@ class CreateApiKeyResponse(BaseModel):
     api_key: str
     user_id: str
     role: UserRole
+
+
+class TranscriptExcerptResponse(BaseModel):
+    text: str
+    char_start: int
+    char_end: int
+
+
+class NodeSearchResponse(BaseModel):
+    results: list[NodeDetailResponse]

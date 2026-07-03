@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, FastAPI
 from langchain_core.messages import HumanMessage
 
-from seshat.api.routers import admin, graph, health, jobs
+from seshat.api.routers import admin, graph, health, identity, jobs
 from seshat.api.state import build_app_state
 from seshat.config.settings import SeshatConfig, get_config
 from seshat.observability.mlflow_setup import setup_mlflow
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
     """Create and return a FastAPI app instance."""
     v1_router = APIRouter(prefix="/v1")
     v1_router.include_router(health.router)
+    v1_router.include_router(identity.router)
     v1_router.include_router(jobs.router)
     v1_router.include_router(graph.router)
     v1_router.include_router(admin.router)
