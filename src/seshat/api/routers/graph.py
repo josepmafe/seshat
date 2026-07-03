@@ -22,8 +22,9 @@ from seshat.models.api_responses import (
     ImpactResponse,
     NodeDetailResponse,
     NodeListResponse,
+    NodeSearchResponse,
 )
-from seshat.models.enums import ApprovalMethod, RelationshipType, UserRole
+from seshat.models.enums import ApprovalMethod, RelationshipType, SearchMode, UserRole
 from seshat.models.nodes import KBNode
 from seshat.services.graph_service import NodeNotFoundError, NodePreconditionError
 
@@ -44,6 +45,25 @@ async def query_graph(
 ) -> NodeListResponse:
     nodes = await state.graph_service.query(node_filter)
     return NodeListResponse(nodes=nodes)
+
+
+@router.get(
+    "/search",
+    summary="Hybrid semantic search over KB nodes",
+    responses={
+        200: {"description": "Matching nodes with neighbours, ordered by relevance"},
+        401: {"description": "Missing or invalid API key"},
+    },
+)
+async def search_graph(
+    state: Annotated[AppState, Depends(get_app_state)],
+    q: str,
+    node_filter: Annotated[NodeFilter, Depends()],
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+    search_mode: SearchMode = SearchMode.SEMANTIC,
+) -> NodeSearchResponse:
+    results = await state.graph_service.search(query=q, limit=limit, node_filter=node_filter, mode=search_mode)
+    return NodeSearchResponse(results=results)
 
 
 @router.get(

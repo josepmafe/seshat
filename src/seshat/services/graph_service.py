@@ -6,7 +6,15 @@ from uuid import UUID, uuid4
 
 from seshat.models.api_graph import BulkFailure, BulkNodeCreate, BulkNodeDelete, BulkResult
 from seshat.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse
-from seshat.models.enums import ApprovalMethod, GraphDirection, IngestionSource, NodeState, NodeStatus, RelationshipType
+from seshat.models.enums import (
+    ApprovalMethod,
+    GraphDirection,
+    IngestionSource,
+    NodeState,
+    NodeStatus,
+    RelationshipType,
+    SearchMode,
+)
 from seshat.models.nodes import KBNode, KBRelationship, NodeMetadata
 from seshat.observability.latency_tracker import track_latency_profile
 from seshat.observability.usage_tracker import UsageTracker, track_token_budget
@@ -42,6 +50,22 @@ class GraphService:
 
     async def query(self, node_filter: NodeFilter) -> list[KBNode]:
         return await self._repo.query(node_filter)
+
+    async def search(
+        self, query: str, limit: int, node_filter: NodeFilter, mode: SearchMode = SearchMode.SEMANTIC
+    ) -> list[NodeDetailResponse]:
+        search_results = await self._repo.search(query=query, top_k=limit, node_filter=node_filter, mode=mode)
+        details: list[NodeDetailResponse] = []
+
+        for result in search_results:
+            try:
+                detail = await self.get_node_detail(result.node_id)
+            except NodeNotFoundError:
+                continue
+
+            details.append(detail)
+
+        return details
 
     async def get_node_detail(self, node_id: UUID) -> NodeDetailResponse:
         node = await self._repo.get_node(node_id)

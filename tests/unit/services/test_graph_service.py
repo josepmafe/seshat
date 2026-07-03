@@ -14,7 +14,15 @@ from seshat.models.api_graph import (
     NodeOverride,
     RelationshipInput,
 )
-from seshat.models.enums import ApprovalMethod, ConceptType, IngestionSource, NodeState, NodeStatus, RelationshipType
+from seshat.models.enums import (
+    ApprovalMethod,
+    ConceptType,
+    IngestionSource,
+    NodeState,
+    NodeStatus,
+    RelationshipType,
+    SearchMode,
+)
 from seshat.models.nodes import KBNode, NodeMetadata, ResolutionResult
 from seshat.services.graph_service import GraphService, NodeNotFoundError, NodePreconditionError
 from tests.helpers import make_node
@@ -409,9 +417,9 @@ class TestResolveByIds:
         repo.get_node = AsyncMock(return_value=node)
         svc._extraction_orch.run_resolution = AsyncMock(return_value=ResolutionResult(job_id="x", relationships=[rel]))
 
-        count = await svc.resolve_by_ids([node.id])
+        rels = await svc.resolve_by_ids([node.id])
 
-        assert count == 1
+        assert len(rels) == 1
 
     async def test_writes_each_relationship(self):
         node = make_node()
@@ -495,3 +503,53 @@ class TestBulkCreatePartialFailure:
 
         assert len(result.succeeded) == 1
         assert len(result.failed) == 1
+
+
+class TestSearch:
+    async def test_returns_node_details_for_results(self):
+        node = make_node()
+        result = MagicMock()
+        result.node_id = node.id
+        svc, repo = _make_service(node=node)
+        repo.search = AsyncMock(return_value=[result])
+        repo.get_neighbours = AsyncMock(return_value=[])
+
+        from seshat.models.api_graph import NodeFilter
+
+        details = await svc.search("auth risk", limit=5, node_filter=NodeFilter())
+
+        assert len(details) == 1
+        assert details[0].detail.node.id == node.id
+
+    async def test_skips_missing_nodes(self):
+        result = MagicMock()
+        result.node_id = _UUID_1
+        svc, repo = _make_service(node=None)
+        repo.search = AsyncMock(return_value=[result])
+
+        from seshat.models.api_graph import NodeFilter
+
+        details = await svc.search("auth risk", limit=5, node_filter=NodeFilter())
+
+        assert details == []
+
+    async def test_returns_empty_for_no_results(self):
+        svc, repo = _make_service()
+        repo.search = AsyncMock(return_value=[])
+
+        from seshat.models.api_graph import NodeFilter
+
+        details = await svc.search("nothing", limit=10, node_filter=NodeFilter())
+
+        assert details == []
+
+    async def test_mode_forwarded_to_repo(self):
+        svc, repo = _make_service()
+        repo.search = AsyncMock(return_value=[])
+
+        from seshat.models.api_graph import NodeFilter
+
+        await svc.search("q", limit=5, node_filter=NodeFilter(), mode=SearchMode.KEYWORD)
+
+        _, kwargs = repo.search.call_args
+        assert kwargs["mode"] == SearchMode.KEYWORD

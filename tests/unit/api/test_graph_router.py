@@ -5,10 +5,11 @@ from uuid import UUID
 
 from seshat.api.state import AppState
 from seshat.models.api_graph import BulkFailure, BulkResult
-from seshat.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse
-from seshat.models.enums import ApprovalMethod, RelationshipType, UserRole
+from seshat.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse, NodeSearchResult
+from seshat.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
 from seshat.services.graph_service import NodeNotFoundError, NodePreconditionError
 from tests.helpers import make_node
+from tests.integration.helpers import make_relationship
 from tests.unit.api.conftest import make_current_user
 
 _NODE_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -19,6 +20,7 @@ _OVERRIDE_PAYLOAD = {"title": "T", "description": "D", "reason": "fix"}
 def _make_app_state() -> AppState:
     graph_service = MagicMock()
     graph_service.query = AsyncMock(return_value=[])
+    graph_service.search = AsyncMock(return_value=[])
     graph_service.get_node_detail = AsyncMock(side_effect=NodeNotFoundError("not found"))
     graph_service.traverse_impact = AsyncMock(return_value=ImpactResponse(nodes=[]))
     graph_service.create = AsyncMock()
@@ -404,9 +406,46 @@ class TestResolveNodes:
 
     async def test_returns_relationship_count(self, api_client):
         node = make_node()
+        rel = make_relationship(node, make_node("tgt"))
         state = _make_app_state()
-        state.graph_service.resolve_by_ids = AsyncMock(return_value=1)
+        state.graph_service.resolve_by_ids = AsyncMock(return_value=[rel])
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.post("/graph/nodes/resolve", json={"node_ids": self._node_ids(node)})
         assert resp.status_code == 200
-        assert resp.json()["relationships_created"] == 1
+        assert len(resp.json()["relationships_created"]) == 1
+
+
+class TestSearchGraph:
+    async def test_requires_auth(self, api_client):
+        async with api_client(_make_app_state()) as ac:
+            resp = await ac.get("/graph/search", params={"q": "auth risk"})
+        assert resp.status_code == 401
+
+    async def test_returns_empty_results(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.get("/graph/search", params={"q": "auth risk"})
+        assert resp.status_code == 200
+        assert resp.json()["results"] == []
+
+    async def test_returns_matching_results(self, api_client):
+        node = make_node()
+        detail = NodeDetailResponse(node=node, neighbours=[])
+        state = _make_app_state()
+        state.graph_service.search = AsyncMock(return_value=[NodeSearchResult(detail=detail)])
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get("/graph/search", params={"q": "auth risk"})
+        assert resp.status_code == 200
+        assert len(resp.json()["results"]) == 1
+
+    async def test_missing_q_returns_422(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.get("/graph/search")
+        assert resp.status_code == 422
+
+    async def test_search_mode_forwarded_to_service(self, api_client):
+        state = _make_app_state()
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get("/graph/search", params={"q": "auth risk", "search_mode": "keyword"})
+        assert resp.status_code == 200
+        _, kwargs = state.graph_service.search.call_args
+        assert kwargs["mode"] == SearchMode.KEYWORD
