@@ -33,3 +33,4 @@ class JobResponse(BaseModel):
     )
     error: ErrorPayload | None = None
     mlflow_run_id: str | None = None
+    confidence_threshold: float | None = None
