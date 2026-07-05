@@ -17,6 +17,7 @@ from seshat.models.api_graph import (
 from seshat.models.enums import (
     ApprovalMethod,
     ConceptType,
+    GraphDirection,
     IngestionSource,
     NodeState,
     NodeStatus,
@@ -41,6 +42,7 @@ def _make_service(*, node: KBNode | None = None, inbound_count: int = 0):
     repo.update_node = AsyncMock()
     repo.delete_node = AsyncMock()
     repo.count_inbound_relationships = AsyncMock(return_value=inbound_count)
+    repo.get_node_relationships = AsyncMock(return_value=[])
 
     extraction_orch = MagicMock()
     extraction_orch.run_resolution = AsyncMock(return_value=ResolutionResult(job_id="job-1", relationships=[]))

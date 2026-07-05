@@ -93,6 +93,7 @@ class GraphService:
         depth: int,
         rel_types: list[RelationshipType] | None,
         min_confidence: float,
+        direction: GraphDirection = GraphDirection.OUTBOUND,
     ) -> ImpactResponse:
         visited: dict[UUID, tuple[KBNode, int]] = {}
         all_rels: dict[tuple[UUID, UUID], KBRelationship] = {}
@@ -101,9 +102,7 @@ class GraphService:
         for hop in range(1, depth + 1):
             next_frontier = []
             for current_id in frontier:
-                neighbours = await self._fetch_neighbours(
-                    current_id, rel_types=rel_types, direction=GraphDirection.INBOUND
-                )
+                neighbours = await self._fetch_neighbours(current_id, rel_types=rel_types, direction=direction)
                 node_rels = await self._repo.get_node_relationships(current_id)
                 for rel in node_rels:
                     all_rels[(rel.source_id, rel.target_id)] = rel

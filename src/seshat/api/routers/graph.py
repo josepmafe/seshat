@@ -24,7 +24,7 @@ from seshat.models.api_responses import (
     NodeListResponse,
     NodeSearchResponse,
 )
-from seshat.models.enums import ApprovalMethod, RelationshipType, SearchMode, UserRole
+from seshat.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
 from seshat.models.nodes import KBNode
 from seshat.services.graph_service import NodeNotFoundError, NodePreconditionError
 
@@ -125,9 +125,9 @@ async def get_node_detail(
 
 @router.get(
     "/{node_id}/impact",
-    summary="Multi-hop inbound traversal — nodes that upstream-influence this one",
+    summary="Multi-hop impact traversal — nodes connected to this one in the chosen direction",
     responses={
-        200: {"description": "Upstream nodes with their traversal depth"},
+        200: {"description": "Connected nodes with their traversal depth"},
         401: {"description": "Missing or invalid API key"},
         422: {"description": "depth out of allowed range [1, 3]"},
     },
@@ -138,9 +138,10 @@ async def impact_traversal(
     depth: Annotated[int, Query(ge=1, le=3)] = 2,
     rel_types: str | None = None,
     min_confidence: float = 0.0,
+    direction: GraphDirection = GraphDirection.OUTBOUND,
 ) -> ImpactResponse:
     rel_type_filter = [RelationshipType(r.strip()) for r in rel_types.split(",")] if rel_types else None
-    return await state.graph_service.traverse_impact(node_id, depth, rel_type_filter, min_confidence)
+    return await state.graph_service.traverse_impact(node_id, depth, rel_type_filter, min_confidence, direction)
 
 
 @router.post(

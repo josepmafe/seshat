@@ -162,6 +162,36 @@ class TestImpactTraversal:
         assert call.args[1] == 3
         assert call.args[2] == [RelationshipType.MITIGATES]
         assert call.args[3] == 0.5
+        assert call.args[4] == GraphDirection.OUTBOUND
+
+    async def test_direction_inbound_forwarded_to_service(self, api_client):
+        state = _make_app_state()
+        async with api_client(state, make_current_user()) as ac:
+            await ac.get(f"/graph/{_NODE_PATH}/impact?direction=inbound")
+        call = state.graph_service.traverse_impact.call_args
+        assert call.args[4] == GraphDirection.INBOUND
+
+
+class TestGetNodeNeighbours:
+    async def test_requires_auth(self, api_client):
+        async with api_client(_make_app_state()) as ac:
+            resp = await ac.get(f"/graph/{_NODE_PATH}/neighbours")
+        assert resp.status_code == 401
+
+    async def test_not_found(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.get(f"/graph/{_NODE_PATH}/neighbours")
+        assert resp.status_code == 404
+
+    async def test_returns_neighbours(self, api_client):
+        neighbour = make_node("n2")
+        state = _make_app_state()
+        state.graph_service.get_node_neighbours = AsyncMock(return_value=[neighbour])
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get(f"/graph/{_NODE_PATH}/neighbours")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+        assert resp.json()[0]["id"] == str(neighbour.id)
 
     async def test_direction_inbound_forwarded_to_service(self, api_client):
         state = _make_app_state()
