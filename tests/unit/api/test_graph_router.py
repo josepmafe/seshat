@@ -21,6 +21,8 @@ def _make_app_state() -> AppState:
     graph_service = MagicMock()
     graph_service.query = AsyncMock(return_value=[])
     graph_service.search = AsyncMock(return_value=[])
+    graph_service.get_node = AsyncMock(side_effect=NodeNotFoundError("not found"))
+    graph_service.get_node_neighbours = AsyncMock(side_effect=NodeNotFoundError("not found"))
     graph_service.get_node_detail = AsyncMock(side_effect=NodeNotFoundError("not found"))
     graph_service.traverse_impact = AsyncMock(return_value=ImpactResponse(nodes=[]))
     graph_service.create = AsyncMock()
@@ -82,6 +84,22 @@ class TestGetNode:
             resp = await ac.get(f"/graph/{_NODE_PATH}")
         assert resp.status_code == 404
 
+    async def test_returns_node(self, api_client):
+        node = make_node()
+        state = _make_app_state()
+        state.graph_service.get_node = AsyncMock(return_value=node)
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get(f"/graph/{node.id}")
+        assert resp.status_code == 200
+        assert resp.json()["id"] == str(node.id)
+
+
+class TestGetNodeDetail:
+    async def test_not_found(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.get(f"/graph/{_NODE_PATH}/detail")
+        assert resp.status_code == 404
+
     async def test_returns_node_with_neighbours(self, api_client):
         node = make_node()
         neighbour = make_node("n2")
@@ -90,17 +108,17 @@ class TestGetNode:
             return_value=NodeDetailResponse(node=node, neighbours=[neighbour])
         )
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.get(f"/graph/{node.id}")
+            resp = await ac.get(f"/graph/{node.id}/detail")
         assert resp.status_code == 200
         assert resp.json()["node"]["id"] == str(node.id)
         assert len(resp.json()["neighbours"]) == 1
 
-    async def test_filters_non_current_neighbours(self, api_client):
+    async def test_returns_empty_neighbours(self, api_client):
         node = make_node()
         state = _make_app_state()
         state.graph_service.get_node_detail = AsyncMock(return_value=NodeDetailResponse(node=node, neighbours=[]))
         async with api_client(state, make_current_user()) as ac:
-            resp = await ac.get(f"/graph/{node.id}")
+            resp = await ac.get(f"/graph/{node.id}/detail")
         assert resp.status_code == 200
         assert resp.json()["neighbours"] == []
 
@@ -144,6 +162,35 @@ class TestImpactTraversal:
         assert call.args[1] == 3
         assert call.args[2] == [RelationshipType.MITIGATES]
         assert call.args[3] == 0.5
+
+    async def test_direction_inbound_forwarded_to_service(self, api_client):
+        state = _make_app_state()
+        async with api_client(state, make_current_user()) as ac:
+            await ac.get(f"/graph/{_NODE_PATH}/impact?direction=inbound")
+        call = state.graph_service.traverse_impact.call_args
+        assert call.args[4] == GraphDirection.INBOUND
+
+
+class TestGetNodeNeighbours:
+    async def test_requires_auth(self, api_client):
+        async with api_client(_make_app_state()) as ac:
+            resp = await ac.get(f"/graph/{_NODE_PATH}/neighbours")
+        assert resp.status_code == 401
+
+    async def test_not_found(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.get(f"/graph/{_NODE_PATH}/neighbours")
+        assert resp.status_code == 404
+
+    async def test_returns_neighbours(self, api_client):
+        neighbour = make_node("n2")
+        state = _make_app_state()
+        state.graph_service.get_node_neighbours = AsyncMock(return_value=[neighbour])
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get(f"/graph/{_NODE_PATH}/neighbours")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+        assert resp.json()[0]["id"] == str(neighbour.id)
 
 
 class TestCreateNode:

@@ -180,6 +180,9 @@ class NodeRepository:
     ) -> list[KBNode]:
         return await self._kb.get_neighbours(str(node_id), rel_types=rel_types, direction=direction)
 
+    async def get_node_relationships(self, node_id: UUID) -> list[KBRelationship]:
+        return await self._kb.get_node_relationships(str(node_id))
+
     async def count_inbound_relationships(self, node_id: UUID) -> int:
         return await self._kb.count_inbound_relationships(str(node_id))
 

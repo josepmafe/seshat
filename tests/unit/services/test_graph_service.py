@@ -318,6 +318,35 @@ class TestBulkDelete:
         assert result.failed[0].node_id == str(_UUID_1)
 
 
+class TestGetNode:
+    async def test_raises_not_found_when_missing(self):
+        svc, _ = _make_service(node=None)
+        with pytest.raises(NodeNotFoundError):
+            await svc.get_node(_UUID_1)
+
+    async def test_returns_node_when_present(self):
+        node = make_node()
+        svc, _ = _make_service(node=node)
+        result = await svc.get_node(node.id)
+        assert result == node
+
+
+class TestGetNodeNeighbours:
+    async def test_raises_not_found_when_node_missing(self):
+        svc, _ = _make_service(node=None)
+        with pytest.raises(NodeNotFoundError):
+            await svc.get_node_neighbours(_UUID_1)
+
+    async def test_returns_current_neighbours(self):
+        node = make_node()
+        neighbour = make_node("n2")
+        svc, repo = _make_service(node=node)
+        repo.get_neighbours = AsyncMock(return_value=[neighbour])
+        result = await svc.get_node_neighbours(node.id)
+        assert len(result) == 1
+        assert result[0].id == neighbour.id
+
+
 class TestGetNodeDetail:
     async def test_raises_not_found_when_missing(self):
         svc, _ = _make_service(node=None)
@@ -347,6 +376,17 @@ class TestGetNodeDetail:
         detail = await svc.get_node_detail(node.id)
 
         assert detail.neighbours == []
+
+    async def test_relationships_field_populated(self):
+        node = make_node()
+        rel = make_relationship(node, make_node("tgt"))
+        svc, repo = _make_service(node=node)
+        repo.get_node_relationships = AsyncMock(return_value=[rel])
+
+        detail = await svc.get_node_detail(node.id)
+
+        assert len(detail.relationships) == 1
+        assert detail.relationships[0].source_id == node.id
 
 
 class TestTraverseImpact:
@@ -396,6 +436,35 @@ class TestTraverseImpact:
         result = await svc.traverse_impact(_UUID_1, depth=2, rel_types=None, min_confidence=0.0)
 
         assert len(result.nodes) == 1
+
+    async def test_relationships_included_in_response(self):
+        neighbour = make_node("n2", confidence=0.8)
+        rel = make_relationship(make_node(), neighbour)
+        svc, repo = _make_service(node=neighbour)
+        repo.get_neighbours = AsyncMock(return_value=[neighbour])
+        repo.get_node_relationships = AsyncMock(return_value=[rel])
+
+        result = await svc.traverse_impact(_UUID_1, depth=1, rel_types=None, min_confidence=0.0)
+
+        assert len(result.relationships) == 1
+
+    async def test_forwards_direction_to_repo(self):
+        node_a = make_node("a")
+        svc, repo = _make_service(node=node_a)
+        captured: list[GraphDirection] = []
+
+        async def _get_neighbours(nid, *, rel_types, direction):
+            captured.append(direction)
+            return [node_a] if nid == _UUID_1 else []
+
+        repo.get_neighbours = _get_neighbours
+        repo.get_node = AsyncMock(return_value=node_a)
+
+        await svc.traverse_impact(
+            _UUID_1, depth=1, rel_types=None, min_confidence=0.0, direction=GraphDirection.INBOUND
+        )
+
+        assert captured == [GraphDirection.INBOUND]
 
 
 class TestResolveByIds:

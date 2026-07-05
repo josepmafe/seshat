@@ -205,6 +205,19 @@ class PostgresKBStore:
         )
 
     @_PG_ASYNC_RETRY
+    async def get_node_relationships(self, node_id: str) -> list[KBRelationship]:
+        """Return all relationships where node_id is source or target."""
+        rows = await self.pool.fetch(
+            f"""
+            SELECT source_id, target_id, rel_type, job_id, created_at
+            FROM {self._schema}.kb_relationships
+            WHERE source_id = $1 OR target_id = $1
+            """,
+            node_id,
+        )
+        return [KBRelationship.model_validate(dict(r)) for r in rows]
+
+    @_PG_ASYNC_RETRY
     async def count_inbound_relationships(self, node_id: str) -> int:
         """Return the number of relationships where target_id = node_id."""
         row = await self.pool.fetchrow(

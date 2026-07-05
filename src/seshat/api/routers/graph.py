@@ -68,14 +68,52 @@ async def search_graph(
 
 @router.get(
     "/{node_id}",
-    summary="Get a single node with its neighbours",
+    summary="Fetch a single KB node by ID",
     responses={
-        200: {"description": "Node and active neighbours"},
+        200: {"description": "The node"},
         401: {"description": "Missing or invalid API key"},
         404: {"description": "Node not found"},
     },
 )
 async def get_node(
+    node_id: UUID,
+    state: Annotated[AppState, Depends(get_app_state)],
+) -> KBNode:
+    try:
+        return await state.graph_service.get_node(node_id)
+    except NodeNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
+
+
+@router.get(
+    "/{node_id}/neighbours",
+    summary="List depth-1 neighbours of a node (both directions, active only)",
+    responses={
+        200: {"description": "Directly connected active nodes"},
+        401: {"description": "Missing or invalid API key"},
+        404: {"description": "Node not found"},
+    },
+)
+async def get_node_neighbours(
+    node_id: UUID,
+    state: Annotated[AppState, Depends(get_app_state)],
+) -> list[KBNode]:
+    try:
+        return await state.graph_service.get_node_neighbours(node_id)
+    except NodeNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
+
+
+@router.get(
+    "/{node_id}/detail",
+    summary="Fetch a node together with its depth-1 neighbours",
+    responses={
+        200: {"description": "Node and directly connected active nodes"},
+        401: {"description": "Missing or invalid API key"},
+        404: {"description": "Node not found"},
+    },
+)
+async def get_node_detail(
     node_id: UUID,
     state: Annotated[AppState, Depends(get_app_state)],
 ) -> NodeDetailResponse:
@@ -87,9 +125,9 @@ async def get_node(
 
 @router.get(
     "/{node_id}/impact",
-    summary="Traverse inbound impact graph from a node",
+    summary="Multi-hop inbound traversal — nodes that upstream-influence this one",
     responses={
-        200: {"description": "Nodes with traversal depth"},
+        200: {"description": "Upstream nodes with their traversal depth"},
         401: {"description": "Missing or invalid API key"},
         422: {"description": "depth out of allowed range [1, 3]"},
     },
@@ -139,12 +177,12 @@ async def resolve_nodes(
     _user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
 ) -> ResolveResponse:
     try:
-        count = await state.graph_service.resolve_by_ids(payload.node_ids)
+        relationships = await state.graph_service.resolve_by_ids(payload.node_ids)
     except NodeNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except NodePreconditionError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return ResolveResponse(relationships_created=count)
+    return ResolveResponse(relationships_created=relationships)
 
 
 @router.post(
@@ -167,7 +205,7 @@ async def create_node(
 
 @router.put(
     "/{node_id}",
-    summary="Update a manually-created node",
+    summary="Alter a manually-created node",
     responses={
         200: {"description": "Updated node"},
         401: {"description": "Missing or invalid API key"},
@@ -192,7 +230,7 @@ async def update_node(
 
 @router.put(
     "/{node_id}/override",
-    summary="Override a node (creates a SUPERSEDES/AMENDS successor)",
+    summary="Alter any node with correction metadata, role-gated",
     responses={
         200: {"description": "New node version created"},
         401: {"description": "Missing or invalid API key"},

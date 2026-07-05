@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, computed_field
 
 from seshat.models.enums import HealthStatus, UserRole
-from seshat.models.nodes import KBNode
+from seshat.models.nodes import KBNode, KBRelationship
 
 
 class HealthResponse(BaseModel):
@@ -20,6 +20,7 @@ class NodeListResponse(BaseModel):
 class NodeDetailResponse(BaseModel):
     node: KBNode
     neighbours: list[KBNode]
+    relationships: list[KBRelationship] = []
 
 
 class ImpactNode(BaseModel):
@@ -29,6 +30,7 @@ class ImpactNode(BaseModel):
 
 class ImpactResponse(BaseModel):
     nodes: list[ImpactNode]
+    relationships: list[KBRelationship] = []
 
 
 class JobSubmitResponse(BaseModel):
@@ -69,5 +71,10 @@ class TranscriptExcerptResponse(BaseModel):
     char_end: int
 
 
+class NodeSearchResult(BaseModel):
+    detail: NodeDetailResponse
+    score: float | None = None
+
+
 class NodeSearchResponse(BaseModel):
-    results: list[NodeDetailResponse]
+    results: list[NodeSearchResult]
