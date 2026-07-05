@@ -57,6 +57,7 @@ def _make_service(
     ops.create_job = AsyncMock()
     ops.reset_failed_job = AsyncMock()
     ops.get_stranded_writing_jobs = AsyncMock(return_value=[])
+    ops.set_job_mlflow_run_id = AsyncMock()
 
     blob = MagicMock()
     blob.put_by_key = AsyncMock()
@@ -550,6 +551,27 @@ class TestListJobs:
 
         call_args = svc._ops.list_jobs.call_args
         assert call_args.kwargs.get("limit", call_args.args[1] if len(call_args.args) > 1 else None) <= 200
+
+    async def test_forwards_source_type_to_ops(self):
+        svc, *_ = _make_service()
+        svc._ops.list_jobs = AsyncMock(return_value=[])
+
+        await svc.list_jobs(source_type="audio")
+
+        call_kwargs = svc._ops.list_jobs.call_args.kwargs
+        assert call_kwargs.get("source_type") == "audio"
+
+    async def test_forwards_date_range_to_ops(self):
+        svc, *_ = _make_service()
+        svc._ops.list_jobs = AsyncMock(return_value=[])
+
+        from_date = date(2026, 1, 1)
+        to_date = date(2026, 6, 30)
+        await svc.list_jobs(meeting_date_from=from_date, meeting_date_to=to_date)
+
+        call_kwargs = svc._ops.list_jobs.call_args.kwargs
+        assert call_kwargs.get("meeting_date_from") == from_date
+        assert call_kwargs.get("meeting_date_to") == to_date
 
 
 class TestGetTranscriptExcerpt:

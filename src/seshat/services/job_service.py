@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from seshat.models.api_responses import JobActionResponse, JobSubmitResponse
@@ -181,10 +181,20 @@ class JobService:
     async def list_jobs(
         self,
         status: JobStatus | None = None,
+        source_type: str | None = None,
+        meeting_date_from: date | None = None,
+        meeting_date_to: date | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[JobResponse]:
-        rows = await self._ops.list_jobs(status=status, limit=min(limit, 200), offset=offset)
+        rows = await self._ops.list_jobs(
+            status=status,
+            source_type=source_type,
+            meeting_date_from=meeting_date_from,
+            meeting_date_to=meeting_date_to,
+            limit=min(limit, 200),
+            offset=offset,
+        )
         return [_job_response_from_row(row) for row in rows]
 
     async def get_result(self, job_id: str) -> ExtractionResult | None:

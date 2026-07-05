@@ -88,6 +88,26 @@ class TestPostgresOpsStore:
         assert len(rows) == 1
         assert "WHERE status=" in pool.fetch.call_args[0][0]
 
+    async def test_list_jobs_source_type_filter(self):
+        store, pool = _make_store(fetch=[{"job_id": "job-1"}])
+        await store.list_jobs(source_type="audio")
+        query = pool.fetch.call_args[0][0]
+        assert "source_type=" in query
+
+    async def test_list_jobs_date_range_filter(self):
+        store, pool = _make_store(fetch=[])
+        await store.list_jobs(meeting_date_from=date(2026, 1, 1), meeting_date_to=date(2026, 6, 30))
+        query = pool.fetch.call_args[0][0]
+        assert "meeting_date >=" in query
+        assert "meeting_date <=" in query
+
+    async def test_find_job_by_content_hash_only_returns_done_jobs(self):
+        store, pool = _make_store(fetchval="job-1")
+        result = await store.find_job_by_content_hash("abc123")
+        assert result == "job-1"
+        query = pool.fetchval.call_args[0][0]
+        assert "status='done'" in query
+
     async def test_create_api_key(self):
         store, pool = _make_store()
         now = datetime.now(UTC)

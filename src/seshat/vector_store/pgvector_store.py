@@ -82,7 +82,7 @@ class PGVectorStore(AbstractVectorStore):
 
     @staticmethod
     def get_supported_filter_fields() -> frozenset[str]:
-        return frozenset({"node_type", "min_confidence", "ingestion_source"})
+        return frozenset({"node_type", "min_confidence", "ingestion_source", "meeting_date_from", "meeting_date_to"})
 
     async def _ensure_ts_content(self) -> None:
         if self._ts_content_ready:
@@ -256,6 +256,15 @@ class PGVectorStore(AbstractVectorStore):
                 stmt = stmt.where(
                     self._store.EmbeddingStore.cmetadata["ingestion_source"].as_string() == node_filter.ingestion_source
                 )
+            if node_filter.meeting_date_from is not None:
+                stmt = stmt.where(
+                    self._store.EmbeddingStore.cmetadata["meeting_date"].as_string()
+                    >= str(node_filter.meeting_date_from)
+                )
+            if node_filter.meeting_date_to is not None:
+                stmt = stmt.where(
+                    self._store.EmbeddingStore.cmetadata["meeting_date"].as_string() <= str(node_filter.meeting_date_to)
+                )
         if exclude_job_id is not None:
             stmt = stmt.where(self._store.EmbeddingStore.cmetadata["job_id"].as_string() != exclude_job_id)
 
@@ -270,9 +279,11 @@ class PGVectorStore(AbstractVectorStore):
         if node_filter is not None:
             unsupported = {f for f in node_filter.model_fields_set if f not in self.get_supported_filter_fields()}
             if unsupported:
-                raise NotImplementedError(
-                    f"PGVector metadata filter does not support: {sorted(unsupported)}. "
-                    "Use PostgresKBStore.query() for full NodeFilter support."
+                logger.warning(
+                    "PGVector semantic filter ignoring unsupported fields %s (supported: %s) — "
+                    "these filters are not applied at the vector-store layer.",
+                    sorted(unsupported),
+                    sorted(self.get_supported_filter_fields()),
                 )
             if node_filter.node_type:
                 result["node_type"] = node_filter.node_type.value
@@ -280,6 +291,10 @@ class PGVectorStore(AbstractVectorStore):
                 result["confidence"] = {"$gte": node_filter.min_confidence}
             if node_filter.ingestion_source:
                 result["ingestion_source"] = node_filter.ingestion_source.value
+            if node_filter.meeting_date_from is not None:
+                result.setdefault("meeting_date", {})["$gte"] = str(node_filter.meeting_date_from)
+            if node_filter.meeting_date_to is not None:
+                result.setdefault("meeting_date", {})["$lte"] = str(node_filter.meeting_date_to)
 
         if exclude_job_id is not None:
             result["job_id"] = {"$ne": exclude_job_id}

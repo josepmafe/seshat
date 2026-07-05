@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
+
+if TYPE_CHECKING:
+    from datetime import date
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse
@@ -36,10 +39,20 @@ router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_
 async def list_jobs(
     state: Annotated[AppState, Depends(get_app_state)],
     job_status: JobStatus | None = None,
+    source_type: str | None = None,
+    meeting_date_from: date | None = None,
+    meeting_date_to: date | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[JobResponse]:
-    return await state.job_service.list_jobs(status=job_status, limit=limit, offset=offset)
+    return await state.job_service.list_jobs(
+        status=job_status,
+        source_type=source_type,
+        meeting_date_from=meeting_date_from,
+        meeting_date_to=meeting_date_to,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post(
@@ -66,6 +79,11 @@ async def submit_job(
 
     if submission.overrides is not None and not user.role.is_at_least(UserRole.OPERATOR):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Config overrides require operator role")
+
+    if submission.force and not user.role.is_at_least(UserRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Force re-ingest deletes existing nodes — admin role required"
+        )
 
     file_bytes = await file.read()
 

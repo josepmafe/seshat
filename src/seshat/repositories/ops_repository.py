@@ -61,10 +61,13 @@ class OpsRepository:
     async def list_jobs(
         self,
         status: JobStatus | None = None,
+        source_type: str | None = None,
+        meeting_date_from: date | None = None,
+        meeting_date_to: date | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict]:
-        return await self._store.list_jobs(status, limit, offset)
+        return await self._store.list_jobs(status, source_type, meeting_date_from, meeting_date_to, limit, offset)
 
     async def count_recent_jobs_for_user(self, user_id: str) -> int:
         return await self._store.count_recent_jobs_for_user(user_id)

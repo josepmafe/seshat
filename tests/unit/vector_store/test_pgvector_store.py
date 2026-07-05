@@ -6,6 +6,7 @@ from uuid import UUID
 import pytest
 from langchain_core.documents import Document
 
+from seshat.models.api_graph import NodeFilter
 from seshat.vector_store.pgvector_store import PGVectorStore, _rrf
 
 _N1 = "00000000-0000-0000-0000-000000000001"
@@ -110,6 +111,57 @@ class TestValidateConnectionString:
     def test_psycopg2_qualifier_replaced(self):
         result = PGVectorStore._validate_connection_string("postgresql+psycopg2://user:pass@host/db")
         assert result == "postgresql+psycopg://user:pass@host/db"
+
+
+class TestBuildSemanticFilter:
+    def _store(self) -> PGVectorStore:
+        return PGVectorStore.__new__(PGVectorStore)
+
+    def test_none_filter_and_no_exclude_returns_none(self):
+        assert self._store()._build_semantic_filter(None) is None
+
+    def test_supported_node_type_filter_applied(self):
+        from seshat.models.enums import ConceptType
+
+        nf = NodeFilter(node_type=ConceptType.DECISION)
+        result = self._store()._build_semantic_filter(nf)
+        assert result == {"node_type": ConceptType.DECISION.value}
+
+    def test_supported_min_confidence_filter_applied(self):
+        nf = NodeFilter(min_confidence=0.7)
+        result = self._store()._build_semantic_filter(nf)
+        assert result == {"confidence": {"$gte": 0.7}}
+
+    def test_unsupported_fields_warn_and_are_ignored(self, caplog):
+        from seshat.models.enums import NodeStatus
+
+        nf = NodeFilter(status=NodeStatus.APPROVED)
+        with caplog.at_level(logging.WARNING, logger="seshat.vector_store.pgvector_store"):
+            result = self._store()._build_semantic_filter(nf)
+
+        assert "status" in caplog.text
+        assert "supported" in caplog.text
+        assert result == {}
+
+    def test_unsupported_fields_do_not_prevent_supported_fields_from_applying(self, caplog):
+        from seshat.models.enums import ConceptType, NodeStatus
+
+        nf = NodeFilter(node_type=ConceptType.DECISION, status=NodeStatus.APPROVED)
+        with caplog.at_level(logging.WARNING, logger="seshat.vector_store.pgvector_store"):
+            result = self._store()._build_semantic_filter(nf)
+
+        assert result == {"node_type": ConceptType.DECISION.value}
+        assert "status" in caplog.text
+
+    def test_exclude_job_id_adds_ne_filter(self):
+        result = self._store()._build_semantic_filter(None, exclude_job_id="job-123")
+        assert result == {"job_id": {"$ne": "job-123"}}
+
+    def test_no_active_filters_returns_empty_dict_not_none(self):
+        # node_filter set but all supported fields are None → returns {} (not None)
+        nf = NodeFilter()
+        result = self._store()._build_semantic_filter(nf)
+        assert result == {}
 
 
 class TestRrfDuplicateHandling:

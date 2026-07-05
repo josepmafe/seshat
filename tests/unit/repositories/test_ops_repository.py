@@ -89,7 +89,7 @@ class TestOpsRepository:
         repo = _make_repo(list_jobs=[{"job_id": "job-1"}])
         rows = await repo.list_jobs(status=JobStatus.DONE)
         assert len(rows) == 1
-        repo._store.list_jobs.assert_called_once_with(JobStatus.DONE, 50, 0)
+        repo._store.list_jobs.assert_called_once_with(JobStatus.DONE, None, None, None, 50, 0)
 
     async def test_create_api_key_delegates(self):
         repo = _make_repo()
