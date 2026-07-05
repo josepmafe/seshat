@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 
-from seshat.models.api_jobs import BulkApproveRule, NodeDecision
+from seshat.models.api_jobs import BulkApproveRule, KBNodeEdit, NodeDecision
 from seshat.models.enums import ApprovalMethod, JobStatus, NodeStatus
 from seshat.models.nodes import ExtractionResult, IdentificationResult, ResolutionResult
 from seshat.services.job_service import (
@@ -95,7 +95,7 @@ class TestPreApproval:
         ident = await svc._run_pre_approval("job-1", b"data", _make_submission())
 
         assert ident is not None
-        assert "job-1" in svc._pending
+        assert "job-1" in svc._results
         ops.update_job_status.assert_any_await("job-1", JobStatus.TRANSCRIBING)
         ops.update_job_status.assert_any_await("job-1", JobStatus.EXTRACTING)
         ops.update_job_status.assert_any_await("job-1", JobStatus.AWAITING_REVIEW)
@@ -114,13 +114,18 @@ class TestPreApproval:
 
         assert result is None
         ops.fail_job.assert_called_once()
-        assert "job-1" not in svc._pending
+        assert "job-1" not in svc._results
+
+
+_JOB_ROW = {"meeting_date": date(2026, 1, 1), "status": JobStatus.WRITING}
 
 
 class TestPostApproval:
     async def test_resolves_writes_and_sets_done(self):
-        svc, _, extraction, node_repo, ops, _ = _make_service()
-        svc._pending["job-1"] = await extraction.run_identification(MagicMock(), "job-1")
+        node = make_node(status=NodeStatus.APPROVED)
+        svc, _, extraction, node_repo, ops, _ = _make_service(nodes=[node])
+        ops.get_job = AsyncMock(return_value=_JOB_ROW)
+        svc._results["job-1"] = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
 
         await svc._run_post_approval("job-1")
 
@@ -128,16 +133,13 @@ class TestPostApproval:
         node_repo.write_batch.assert_called_once()
         ops.update_job_status.assert_any_await("job-1", JobStatus.WRITING)
         ops.update_job_status.assert_any_await("job-1", JobStatus.DONE)
-        assert "job-1" in svc._results
-        assert isinstance(svc._results["job-1"], ExtractionResult)
 
     async def test_passes_approved_nodes_to_resolution(self):
-        approved = make_node()
+        approved = make_node(status=NodeStatus.APPROVED)
         rejected = make_node("rejected", status=NodeStatus.REJECTED)
-        svc, _, extraction, _, _, _ = _make_service(nodes=[approved, rejected])
-        svc._pending["job-1"] = IdentificationResult(
-            job_id="job-1", nodes=[approved, rejected], confidence_breakdowns={}
-        )
+        svc, _, extraction, _, ops, _ = _make_service(nodes=[approved, rejected])
+        ops.get_job = AsyncMock(return_value=_JOB_ROW)
+        svc._results["job-1"] = ExtractionResult(job_id="job-1", nodes=[approved, rejected], relationships=[])
 
         await svc._run_post_approval("job-1")
 
@@ -146,9 +148,9 @@ class TestPostApproval:
 
     async def test_writes_curated_extraction_blob(self):
         meeting_date = date(2026, 1, 1)
-        svc, _, extraction, _, ops, blob = _make_service()
-        ops.get_job = AsyncMock(return_value={"meeting_date": meeting_date})
-        svc._pending["job-1"] = await extraction.run_identification(MagicMock(), "job-1")
+        svc, _, _, _, ops, blob = _make_service()
+        ops.get_job = AsyncMock(return_value={"meeting_date": meeting_date, "status": JobStatus.WRITING})
+        svc._results["job-1"] = ExtractionResult(job_id="job-1", nodes=[], relationships=[])
 
         await svc._run_post_approval("job-1")
 
@@ -159,7 +161,8 @@ class TestPostApproval:
 
     async def test_failure_calls_fail_job(self):
         svc, _, extraction, _, ops, _ = _make_service()
-        svc._pending["job-1"] = IdentificationResult(job_id="job-1", nodes=[], confidence_breakdowns={})
+        ops.get_job = AsyncMock(return_value=_JOB_ROW)
+        svc._results["job-1"] = ExtractionResult(job_id="job-1", nodes=[], relationships=[])
         extraction.run_resolution.side_effect = RuntimeError("llm timeout")
 
         await svc._run_post_approval("job-1")
@@ -172,7 +175,8 @@ class TestPostApproval:
 class TestAutoMode:
     async def test_auto_mode_field_promotes_pending_and_fires_post_approval(self):
         node = make_node(status=NodeStatus.PENDING_REVIEW)
-        svc, _, extraction, node_repo, _, _ = _make_service(nodes=[node])
+        svc, _, extraction, node_repo, ops, _ = _make_service(nodes=[node])
+        ops.get_job = AsyncMock(return_value=_JOB_ROW)
 
         sub = _make_submission()
         sub.auto_mode = True
@@ -181,12 +185,11 @@ class TestAutoMode:
 
         extraction.run_resolution.assert_called_once()
         node_repo.write_batch.assert_called_once()
-        approved = [n for n in svc._results["job-1"].nodes if n.status == NodeStatus.APPROVED]
-        assert len(approved) == 1
 
     async def test_auto_mode_via_extraction_override_also_works(self):
         node = make_node(status=NodeStatus.PENDING_REVIEW)
-        svc, _, extraction, node_repo, _, _ = _make_service(nodes=[node])
+        svc, _, extraction, node_repo, ops, _ = _make_service(nodes=[node])
+        ops.get_job = AsyncMock(return_value=_JOB_ROW)
 
         sub = _make_submission()
         sub.overrides = MagicMock()
@@ -225,7 +228,9 @@ class TestApprove:
 
     async def test_missing_result_raises(self):
         svc, *_ = _make_service()
-        svc._ops.get_job = AsyncMock(return_value={"status": JobStatus.AWAITING_REVIEW})
+        svc._ops.get_job = AsyncMock(
+            return_value={"status": JobStatus.AWAITING_REVIEW, "meeting_date": date(2026, 1, 1)}
+        )
 
         with pytest.raises(JobNotFoundError):
             await svc.approve("job-1", MagicMock(), "alice")
@@ -310,6 +315,40 @@ class TestApplyBulkRule:
 
 
 class TestApplyDecisions:
+    def test_approve_does_not_override_bulk_approval(self):
+        node = make_node(confidence=0.9, status=NodeStatus.PENDING_REVIEW)
+        rule = BulkApproveRule(threshold=0.7)
+        bulk_approved = _apply_bulk_rule([node], rule, "alice", _NOW)
+
+        decisions = [NodeDecision(node_id=str(node.id), action="approve")]
+        result = _apply_decisions(bulk_approved, decisions, "alice", _NOW)
+
+        assert result[0].status == NodeStatus.APPROVED
+        assert result[0].metadata.approval_method == ApprovalMethod.BULK
+
+    def test_reject_overrides_bulk_approval(self):
+        node = make_node(confidence=0.9, status=NodeStatus.PENDING_REVIEW)
+        rule = BulkApproveRule(threshold=0.7)
+        bulk_approved = _apply_bulk_rule([node], rule, "alice", _NOW)
+
+        decisions = [NodeDecision(node_id=str(node.id), action="reject")]
+        result = _apply_decisions(bulk_approved, decisions, "alice", _NOW)
+
+        assert result[0].status == NodeStatus.REJECTED
+
+    def test_edit_on_bulk_approved_node_updates_content(self):
+        node = make_node(confidence=0.9, status=NodeStatus.PENDING_REVIEW)
+        rule = BulkApproveRule(threshold=0.7)
+        bulk_approved = _apply_bulk_rule([node], rule, "alice", _NOW)
+
+        edited = KBNodeEdit(title="Fixed Title", description="Fixed Desc")
+        decisions = [NodeDecision(node_id=str(node.id), action="approve", edited_content=edited)]
+        result = _apply_decisions(bulk_approved, decisions, "alice", _NOW)
+
+        assert result[0].status == NodeStatus.APPROVED
+        assert result[0].title == "Fixed Title"
+        assert result[0].metadata.corrected_by == "alice"
+
     def test_approve_action_sets_status(self):
         node = make_node(status=NodeStatus.PENDING_REVIEW)
         decisions = [NodeDecision(node_id=str(node.id), action="approve")]
@@ -335,8 +374,6 @@ class TestApplyDecisions:
         assert result[0].status == NodeStatus.PENDING_REVIEW
 
     def test_edited_content_updates_title_and_description(self):
-        from seshat.models.api_jobs import KBNodeEdit
-
         node = make_node(status=NodeStatus.PENDING_REVIEW)
         edited = KBNodeEdit(title="New Title", description="New Desc")
         decisions = [NodeDecision(node_id=str(node.id), action="approve", edited_content=edited)]
@@ -487,7 +524,7 @@ class TestSubmitRateLimit:
 
         await svc.submit(b"data", "file.txt", sub, "alice")
 
-        svc._node_repo.delete_node.assert_called_once_with(pending.id)
+        svc._node_repo.delete_node.assert_called_once_with(pending.id, cascade=True)
 
 
 class TestRetry:

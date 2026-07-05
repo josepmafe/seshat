@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
+from seshat.models.api_graph import NodeFilter
 from seshat.models.api_responses import JobActionResponse, JobSubmitResponse
 from seshat.models.enums import ApprovalMethod, JobStatus, NodeStatus
 from seshat.models.jobs import JobResponse
@@ -69,7 +70,6 @@ class JobService:
         self._extraction = extraction
         self._ingestion = ingestion
         self._queue = queue
-        self._pending: dict[str, IdentificationResult] = {}
         self._results: dict[str, ExtractionResult] = {}
 
     # -- Public lifecycle methods ----------------------------------------------
@@ -100,7 +100,9 @@ class JobService:
         if existing_job_id:
             if not submission.force:
                 raise ContentAlreadyIngestedError(existing_job_id)
-            await self._delete_non_approved_nodes(existing_job_id)
+
+            logger.warning("Force re-ingest: permanently deleting all nodes for job %s", existing_job_id)
+            await self._delete_job_nodes(existing_job_id)
 
         job_id = str(uuid.uuid4())
         now = datetime.now(UTC)
@@ -132,8 +134,8 @@ class JobService:
         if row["status"] != JobStatus.AWAITING_REVIEW:
             raise JobStateError("Job is not awaiting review")
 
-        result = self._results.get(job_id)
-        if not result:
+        result = await self._load_extraction_result(job_id, row)
+        if result is None:
             raise JobNotFoundError("Extraction result not found")
 
         now = datetime.now(UTC)
@@ -204,19 +206,7 @@ class JobService:
         if row["status"] not in (JobStatus.AWAITING_REVIEW, JobStatus.DONE):
             raise JobStateError("Results not yet available")
 
-        result = self._results.get(job_id)
-        if result:
-            return result
-
-        meeting_date = row["meeting_date"]
-        if meeting_date is None:
-            return None
-
-        raw = await self._blob.get_curated_extraction(meeting_date, job_id)
-        if raw is None:
-            return None
-
-        return ExtractionResult.model_validate_json(raw)
+        return await self._load_extraction_result(job_id, row)
 
     async def get_transcript_excerpt(self, job_id: str, char_start: int, char_end: int) -> str:
         if char_start >= char_end:
@@ -287,12 +277,14 @@ class JobService:
                 )
 
             await self._ops.update_job_status(job_id, JobStatus.EXTRACTING)
-            identification_result = await self._extraction.run_identification(doc, job_id, user_id=user_id)
+            config_override = submission.overrides.extraction if submission.overrides else None
+            identification_result = await self._extraction.run_identification(
+                doc, job_id, user_id=user_id, config_override=config_override
+            )
 
             if self._effective_auto_mode(submission):
                 identification_result = _apply_auto_mode(identification_result, datetime.now(UTC))
 
-            self._pending[job_id] = identification_result
             await self._store_result(job_id, identification_result, [])
 
             await self._ops.update_job_status(job_id, JobStatus.AWAITING_REVIEW)
@@ -306,13 +298,22 @@ class JobService:
 
     async def _run_post_approval(self, job_id: str) -> None:
         try:
-            identification_result = self._pending.pop(job_id)
             set_job_id(job_id)
 
-            approved = [n for n in identification_result.nodes if n.status == NodeStatus.APPROVED]
+            row = await self._ops.get_job(job_id)
+            if not row:
+                raise RuntimeError(f"Job {job_id} not found")
+
+            result = await self._load_extraction_result(job_id, row)
+            if result is None:
+                raise RuntimeError(f"Extraction result for job {job_id} not found in memory or blob store")
+            self._results.pop(job_id, None)
+
+            approved = [n for n in result.nodes if n.status == NodeStatus.APPROVED]
             resol = await self._extraction.run_resolution(job_id, approved=approved)
 
-            result = await self._store_result(job_id, identification_result, resol.relationships)
+            result = result._with(relationships=resol.relationships)
+            await self._blob.put_curated_extraction(row["meeting_date"], job_id, result.model_dump_json().encode())
 
             await self._ops.update_job_status(job_id, JobStatus.WRITING)
             written = await self._node_repo.write_batch(result)
@@ -326,6 +327,14 @@ class JobService:
 
     # -- Private helpers -------------------------------------------------------
 
+    async def _load_extraction_result(self, job_id: str, row: dict) -> ExtractionResult | None:
+        result = self._results.get(job_id)
+        if result:
+            return result
+
+        raw = await self._blob.get_curated_extraction(row["meeting_date"], job_id)
+        return ExtractionResult.model_validate_json(raw) if raw else None
+
     def _effective_auto_mode(self, submission: JobSubmissionRequest) -> bool:
         if submission.auto_mode:
             return True
@@ -336,13 +345,10 @@ class JobService:
 
         return self._extraction._config.auto_mode
 
-    async def _delete_non_approved_nodes(self, job_id: str) -> None:
-        from seshat.models.api_graph import NodeFilter
-
+    async def _delete_job_nodes(self, job_id: str) -> None:
         nodes = await self._node_repo.paginated_query(NodeFilter(job_id=job_id))
         for node in nodes:
-            if node.status in (NodeStatus.PENDING_REVIEW, NodeStatus.REJECTED):
-                await self._node_repo.delete_node(node.id)
+            await self._node_repo.delete_node(node.id, cascade=True)
 
     async def _store_result(
         self,
@@ -404,6 +410,9 @@ def _apply_decisions(nodes: list[KBNode], decisions: list[NodeDecision], user_id
             continue
 
         if decision.action == "approve":
+            if node.status == NodeStatus.APPROVED and not decision.edited_content:
+                continue
+
             node_kwargs: dict[str, Any] = {}
             meta_kwargs: dict[str, Any] = {
                 "approval_method": ApprovalMethod.INDIVIDUAL,
@@ -426,5 +435,10 @@ def _apply_decisions(nodes: list[KBNode], decisions: list[NodeDecision], user_id
 
 def _job_response_from_row(row: Any) -> JobResponse:
     error = json.loads(row["error_payload"]) if row["error_payload"] else None
-    model_kwargs = dict(row) | {"error": error}
+
+    submission = json.loads(row.get("submission", "{}"))
+    extraction_overrides = submission.get("overrides", {}).get("extraction", {})
+    threshold = extraction_overrides.get("confidence_threshold")
+
+    model_kwargs = dict(row) | {"error": error, "confidence_threshold": threshold}
     return JobResponse.model_validate(model_kwargs)
