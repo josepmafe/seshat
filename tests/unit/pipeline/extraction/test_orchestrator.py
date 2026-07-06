@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -399,7 +400,12 @@ class TestKbHintIsolation:
         )
 
         await orchestrator._identify_concept_type(
-            TRANSCRIPT, "blob-key", ConceptType.DECISION, "job-1", kb_hint="prebuilt hint"
+            TRANSCRIPT,
+            "blob-key",
+            ConceptType.DECISION,
+            "job-1",
+            kb_hint="prebuilt hint",
+            meeting_date=date(2026, 1, 1),
         )
 
         orchestrator._repo.paginated_query.assert_not_called()
