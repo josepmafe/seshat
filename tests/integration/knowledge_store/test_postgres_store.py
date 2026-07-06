@@ -230,7 +230,7 @@ class TestQuery:
     async def test_query_by_ingestion_source(self, store: PostgresKBStore):
         node = make_node("n-source-q")
         await store.write_node(node)
-        results = await store.query(NodeFilter(ingestion_source=IngestionSource.JOB))
+        results = await store.query(NodeFilter(ingestion_source=IngestionSource.PIPELINE))
         assert any(n.id == node.id for n in results)
         results_miss = await store.query(NodeFilter(ingestion_source=IngestionSource.INIT))
         assert not any(n.id == node.id for n in results_miss)

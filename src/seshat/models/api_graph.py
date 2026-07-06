@@ -113,3 +113,9 @@ class ResolveRequest(BaseModel):
 
 class ResolveResponse(BaseModel):
     relationships_created: list[KBRelationship]
+
+
+class RelationshipCreateRequest(BaseModel):
+    source_id: UUID
+    target_id: UUID
+    rel_type: RelationshipType

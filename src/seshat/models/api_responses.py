@@ -17,6 +17,10 @@ class NodeListResponse(BaseModel):
     nodes: list[KBNode]
 
 
+class RelationshipListResponse(BaseModel):
+    relationships: list[KBRelationship]
+
+
 class NodeDetailResponse(BaseModel):
     node: KBNode
     neighbours: list[KBNode]

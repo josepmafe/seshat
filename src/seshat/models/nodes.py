@@ -11,16 +11,19 @@ from seshat.models.enums import (
     IngestionSource,
     NodeState,
     NodeStatus,
+    RelationshipSource,
     RelationshipType,
 )
 from seshat.models.quote_anchor import QuoteAnchor
 
 
 class KBRelationship(SeshatModel):
+    rel_id: UUID = Field(default_factory=uuid4)
     source_id: UUID
     target_id: UUID
     rel_type: RelationshipType
     job_id: str
+    source: RelationshipSource = RelationshipSource.PIPELINE
     created_at: datetime = Field(description="UTC timestamp when this relationship was written.")
 
 
@@ -43,7 +46,7 @@ class NodeMetadata(SeshatModel):
     meeting_date: date | None = None
     participants: list[str] | None = None
     ingestion_source: IngestionSource = Field(
-        default=IngestionSource.JOB, description="Whether this node came from a job or an init run."
+        default=IngestionSource.PIPELINE, description="Whether this node came from a job or an init run."
     )
     team: str | None = None
     project: str | None = None

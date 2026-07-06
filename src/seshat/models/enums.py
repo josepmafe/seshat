@@ -39,9 +39,15 @@ class ApprovalMethod(StrEnum):
 
 
 class IngestionSource(StrEnum):
-    JOB = auto()
+    PIPELINE = auto()
     INIT = auto()
     MANUAL = auto()
+
+
+class RelationshipSource(StrEnum):
+    PIPELINE = auto()
+    MANUAL = auto()
+    INIT = auto()
 
 
 class JobStatus(StrEnum):

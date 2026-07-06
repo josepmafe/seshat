@@ -219,7 +219,7 @@ class TestPendingNodeBuild:
         assert kb.title == "Use PostgreSQL"
         assert kb.description == "desc"
         assert kb.metadata.job_id == "job-1"
-        assert kb.metadata.ingestion_source == IngestionSource.JOB
+        assert kb.metadata.ingestion_source == IngestionSource.PIPELINE
 
     def test_build_sets_confidence_from_heuristics(self):
         kb = self._built_node(heuristics=0.65)

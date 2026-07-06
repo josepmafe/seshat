@@ -60,7 +60,7 @@ class _PendingNode:
             metadata=NodeMetadata(
                 job_id=self.job_id,
                 meeting_date=self.meeting_date,
-                ingestion_source=IngestionSource.JOB,
+                ingestion_source=IngestionSource.PIPELINE,
                 confidence_breakdown=self.breakdown,
                 approval_method=self.approval_method,
                 approved_at=self.approved_at,

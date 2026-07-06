@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+import asyncpg
+
 from seshat.models.api_graph import BulkFailure, BulkNodeCreate, BulkNodeDelete, BulkResult
 from seshat.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse, NodeSearchResult
 from seshat.models.enums import (
@@ -13,6 +15,7 @@ from seshat.models.enums import (
     IngestionSource,
     NodeState,
     NodeStatus,
+    RelationshipSource,
     RelationshipType,
     SearchMode,
 )
@@ -34,6 +37,14 @@ class NodeNotFoundError(Exception):
 
 
 class NodePreconditionError(Exception):
+    pass
+
+
+class RelationshipNotFoundError(Exception):
+    pass
+
+
+class RelationshipConflictError(Exception):
     pass
 
 
@@ -229,6 +240,54 @@ class GraphService:
 
         return result.relationships
 
+    # -- Relationship CRUD -----------------------------------------------------
+
+    async def list_relationships(
+        self,
+        node_id: UUID | None = None,
+        rel_type: RelationshipType | None = None,
+        limit: int = 100,
+    ) -> list[KBRelationship]:
+        return await self._repo.list_relationships(node_id=node_id, rel_type=rel_type, limit=limit)
+
+    async def create_relationship(
+        self,
+        source_id: UUID,
+        target_id: UUID,
+        rel_type: RelationshipType,
+    ) -> KBRelationship:
+        source = await self._repo.get_node(source_id)
+        if source is None:
+            raise NodeNotFoundError(source_id)
+
+        target = await self._repo.get_node(target_id)
+        if target is None:
+            raise NodeNotFoundError(target_id)
+
+        now = datetime.now(UTC)
+        rel = KBRelationship(
+            source_id=source_id,
+            target_id=target_id,
+            rel_type=rel_type,
+            job_id=f"manual_{uuid4()}",
+            source=RelationshipSource.MANUAL,
+            created_at=now,
+        )
+        try:
+            return await self._repo.create_relationship_manual(rel)
+        except Exception as exc:
+            if _is_unique_violation(exc):
+                raise RelationshipConflictError(
+                    f"Relationship ({source_id}, {target_id}, {rel_type}) already exists"
+                ) from exc
+            raise
+
+    async def delete_relationship(self, rel_id: UUID) -> None:
+        rel = await self._repo.get_relationship(rel_id)
+        if rel is None:
+            raise RelationshipNotFoundError(rel_id)
+        await self._repo.delete_relationship(rel)
+
     async def _get_active_neighbours(self, node: KBNode) -> list[KBNode]:
         neighbours = await self._fetch_neighbours(node.id, direction=GraphDirection.BOTH)
         return [n for n in neighbours if _both_current(node, n)]
@@ -304,6 +363,10 @@ def _build_manual_node(job_id: str, payload: ManualNodeCreate, now: datetime, us
         state=NodeState.CURRENT,
         metadata=metadata,
     )
+
+
+def _is_unique_violation(exc: Exception) -> bool:
+    return isinstance(exc, asyncpg.UniqueViolationError)
 
 
 def _build_relationships(

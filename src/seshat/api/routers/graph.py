@@ -15,6 +15,7 @@ from seshat.models.api_graph import (
     ManualNodeUpdate,
     NodeFilter,
     NodeOverride,
+    RelationshipCreateRequest,
     ResolveRequest,
     ResolveResponse,
 )
@@ -23,12 +24,31 @@ from seshat.models.api_responses import (
     NodeDetailResponse,
     NodeListResponse,
     NodeSearchResponse,
+    RelationshipListResponse,
 )
 from seshat.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
-from seshat.models.nodes import KBNode
-from seshat.services.graph_service import NodeNotFoundError, NodePreconditionError
+from seshat.models.nodes import KBNode, KBRelationship
+from seshat.services.graph_service import (
+    NodeNotFoundError,
+    NodePreconditionError,
+    RelationshipConflictError,
+    RelationshipNotFoundError,
+)
 
+# Parent router carries the /graph prefix and the baseline VIEWER auth gate.
+# Sub-routers group by resource; fixed prefixes avoid catch-all routing conflicts.
 router = APIRouter(prefix="/graph", tags=["graph"], dependencies=[Depends(require_role(UserRole.VIEWER))])
+
+_nodes_router = APIRouter(prefix="/nodes", tags=["graph nodes"])
+_relations_router = APIRouter(prefix="/relationships", tags=["graph relationships"])
+
+# Sub-routers are included first so their fixed prefixes take priority over the
+# /{node_id} catch-all registered below.
+router.include_router(_nodes_router)
+router.include_router(_relations_router)
+
+
+# -- KB and VS browse ---------------------------------------------------------
 
 
 @router.get(
@@ -144,7 +164,10 @@ async def impact_traversal(
     return await state.graph_service.traverse_impact(node_id, depth, rel_type_filter, min_confidence, direction)
 
 
-@router.post(
+# -- Node manual actions ------------------------------------------------------
+
+
+@_nodes_router.post(
     "/bulk",
     summary="Bulk create nodes",
     responses={
@@ -161,8 +184,8 @@ async def bulk_create_nodes(
     return await state.graph_service.bulk_create(payload, user.user_id)
 
 
-@router.post(
-    "/nodes/resolve",
+@_nodes_router.post(
+    "/resolve",
     summary="Trigger resolution for a set of approved nodes",
     responses={
         200: {"description": "Number of relationships created"},
@@ -186,7 +209,7 @@ async def resolve_nodes(
     return ResolveResponse(relationships_created=relationships)
 
 
-@router.post(
+@_nodes_router.post(
     "",
     status_code=status.HTTP_201_CREATED,
     summary="Manually create a node",
@@ -204,7 +227,7 @@ async def create_node(
     return await state.graph_service.create(payload, user.user_id)
 
 
-@router.put(
+@_nodes_router.put(
     "/{node_id}",
     summary="Alter a manually-created node",
     responses={
@@ -229,7 +252,7 @@ async def update_node(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
-@router.put(
+@_nodes_router.put(
     "/{node_id}/override",
     summary="Alter any node with correction metadata, role-gated",
     responses={
@@ -255,7 +278,7 @@ async def override_node(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
-@router.delete(
+@_nodes_router.delete(
     "/bulk",
     summary="Bulk delete nodes",
     responses={
@@ -273,7 +296,7 @@ async def bulk_delete_nodes(
     return await state.graph_service.bulk_delete(payload, cascade=cascade)
 
 
-@router.delete(
+@_nodes_router.delete(
     "/{node_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a node",
@@ -294,3 +317,71 @@ async def delete_node(
         await state.graph_service.delete(node_id, cascade=cascade)
     except NodePreconditionError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+# -- Relationship manual actions ----------------------------------------------
+
+
+@_relations_router.get(
+    "",
+    summary="List relationships, optionally filtered by node and/or type",
+    responses={
+        200: {"description": "Matching relationships (may be empty)"},
+        401: {"description": "Missing or invalid API key"},
+    },
+)
+async def list_relationships(
+    state: Annotated[AppState, Depends(get_app_state)],
+    node_id: UUID | None = None,
+    rel_type: RelationshipType | None = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+) -> RelationshipListResponse:
+    rels = await state.graph_service.list_relationships(node_id=node_id, rel_type=rel_type, limit=limit)
+    return RelationshipListResponse(relationships=rels)
+
+
+@_relations_router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Manually create a relationship between two existing nodes",
+    responses={
+        201: {"description": "Relationship created"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Operator role required"},
+        404: {"description": "Source or target node not found"},
+        409: {"description": "Identical relationship already exists"},
+    },
+)
+async def create_relationship(
+    payload: RelationshipCreateRequest,
+    state: Annotated[AppState, Depends(get_app_state)],
+    _user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
+) -> KBRelationship:
+    try:
+        return await state.graph_service.create_relationship(payload.source_id, payload.target_id, payload.rel_type)
+    except NodeNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RelationshipConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@_relations_router.delete(
+    "/{rel_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a relationship by surrogate ID",
+    responses={
+        204: {"description": "Relationship deleted"},
+        401: {"description": "Missing or invalid API key"},
+        403: {"description": "Admin role required"},
+        404: {"description": "Relationship not found"},
+    },
+)
+async def delete_relationship(
+    rel_id: UUID,
+    state: Annotated[AppState, Depends(get_app_state)],
+    _user: Annotated[CurrentUser, Depends(require_role(UserRole.ADMIN))],
+) -> None:
+    try:
+        await state.graph_service.delete_relationship(rel_id)
+    except RelationshipNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

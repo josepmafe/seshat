@@ -180,7 +180,7 @@ class TestOverrideIntegration:
             "auto-node",
             metadata=NodeMetadata(
                 job_id="job-1",
-                ingestion_source=IngestionSource.JOB,
+                ingestion_source=IngestionSource.PIPELINE,
                 approval_method=ApprovalMethod.AUTO,
             ),
         )
