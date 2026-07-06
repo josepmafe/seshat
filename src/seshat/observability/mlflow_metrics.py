@@ -30,16 +30,15 @@ def log_token_metrics(
         stage = stage.replace(".", "_").replace(" ", "_").replace("-", "_")
         metrics_prefix = f"{metrics_prefix}{stage}."
 
-    mlflow.log_metrics(
-        {
-            f"{metrics_prefix}llm_input": float(input_tokens),
-            f"{metrics_prefix}llm_output": float(output_tokens),
-            f"{metrics_prefix}cache_read_input_tokens": float(cache_read_tokens),
-            f"{metrics_prefix}cache_creation_input_tokens": float(cache_creation_tokens),
-            f"{metrics_prefix}embedding_input": float(embedding_input_tokens),
-            f"{metrics_prefix}audio_seconds": float(audio_seconds),
-        }
-    )
+    metrics = {
+        f"{metrics_prefix}llm_input": float(input_tokens),
+        f"{metrics_prefix}llm_output": float(output_tokens),
+        f"{metrics_prefix}cache_read_input_tokens": float(cache_read_tokens),
+        f"{metrics_prefix}cache_creation_input_tokens": float(cache_creation_tokens),
+        f"{metrics_prefix}embedding_input": float(embedding_input_tokens),
+        f"{metrics_prefix}audio_seconds": float(audio_seconds),
+    }
+    mlflow.log_metrics({k: v for k, v in metrics.items() if v != 0.0})
 
 
 def log_latency_metrics(stage: str, durations: list[float], metrics_prefix: str = "latency.") -> None:

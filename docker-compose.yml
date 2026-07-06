@@ -44,7 +44,7 @@ services:
       --backend-store-uri sqlite:///mlflow/mlflow.db
       --default-artifact-root /mlflow/artifacts
       --serve-artifacts
-      --allowed-hosts "mlflow:5000,localhost,127.0.0.1"
+      --allowed-hosts "mlflow:5000,localhost:${MLFLOW_PORT},127.0.0.1:${MLFLOW_PORT}"
     volumes:
       - mlflow_data:/mlflow
     ports:

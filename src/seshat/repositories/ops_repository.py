@@ -86,6 +86,9 @@ class OpsRepository:
     async def fail_job(self, job_id: str, stage: str, reason: str, *, recoverable: bool) -> None:
         await self._store.fail_job(job_id, stage, reason, recoverable=recoverable)
 
+    async def set_job_mlflow_run_id(self, job_id: str, run_id: str) -> None:
+        await self._store.set_job_mlflow_run_id(job_id, run_id)
+
     async def reset_failed_job(self, job_id: str) -> None:
         await self._store.reset_failed_job(job_id)
 

@@ -180,6 +180,13 @@ class PostgresOpsStore:
             job_id,
         )
 
+    async def set_job_mlflow_run_id(self, job_id: str, run_id: str) -> None:
+        await self.pool.execute(
+            f"UPDATE {self._schema}.jobs SET mlflow_run_id=$1 WHERE job_id=$2",
+            run_id,
+            job_id,
+        )
+
     async def reset_failed_job(self, job_id: str) -> None:
         await self.pool.execute(
             f"UPDATE {self._schema}.jobs "

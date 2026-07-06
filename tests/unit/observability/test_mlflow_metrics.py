@@ -37,7 +37,6 @@ def test_log_token_metrics_with_active_run_logs_prefixed_keys():
             "usage.my_stage.cache_read_input_tokens": 3.0,
             "usage.my_stage.cache_creation_input_tokens": 2.0,
             "usage.my_stage.embedding_input": 7.0,
-            "usage.my_stage.audio_seconds": 0.0,
         }
     )
 
