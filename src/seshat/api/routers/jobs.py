@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
-
-if TYPE_CHECKING:
-    from datetime import date
+from datetime import date
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse
