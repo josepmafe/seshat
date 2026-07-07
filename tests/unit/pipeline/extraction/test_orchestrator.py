@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -345,6 +346,43 @@ class TestJobTimeout:
             await orchestrator.run_resolution(job_id="job-1")
 
 
+class TestConfigOverride:
+    async def test_config_override_changes_threshold(self):
+        """A config_override with threshold=0.99 should leave a low-confidence node as PENDING_REVIEW
+        even when the base config would approve it (threshold=0.0)."""
+        concept = _make_concept("Use PostgreSQL", quote="use PostgreSQL")
+        orchestrator = _make_orchestrator(
+            extraction_results=[concept],
+            auto_mode=False,
+            confidence_threshold=0.0,
+        )
+
+        override = ExtractionConfig(
+            concept_types=[ConceptType.DECISION],
+            auto_mode=False,
+            confidence_threshold=0.99,
+        )
+
+        result = await orchestrator.run_identification(make_doc(), job_id="job-1", config_override=override)
+
+        assert result.nodes[0].status == NodeStatus.PENDING_REVIEW
+
+    async def test_all_agents_failed_raises_runtime_error(self):
+        runtime_error_agent = MagicMock()
+        runtime_error_agent.identify = AsyncMock(side_effect=RuntimeError("LLM timeout"))
+
+        extraction_registry = MagicMock()
+        extraction_registry.get = MagicMock(return_value=runtime_error_agent)
+
+        orchestrator = _make_orchestrator(
+            extraction_registry=extraction_registry,
+            concept_types=[ConceptType.DECISION],
+        )
+
+        with pytest.raises(RuntimeError, match="All identification agents failed"):
+            await orchestrator.run_identification(make_doc(), job_id="job-1")
+
+
 class TestKbHintIsolation:
     """KB hint fetching happens in _run_identification, not inside _identify_concept_type."""
 
@@ -362,7 +400,12 @@ class TestKbHintIsolation:
         )
 
         await orchestrator._identify_concept_type(
-            TRANSCRIPT, "blob-key", ConceptType.DECISION, "job-1", kb_hint="prebuilt hint"
+            TRANSCRIPT,
+            "blob-key",
+            ConceptType.DECISION,
+            "job-1",
+            kb_hint="prebuilt hint",
+            meeting_date=date(2026, 1, 1),
         )
 
         orchestrator._repo.paginated_query.assert_not_called()

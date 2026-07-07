@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+import asyncpg
+
 from seshat.models.api_graph import BulkFailure, BulkNodeCreate, BulkNodeDelete, BulkResult
-from seshat.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse
-from seshat.models.enums import ApprovalMethod, GraphDirection, IngestionSource, NodeState, NodeStatus, RelationshipType
+from seshat.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse, NodeSearchResult
+from seshat.models.enums import (
+    ApprovalMethod,
+    GraphDirection,
+    IngestionSource,
+    NodeState,
+    NodeStatus,
+    RelationshipSource,
+    RelationshipType,
+    SearchMode,
+)
 from seshat.models.nodes import KBNode, KBRelationship, NodeMetadata
 from seshat.observability.latency_tracker import track_latency_profile
 from seshat.observability.usage_tracker import UsageTracker, track_token_budget
@@ -28,6 +40,14 @@ class NodePreconditionError(Exception):
     pass
 
 
+class RelationshipNotFoundError(Exception):
+    pass
+
+
+class RelationshipConflictError(Exception):
+    pass
+
+
 class GraphService:
     def __init__(
         self,
@@ -43,14 +63,40 @@ class GraphService:
     async def query(self, node_filter: NodeFilter) -> list[KBNode]:
         return await self._repo.query(node_filter)
 
-    async def get_node_detail(self, node_id: UUID) -> NodeDetailResponse:
+    async def search(
+        self, query: str, limit: int, node_filter: NodeFilter, mode: SearchMode = SearchMode.SEMANTIC
+    ) -> list[NodeSearchResult]:
+        search_results = await self._repo.search(query=query, top_k=limit, node_filter=node_filter, mode=mode)
+        scored = mode in (SearchMode.SEMANTIC, SearchMode.KEYWORD)
+        results: list[NodeSearchResult] = []
+
+        for result in search_results:
+            try:
+                detail = await self.get_node_detail(result.node_id)
+            except NodeNotFoundError:
+                continue
+
+            results.append(NodeSearchResult(detail=detail, score=result.score if scored else None))
+
+        return results
+
+    async def get_node(self, node_id: UUID) -> KBNode:
         node = await self._repo.get_node(node_id)
         if node is None:
             raise NodeNotFoundError(node_id)
+        return node
 
-        neighbours = await self._repo.get_neighbours(node_id, direction=GraphDirection.BOTH)
-        active_neighbours = [n for n in neighbours if _both_current(node, n)]
-        return NodeDetailResponse(node=node, neighbours=active_neighbours)
+    async def get_node_neighbours(self, node_id: UUID) -> list[KBNode]:
+        node = await self.get_node(node_id)
+        return await self._get_active_neighbours(node)
+
+    async def get_node_detail(self, node_id: UUID) -> NodeDetailResponse:
+        node = await self.get_node(node_id)
+        neighbours, relationships = await asyncio.gather(
+            self._get_active_neighbours(node),
+            self._repo.get_node_relationships(node_id),
+        )
+        return NodeDetailResponse(node=node, neighbours=neighbours, relationships=relationships)
 
     async def traverse_impact(
         self,
@@ -58,29 +104,30 @@ class GraphService:
         depth: int,
         rel_types: list[RelationshipType] | None,
         min_confidence: float,
+        direction: GraphDirection = GraphDirection.OUTBOUND,
     ) -> ImpactResponse:
-        visited: dict[UUID, int] = {}
+        visited: dict[UUID, tuple[KBNode, int]] = {}
+        all_rels: dict[tuple[UUID, UUID], KBRelationship] = {}
         frontier = [node_id]
 
         for hop in range(1, depth + 1):
             next_frontier = []
-            for node_id in frontier:
-                neighbours = await self._repo.get_neighbours(
-                    node_id, rel_types=rel_types, direction=GraphDirection.INBOUND
-                )
+            for current_id in frontier:
+                neighbours = await self._fetch_neighbours(current_id, rel_types=rel_types, direction=direction)
+                node_rels = await self._repo.get_node_relationships(current_id)
+                for rel in node_rels:
+                    all_rels[(rel.source_id, rel.target_id)] = rel
+
                 for neighbour_node in neighbours:
                     if neighbour_node.id not in visited and neighbour_node.confidence >= min_confidence:
-                        visited[neighbour_node.id] = hop
+                        visited[neighbour_node.id] = (neighbour_node, hop)
                         next_frontier.append(neighbour_node.id)
             frontier = next_frontier
 
-        impact_nodes: list[ImpactNode] = []
-        for node_id, hop in visited.items():
-            node = await self._repo.get_node(node_id)
-            if node is not None:
-                impact_nodes.append(ImpactNode(node=node, traversal_depth=hop))
-
-        return ImpactResponse(nodes=impact_nodes)
+        return ImpactResponse(
+            nodes=[ImpactNode(node=node, traversal_depth=hop) for node, hop in visited.values()],
+            relationships=list(all_rels.values()),
+        )
 
     # -- Write methods ---------------------------------------------------------
 
@@ -166,7 +213,7 @@ class GraphService:
 
         return await self._edit(node, payload, user_id)
 
-    async def resolve_by_ids(self, node_ids: list[UUID]) -> int:
+    async def resolve_by_ids(self, node_ids: list[UUID]) -> list[KBRelationship]:
         nodes = []
         for node_id in node_ids:
             node = await self._repo.get_node(node_id)
@@ -180,7 +227,7 @@ class GraphService:
 
         job_id = f"manual_resolve_{uuid4()}"
         relationships = await self.resolve(nodes, job_id)
-        return len(relationships)
+        return relationships
 
     @track_token_budget("manual_node_resolve", uncapped=True, accumulate_to_fn=lambda self: self._usage_tracker)
     @track_latency_profile("manual_node_resolve")
@@ -192,6 +239,66 @@ class GraphService:
             await self._repo.write_relationship(rel)
 
         return result.relationships
+
+    # -- Relationship CRUD -----------------------------------------------------
+
+    async def list_relationships(
+        self,
+        node_id: UUID | None = None,
+        rel_type: RelationshipType | None = None,
+        limit: int = 100,
+    ) -> list[KBRelationship]:
+        return await self._repo.list_relationships(node_id=node_id, rel_type=rel_type, limit=limit)
+
+    async def create_relationship(
+        self,
+        source_id: UUID,
+        target_id: UUID,
+        rel_type: RelationshipType,
+    ) -> KBRelationship:
+        source = await self._repo.get_node(source_id)
+        if source is None:
+            raise NodeNotFoundError(source_id)
+
+        target = await self._repo.get_node(target_id)
+        if target is None:
+            raise NodeNotFoundError(target_id)
+
+        now = datetime.now(UTC)
+        rel = KBRelationship(
+            source_id=source_id,
+            target_id=target_id,
+            rel_type=rel_type,
+            job_id=f"manual_{uuid4()}",
+            source=RelationshipSource.MANUAL,
+            created_at=now,
+        )
+        try:
+            return await self._repo.create_relationship_manual(rel)
+        except Exception as exc:
+            if _is_unique_violation(exc):
+                raise RelationshipConflictError(
+                    f"Relationship ({source_id}, {target_id}, {rel_type}) already exists"
+                ) from exc
+            raise
+
+    async def delete_relationship(self, rel_id: UUID) -> None:
+        rel = await self._repo.get_relationship(rel_id)
+        if rel is None:
+            raise RelationshipNotFoundError(rel_id)
+        await self._repo.delete_relationship(rel)
+
+    async def _get_active_neighbours(self, node: KBNode) -> list[KBNode]:
+        neighbours = await self._fetch_neighbours(node.id, direction=GraphDirection.BOTH)
+        return [n for n in neighbours if _both_current(node, n)]
+
+    async def _fetch_neighbours(
+        self,
+        node_id: UUID,
+        rel_types: list[RelationshipType] | None = None,
+        direction: GraphDirection = GraphDirection.BOTH,
+    ) -> list[KBNode]:
+        return await self._repo.get_neighbours(node_id, rel_types=rel_types, direction=direction)
 
     @track_token_budget("manual_node_edit", uncapped=True)
     async def _edit(self, node: KBNode, payload: ManualNodeUpdate, user_id: str) -> KBNode:
@@ -256,6 +363,10 @@ def _build_manual_node(job_id: str, payload: ManualNodeCreate, now: datetime, us
         state=NodeState.CURRENT,
         metadata=metadata,
     )
+
+
+def _is_unique_violation(exc: Exception) -> bool:
+    return isinstance(exc, asyncpg.UniqueViolationError)
 
 
 def _build_relationships(

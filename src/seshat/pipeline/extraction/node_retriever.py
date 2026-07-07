@@ -61,7 +61,7 @@ class NodeRetriever:
         results = await self._vector_search(
             query, node_filter=NodeFilter(**filter_kwargs), exclude_job_id=exclude_job_id
         )
-        logger.debug("Vector search returned %d results for node id=%s", len(results), node.id)
+        logger.info("Vector search returned %d raw results for node id=%s", len(results), node.id)
 
         if self._reranker is not None:
             results = await self._reranker.rerank(query, results)
@@ -75,7 +75,7 @@ class NodeRetriever:
         await self._expand_with_neighbours(seen, results, node.id, budget)
 
         targets = list(seen.values())
-        logger.debug("target retrieval done: %d targets for node id=%s", len(targets), node.id)
+        logger.info("target retrieval done: %d targets for node id=%s", len(targets), node.id)
         return targets
 
     async def _fetch_direct_hits(

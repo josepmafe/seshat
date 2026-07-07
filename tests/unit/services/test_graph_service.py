@@ -14,9 +14,25 @@ from seshat.models.api_graph import (
     NodeOverride,
     RelationshipInput,
 )
-from seshat.models.enums import ApprovalMethod, ConceptType, IngestionSource, NodeState, NodeStatus, RelationshipType
-from seshat.models.nodes import KBNode, NodeMetadata, ResolutionResult
-from seshat.services.graph_service import GraphService, NodeNotFoundError, NodePreconditionError
+from seshat.models.enums import (
+    ApprovalMethod,
+    ConceptType,
+    GraphDirection,
+    IngestionSource,
+    NodeState,
+    NodeStatus,
+    RelationshipSource,
+    RelationshipType,
+    SearchMode,
+)
+from seshat.models.nodes import KBNode, KBRelationship, NodeMetadata, ResolutionResult
+from seshat.services.graph_service import (
+    GraphService,
+    NodeNotFoundError,
+    NodePreconditionError,
+    RelationshipConflictError,
+    RelationshipNotFoundError,
+)
 from tests.helpers import make_node
 from tests.integration.helpers import make_relationship
 
@@ -24,7 +40,7 @@ _UUID_1 = UUID("00000000-0000-0000-0000-000000000001")
 _UUID_2 = UUID("00000000-0000-0000-0000-000000000002")
 
 
-def _make_service(*, node: KBNode | None = None, inbound_count: int = 0):
+def _make_service(*, node: KBNode | None = None, inbound_count: int = 0, relationship: KBRelationship | None = None):
     repo = MagicMock()
     repo.get_node = AsyncMock(return_value=node)
     repo.get_neighbours = AsyncMock(return_value=[])
@@ -33,6 +49,11 @@ def _make_service(*, node: KBNode | None = None, inbound_count: int = 0):
     repo.update_node = AsyncMock()
     repo.delete_node = AsyncMock()
     repo.count_inbound_relationships = AsyncMock(return_value=inbound_count)
+    repo.get_node_relationships = AsyncMock(return_value=[])
+    repo.list_relationships = AsyncMock(return_value=[])
+    repo.get_relationship = AsyncMock(return_value=relationship)
+    repo.create_relationship_manual = AsyncMock(side_effect=lambda rel: rel)
+    repo.delete_relationship = AsyncMock()
 
     extraction_orch = MagicMock()
     extraction_orch.run_resolution = AsyncMock(return_value=ResolutionResult(job_id="job-1", relationships=[]))
@@ -49,7 +70,7 @@ def _manual_metadata() -> NodeMetadata:
 
 
 def _auto_metadata() -> NodeMetadata:
-    return NodeMetadata(job_id="job-1", ingestion_source=IngestionSource.JOB, approval_method=ApprovalMethod.AUTO)
+    return NodeMetadata(job_id="job-1", ingestion_source=IngestionSource.PIPELINE, approval_method=ApprovalMethod.AUTO)
 
 
 def _create_payload(
@@ -310,6 +331,35 @@ class TestBulkDelete:
         assert result.failed[0].node_id == str(_UUID_1)
 
 
+class TestGetNode:
+    async def test_raises_not_found_when_missing(self):
+        svc, _ = _make_service(node=None)
+        with pytest.raises(NodeNotFoundError):
+            await svc.get_node(_UUID_1)
+
+    async def test_returns_node_when_present(self):
+        node = make_node()
+        svc, _ = _make_service(node=node)
+        result = await svc.get_node(node.id)
+        assert result == node
+
+
+class TestGetNodeNeighbours:
+    async def test_raises_not_found_when_node_missing(self):
+        svc, _ = _make_service(node=None)
+        with pytest.raises(NodeNotFoundError):
+            await svc.get_node_neighbours(_UUID_1)
+
+    async def test_returns_current_neighbours(self):
+        node = make_node()
+        neighbour = make_node("n2")
+        svc, repo = _make_service(node=node)
+        repo.get_neighbours = AsyncMock(return_value=[neighbour])
+        result = await svc.get_node_neighbours(node.id)
+        assert len(result) == 1
+        assert result[0].id == neighbour.id
+
+
 class TestGetNodeDetail:
     async def test_raises_not_found_when_missing(self):
         svc, _ = _make_service(node=None)
@@ -339,6 +389,17 @@ class TestGetNodeDetail:
         detail = await svc.get_node_detail(node.id)
 
         assert detail.neighbours == []
+
+    async def test_relationships_field_populated(self):
+        node = make_node()
+        rel = make_relationship(node, make_node("tgt"))
+        svc, repo = _make_service(node=node)
+        repo.get_node_relationships = AsyncMock(return_value=[rel])
+
+        detail = await svc.get_node_detail(node.id)
+
+        assert len(detail.relationships) == 1
+        assert detail.relationships[0].source_id == node.id
 
 
 class TestTraverseImpact:
@@ -389,6 +450,35 @@ class TestTraverseImpact:
 
         assert len(result.nodes) == 1
 
+    async def test_relationships_included_in_response(self):
+        neighbour = make_node("n2", confidence=0.8)
+        rel = make_relationship(make_node(), neighbour)
+        svc, repo = _make_service(node=neighbour)
+        repo.get_neighbours = AsyncMock(return_value=[neighbour])
+        repo.get_node_relationships = AsyncMock(return_value=[rel])
+
+        result = await svc.traverse_impact(_UUID_1, depth=1, rel_types=None, min_confidence=0.0)
+
+        assert len(result.relationships) == 1
+
+    async def test_forwards_direction_to_repo(self):
+        node_a = make_node("a")
+        svc, repo = _make_service(node=node_a)
+        captured: list[GraphDirection] = []
+
+        async def _get_neighbours(nid, *, rel_types, direction):
+            captured.append(direction)
+            return [node_a] if nid == _UUID_1 else []
+
+        repo.get_neighbours = _get_neighbours
+        repo.get_node = AsyncMock(return_value=node_a)
+
+        await svc.traverse_impact(
+            _UUID_1, depth=1, rel_types=None, min_confidence=0.0, direction=GraphDirection.INBOUND
+        )
+
+        assert captured == [GraphDirection.INBOUND]
+
 
 class TestResolveByIds:
     async def test_raises_not_found_for_missing_node(self):
@@ -409,9 +499,9 @@ class TestResolveByIds:
         repo.get_node = AsyncMock(return_value=node)
         svc._extraction_orch.run_resolution = AsyncMock(return_value=ResolutionResult(job_id="x", relationships=[rel]))
 
-        count = await svc.resolve_by_ids([node.id])
+        rels = await svc.resolve_by_ids([node.id])
 
-        assert count == 1
+        assert len(rels) == 1
 
     async def test_writes_each_relationship(self):
         node = make_node()
@@ -495,3 +585,133 @@ class TestBulkCreatePartialFailure:
 
         assert len(result.succeeded) == 1
         assert len(result.failed) == 1
+
+
+class TestSearch:
+    async def test_returns_node_details_for_results(self):
+        node = make_node()
+        result = MagicMock()
+        result.node_id = node.id
+        svc, repo = _make_service(node=node)
+        repo.search = AsyncMock(return_value=[result])
+        repo.get_neighbours = AsyncMock(return_value=[])
+
+        from seshat.models.api_graph import NodeFilter
+
+        details = await svc.search("auth risk", limit=5, node_filter=NodeFilter())
+
+        assert len(details) == 1
+        assert details[0].detail.node.id == node.id
+
+    async def test_skips_missing_nodes(self):
+        result = MagicMock()
+        result.node_id = _UUID_1
+        svc, repo = _make_service(node=None)
+        repo.search = AsyncMock(return_value=[result])
+
+        from seshat.models.api_graph import NodeFilter
+
+        details = await svc.search("auth risk", limit=5, node_filter=NodeFilter())
+
+        assert details == []
+
+    async def test_returns_empty_for_no_results(self):
+        svc, repo = _make_service()
+        repo.search = AsyncMock(return_value=[])
+
+        from seshat.models.api_graph import NodeFilter
+
+        details = await svc.search("nothing", limit=10, node_filter=NodeFilter())
+
+        assert details == []
+
+    async def test_mode_forwarded_to_repo(self):
+        svc, repo = _make_service()
+        repo.search = AsyncMock(return_value=[])
+
+        from seshat.models.api_graph import NodeFilter
+
+        await svc.search("q", limit=5, node_filter=NodeFilter(), mode=SearchMode.KEYWORD)
+
+        _, kwargs = repo.search.call_args
+        assert kwargs["mode"] == SearchMode.KEYWORD
+
+
+def _make_rel(src_id=_UUID_1, tgt_id=_UUID_2) -> KBRelationship:
+    from datetime import UTC, datetime
+
+    return KBRelationship(
+        source_id=src_id,
+        target_id=tgt_id,
+        rel_type=RelationshipType.SUPERSEDES,
+        job_id="manual_x",
+        source=RelationshipSource.MANUAL,
+        created_at=datetime.now(UTC),
+    )
+
+
+class TestListRelationships:
+    async def test_delegates_to_repo(self):
+        rel = _make_rel()
+        svc, repo = _make_service()
+        repo.list_relationships = AsyncMock(return_value=[rel])
+
+        result = await svc.list_relationships(node_id=_UUID_1, rel_type=RelationshipType.SUPERSEDES, limit=10)
+
+        repo.list_relationships.assert_called_once_with(node_id=_UUID_1, rel_type=RelationshipType.SUPERSEDES, limit=10)
+        assert result == [rel]
+
+    async def test_no_filters_returns_all(self):
+        svc, repo = _make_service()
+        repo.list_relationships = AsyncMock(return_value=[])
+
+        await svc.list_relationships()
+
+        repo.list_relationships.assert_called_once_with(node_id=None, rel_type=None, limit=100)
+
+
+class TestCreateRelationship:
+    async def test_raises_not_found_for_missing_source(self):
+        svc, _repo = _make_service(node=None)
+        with pytest.raises(NodeNotFoundError):
+            await svc.create_relationship(_UUID_1, _UUID_2, RelationshipType.SUPERSEDES)
+
+    async def test_raises_not_found_for_missing_target(self):
+        source = make_node()
+        svc, repo = _make_service(node=source)
+        repo.get_node = AsyncMock(side_effect=[source, None])
+        with pytest.raises(NodeNotFoundError):
+            await svc.create_relationship(_UUID_1, _UUID_2, RelationshipType.SUPERSEDES)
+
+    async def test_returns_relationship_with_manual_source(self):
+        node = make_node()
+        svc, _repo = _make_service(node=node)
+        result = await svc.create_relationship(_UUID_1, _UUID_2, RelationshipType.SUPERSEDES)
+
+        assert result.source == RelationshipSource.MANUAL
+        assert result.rel_type == RelationshipType.SUPERSEDES
+        assert result.job_id.startswith("manual_")
+
+    async def test_raises_conflict_on_unique_violation(self):
+        import asyncpg
+
+        node = make_node()
+        svc, repo = _make_service(node=node)
+        repo.create_relationship_manual = AsyncMock(side_effect=asyncpg.UniqueViolationError())
+
+        with pytest.raises(RelationshipConflictError):
+            await svc.create_relationship(_UUID_1, _UUID_2, RelationshipType.SUPERSEDES)
+
+
+class TestDeleteRelationship:
+    async def test_raises_not_found_when_missing(self):
+        svc, _ = _make_service(relationship=None)
+        with pytest.raises(RelationshipNotFoundError):
+            await svc.delete_relationship(_UUID_1)
+
+    async def test_delegates_delete_to_repo(self):
+        rel = _make_rel()
+        svc, repo = _make_service(relationship=rel)
+        await svc.delete_relationship(rel.rel_id)
+
+        repo.delete_relationship.assert_called_once_with(rel)

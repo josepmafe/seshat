@@ -151,13 +151,15 @@ class PostgresKBStore:
         await executor.execute(
             f"""
             INSERT INTO {self._schema}.kb_relationships
-                (source_id, target_id, rel_type, job_id, created_at)
-            VALUES ($1,$2,$3,$4,$5)
+                (rel_id, source_id, target_id, rel_type, job_id, source, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
             """,
+            str(rel.rel_id),
             str(rel.source_id),
             str(rel.target_id),
             rel.rel_type.value,
             rel.job_id,
+            rel.source.value,
             rel.created_at,
         )
 
@@ -205,13 +207,102 @@ class PostgresKBStore:
         )
 
     @_PG_ASYNC_RETRY
-    async def count_inbound_relationships(self, node_id: str) -> int:
-        """Return the number of relationships where target_id = node_id."""
-        row = await self.pool.fetchrow(
-            f"SELECT COUNT(*) FROM {self._schema}.kb_relationships WHERE target_id=$1",
+    async def get_node_relationships(self, node_id: str) -> list[KBRelationship]:
+        """Return all relationships where node_id is source or target."""
+        rows = await self.pool.fetch(
+            f"""
+            SELECT rel_id, source_id, target_id, rel_type, job_id, source, created_at
+            FROM {self._schema}.kb_relationships
+            WHERE source_id = $1 OR target_id = $1
+            """,
             node_id,
         )
+        return [KBRelationship.model_validate(dict(r)) for r in rows]
+
+    @_PG_ASYNC_RETRY
+    async def count_inbound_relationships(self, node_id: str, rel_types: list[str] | None = None) -> int:
+        """Return the number of inbound relationships for node_id, optionally filtered by type."""
+        params: list = [node_id]
+
+        type_filter = ""
+        if rel_types:
+            params.append(rel_types)
+            type_filter = f" AND rel_type = ANY(${len(params)}::text[])"
+
+        row = await self.pool.fetchrow(
+            f"SELECT COUNT(*) FROM {self._schema}.kb_relationships WHERE target_id=$1{type_filter}",
+            *params,
+        )
         return row[0] if row else 0
+
+    @_PG_ASYNC_RETRY
+    async def list_relationships(
+        self,
+        node_id: str | None = None,
+        rel_type: str | None = None,
+        limit: int = 100,
+    ) -> list[KBRelationship]:
+        """Return relationships matching the optional filters. No filters → all relationships."""
+        conditions = ["1=1"]
+        params: list[object] = []
+
+        if node_id:
+            params.append(node_id)
+            conditions.append(f"(source_id = ${len(params)} OR target_id = ${len(params)})")
+        if rel_type:
+            params.append(rel_type)
+            conditions.append(f"rel_type = ${len(params)}")
+
+        params.append(limit)
+        query = (
+            f"SELECT rel_id, source_id, target_id, rel_type, job_id, source, created_at"
+            f" FROM {self._schema}.kb_relationships"
+            f" WHERE {' AND '.join(conditions)}"
+            f" LIMIT ${len(params)}"
+        )
+        rows = await self.pool.fetch(query, *params)
+        return [KBRelationship.model_validate(dict(r)) for r in rows]
+
+    @_PG_ASYNC_RETRY
+    async def get_relationship(self, rel_id: str) -> KBRelationship | None:
+        """Fetch a single relationship by surrogate ID."""
+        row = await self.pool.fetchrow(
+            f"SELECT rel_id, source_id, target_id, rel_type, job_id, source, created_at"
+            f" FROM {self._schema}.kb_relationships WHERE rel_id = $1",
+            rel_id,
+        )
+        if row is None:
+            return None
+        return KBRelationship.model_validate(dict(row))
+
+    @_PG_ASYNC_RETRY
+    async def create_relationship(self, rel: KBRelationship, *, conn: _Conn | None = None) -> KBRelationship:
+        """Insert a relationship; raises asyncpg.UniqueViolationError on duplicate edge."""
+        executor = conn or self.pool
+        await executor.execute(
+            f"""
+            INSERT INTO {self._schema}.kb_relationships
+                (rel_id, source_id, target_id, rel_type, job_id, source, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
+            """,
+            str(rel.rel_id),
+            str(rel.source_id),
+            str(rel.target_id),
+            rel.rel_type.value,
+            rel.job_id,
+            rel.source.value,
+            rel.created_at,
+        )
+        return rel
+
+    @_PG_ASYNC_RETRY
+    async def delete_relationship(self, rel_id: str, *, conn: _Conn | None = None) -> None:
+        """Delete a relationship by surrogate ID."""
+        executor = conn or self.pool
+        await executor.execute(
+            f"DELETE FROM {self._schema}.kb_relationships WHERE rel_id = $1",
+            rel_id,
+        )
 
     @_PG_ASYNC_RETRY
     async def get_outbound_state_transition_targets(self, node_id: str, *, conn: _Conn | None = None) -> list[str]:

@@ -163,6 +163,30 @@ class TestTrackTokenBudget:
         assert trackers[0] is not trackers[1]
 
 
+class TestLogTotals:
+    async def test_only_non_zero_fields_logged(self, caplog):
+        import logging
+
+        tracker = UsageTracker(max_input_tokens=1000, max_output_tokens=500)
+        await tracker.add(input_tokens=100, output_tokens=0)
+
+        with caplog.at_level(logging.INFO, logger="seshat.observability.usage_tracker"):
+            tracker.log_totals("test-run")
+
+        assert "input=" in caplog.text
+        assert "output=" not in caplog.text
+
+    async def test_none_logged_when_all_zero(self, caplog):
+        import logging
+
+        tracker = UsageTracker(max_input_tokens=1000, max_output_tokens=500)
+
+        with caplog.at_level(logging.INFO, logger="seshat.observability.usage_tracker"):
+            tracker.log_totals("test-run")
+
+        assert "none" in caplog.text
+
+
 class TestUsageTrackerAudioSeconds:
     async def test_accumulates_audio_seconds(self):
         tracker = UsageTracker(max_input_tokens=1000, max_output_tokens=500)

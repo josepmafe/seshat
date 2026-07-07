@@ -13,6 +13,7 @@ from seshat.services.job_service import (
     JobNotFoundError,
     JobStateError,
     RateLimitExceededError,
+    TranscriptNotFoundError,
 )
 from tests.helpers import make_node
 from tests.unit.api.conftest import make_current_user
@@ -26,6 +27,7 @@ def _make_app_state(**overrides) -> AppState:
     job_service.get_result = AsyncMock(return_value=None)
     job_service.approve = AsyncMock(return_value=JobActionResponse(status="accepted"))
     job_service.retry = AsyncMock(return_value=JobActionResponse(status="accepted"))
+    job_service.get_transcript_excerpt = AsyncMock(return_value="Hello world")
 
     config = MagicMock()
     config.api.max_jobs_per_user_per_hour = 10
@@ -128,6 +130,12 @@ class TestSubmitJob:
         call_args = state.job_service.submit.call_args
         assert call_args.args[3] == "alice"
 
+    async def test_force_requires_admin(self, api_client):
+        body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}, "force": True})
+        async with api_client(_make_app_state(), make_current_user(role=UserRole.OPERATOR)) as ac:
+            resp = await ac.post("/jobs", files={"file": ("input.yaml", b"data", "text/plain")}, data={"body": body})
+        assert resp.status_code == 403
+
 
 class TestListJobs:
     async def test_returns_jobs(self, api_client):
@@ -146,7 +154,31 @@ class TestListJobs:
         async with api_client(state, make_current_user()) as ac:
             resp = await ac.get("/jobs", params={"job_status": "done"})
         assert resp.status_code == 200
-        state.job_service.list_jobs.assert_called_once_with(status=JobStatus.DONE, limit=50, offset=0)
+        state.job_service.list_jobs.assert_called_once_with(
+            status=JobStatus.DONE,
+            source_type=None,
+            meeting_date_from=None,
+            meeting_date_to=None,
+            limit=50,
+            offset=0,
+        )
+
+    async def test_forwards_source_type_filter(self, api_client):
+        state = _make_app_state()
+        state.job_service.list_jobs = AsyncMock(return_value=[])
+        async with api_client(state, make_current_user()) as ac:
+            await ac.get("/jobs", params={"source_type": "audio"})
+        call_kwargs = state.job_service.list_jobs.call_args.kwargs
+        assert call_kwargs["source_type"] == "audio"
+
+    async def test_forwards_date_range_filters(self, api_client):
+        state = _make_app_state()
+        state.job_service.list_jobs = AsyncMock(return_value=[])
+        async with api_client(state, make_current_user()) as ac:
+            await ac.get("/jobs", params={"meeting_date_from": "2026-01-01", "meeting_date_to": "2026-06-30"})
+        call_kwargs = state.job_service.list_jobs.call_args.kwargs
+        assert str(call_kwargs["meeting_date_from"]) == "2026-01-01"
+        assert str(call_kwargs["meeting_date_to"]) == "2026-06-30"
 
 
 class TestGetJob:
@@ -293,3 +325,46 @@ class TestRetryJob:
             resp = await ac.post("/jobs/job-1/retry")
         assert resp.status_code == 200
         assert resp.json()["status"] == "accepted"
+
+
+class TestGetTranscriptExcerpt:
+    async def test_requires_auth(self, api_client):
+        async with api_client(_make_app_state()) as ac:
+            resp = await ac.get("/jobs/job-1/transcript/excerpt")
+        assert resp.status_code == 401
+
+    async def test_returns_excerpt(self, api_client):
+        state = _make_app_state()
+        state.job_service.get_transcript_excerpt = AsyncMock(return_value="Hello")
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get("/jobs/job-1/transcript/excerpt", params={"char_start": 0, "char_end": 5})
+        assert resp.status_code == 200
+        assert resp.json()["text"] == "Hello"
+
+    async def test_job_not_found_returns_404(self, api_client):
+        state = _make_app_state()
+        state.job_service.get_transcript_excerpt = AsyncMock(side_effect=JobNotFoundError("job-1"))
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get("/jobs/job-1/transcript/excerpt")
+        assert resp.status_code == 404
+
+    async def test_transcript_not_found_returns_404(self, api_client):
+        state = _make_app_state()
+        state.job_service.get_transcript_excerpt = AsyncMock(side_effect=TranscriptNotFoundError("job-1"))
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get("/jobs/job-1/transcript/excerpt")
+        assert resp.status_code == 404
+
+    async def test_negative_char_start_returns_422(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.get("/jobs/job-1/transcript/excerpt", params={"char_start": -1, "char_end": 5})
+        assert resp.status_code == 422
+
+    async def test_start_not_less_than_end_returns_422(self, api_client):
+        state = _make_app_state()
+        state.job_service.get_transcript_excerpt = AsyncMock(
+            side_effect=ValueError("char_start (10) must be less than char_end (5)")
+        )
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get("/jobs/job-1/transcript/excerpt", params={"char_start": 10, "char_end": 5})
+        assert resp.status_code == 422

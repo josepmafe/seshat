@@ -3,9 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
+import mlflow
+
+from seshat.models.api_graph import NodeFilter
 from seshat.models.api_responses import JobActionResponse, JobSubmitResponse
 from seshat.models.enums import ApprovalMethod, JobStatus, NodeStatus
 from seshat.models.jobs import JobResponse
@@ -47,6 +50,10 @@ class ContentAlreadyIngestedError(Exception):
         super().__init__(existing_job_id)
 
 
+class TranscriptNotFoundError(Exception):
+    pass
+
+
 class JobService:
     def __init__(
         self,
@@ -65,7 +72,6 @@ class JobService:
         self._extraction = extraction
         self._ingestion = ingestion
         self._queue = queue
-        self._pending: dict[str, IdentificationResult] = {}
         self._results: dict[str, ExtractionResult] = {}
 
     # -- Public lifecycle methods ----------------------------------------------
@@ -96,7 +102,9 @@ class JobService:
         if existing_job_id:
             if not submission.force:
                 raise ContentAlreadyIngestedError(existing_job_id)
-            await self._delete_non_approved_nodes(existing_job_id)
+
+            logger.warning("Force re-ingest: permanently deleting all nodes for job %s", existing_job_id)
+            await self._delete_job_nodes(existing_job_id)
 
         job_id = str(uuid.uuid4())
         now = datetime.now(UTC)
@@ -128,8 +136,8 @@ class JobService:
         if row["status"] != JobStatus.AWAITING_REVIEW:
             raise JobStateError("Job is not awaiting review")
 
-        result = self._results.get(job_id)
-        if not result:
+        result = await self._load_extraction_result(job_id, row)
+        if result is None:
             raise JobNotFoundError("Extraction result not found")
 
         now = datetime.now(UTC)
@@ -177,10 +185,20 @@ class JobService:
     async def list_jobs(
         self,
         status: JobStatus | None = None,
+        source_type: str | None = None,
+        meeting_date_from: date | None = None,
+        meeting_date_to: date | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[JobResponse]:
-        rows = await self._ops.list_jobs(status=status, limit=min(limit, 200), offset=offset)
+        rows = await self._ops.list_jobs(
+            status=status,
+            source_type=source_type,
+            meeting_date_from=meeting_date_from,
+            meeting_date_to=meeting_date_to,
+            limit=min(limit, 200),
+            offset=offset,
+        )
         return [_job_response_from_row(row) for row in rows]
 
     async def get_result(self, job_id: str) -> ExtractionResult | None:
@@ -190,19 +208,26 @@ class JobService:
         if row["status"] not in (JobStatus.AWAITING_REVIEW, JobStatus.DONE):
             raise JobStateError("Results not yet available")
 
-        result = self._results.get(job_id)
-        if result:
-            return result
+        return await self._load_extraction_result(job_id, row)
+
+    async def get_transcript_excerpt(self, job_id: str, char_start: int, char_end: int) -> str:
+        if char_start >= char_end:
+            raise ValueError(f"char_start ({char_start}) must be less than char_end ({char_end})")
+
+        row = await self._ops.get_job(job_id)
+        if not row:
+            raise JobNotFoundError(job_id)
 
         meeting_date = row["meeting_date"]
         if meeting_date is None:
-            return None
+            raise TranscriptNotFoundError(job_id)
 
-        raw = await self._blob.get_curated_extraction(meeting_date, job_id)
-        if raw is None:
-            return None
+        blob = await self._blob.get_raw_transcript(meeting_date, job_id)
+        if blob is None:
+            raise TranscriptNotFoundError(job_id)
 
-        return ExtractionResult.model_validate_json(raw)
+        text = blob.decode("utf-8", errors="replace")
+        return text[char_start:char_end]
 
     async def recover_stranded(self) -> None:
         stranded = await self._ops.get_stranded_writing_jobs()
@@ -234,64 +259,114 @@ class JobService:
         submission: JobSubmissionRequest,
         user_id: str | None = None,
     ) -> IdentificationResult | None:
-        try:
-            set_job_id(job_id)
-            await self._ops.update_job_status(job_id, JobStatus.TRANSCRIBING)
+        with mlflow.start_run(
+            run_name=job_id,
+            tags={"job_id": job_id, "phase": "starting", "source": "pipeline"},
+        ) as run:
+            await self._ops.set_job_mlflow_run_id(job_id, run.info.run_id)
+            mlflow.set_tag("phase", "ingestion")
 
-            if submission.source_type == "audio":
-                doc = await self._ingestion.ingest_audio(
-                    file_bytes,
-                    submission.metadata.meeting_date,
-                    job_id,
-                    submission.metadata,
+            try:
+                set_job_id(job_id)
+                await self._ops.update_job_status(job_id, JobStatus.TRANSCRIBING)
+
+                if submission.source_type == "audio":
+                    doc = await self._ingestion.ingest_audio(
+                        file_bytes,
+                        submission.metadata.meeting_date,
+                        job_id,
+                        submission.metadata,
+                    )
+                else:
+                    doc = await self._ingestion.ingest_text(
+                        file_bytes,
+                        submission.metadata.meeting_date,
+                        job_id,
+                        "input.yaml",
+                    )
+
+                mlflow.set_tag("phase", "identification")
+                await self._ops.update_job_status(job_id, JobStatus.EXTRACTING)
+                config_override = submission.overrides.extraction if submission.overrides else None
+                identification_result = await self._extraction.run_identification(
+                    doc, job_id, user_id=user_id, config_override=config_override
                 )
-            else:
-                doc = await self._ingestion.ingest_text(
-                    file_bytes,
-                    submission.metadata.meeting_date,
-                    job_id,
-                    "input.yaml",
-                )
 
-            await self._ops.update_job_status(job_id, JobStatus.EXTRACTING)
-            identification_result = await self._extraction.run_identification(doc, job_id, user_id=user_id)
+                if self._effective_auto_mode(submission):
+                    identification_result = _apply_auto_mode(identification_result, datetime.now(UTC))
 
-            if self._effective_auto_mode(submission):
-                identification_result = _apply_auto_mode(identification_result, datetime.now(UTC))
+                await self._store_result(job_id, identification_result, [])
 
-            self._pending[job_id] = identification_result
-            await self._store_result(job_id, identification_result, [])
+                node_counts = _count_by_status(identification_result.nodes)
+                mlflow.log_params({"job_id": job_id, "source_type": submission.source_type})
+                mlflow.log_metrics({f"nodes.{k}": v for k, v in node_counts.items()})
 
-            await self._ops.update_job_status(job_id, JobStatus.AWAITING_REVIEW)
+                await self._ops.update_job_status(job_id, JobStatus.AWAITING_REVIEW)
 
-            return identification_result
+                return identification_result
 
-        except Exception as exc:
-            logger.exception("Job failed (pre-approval): %s", exc)
-            await self._ops.fail_job(job_id, "pre_approval", str(exc), recoverable=True)
-            return None
+            except Exception as exc:
+                mlflow.set_tag("error", str(exc)[:250])
+                logger.exception("Job failed (pre-approval): %s", exc)
+                await self._ops.fail_job(job_id, "pre_approval", str(exc), recoverable=True)
+                return None
 
     async def _run_post_approval(self, job_id: str) -> None:
-        try:
-            identification_result = self._pending.pop(job_id)
-            set_job_id(job_id)
+        row = await self._ops.get_job(job_id)
+        if not row:
+            await self._ops.fail_job(job_id, "post_approval", f"Job {job_id} not found", recoverable=False)
+            return
 
-            approved = [n for n in identification_result.nodes if n.status == NodeStatus.APPROVED]
-            resol = await self._extraction.run_resolution(job_id, approved=approved)
+        existing_run_id = row.get("mlflow_run_id")
+        if existing_run_id:
+            active_run = mlflow.start_run(run_id=existing_run_id)
+        else:
+            active_run = mlflow.start_run(run_name=job_id, tags={"job_id": job_id, "source": "pipeline"})
 
-            result = await self._store_result(job_id, identification_result, resol.relationships)
+        with active_run:
+            mlflow.set_tag("phase", "resolution")
 
-            await self._ops.update_job_status(job_id, JobStatus.WRITING)
-            written = await self._node_repo.write_batch(result)
+            try:
+                set_job_id(job_id)
+                result = await self._load_extraction_result(job_id, row)
+                if result is None:
+                    raise RuntimeError(f"Extraction result for job {job_id} not found in memory or blob store")
+                self._results.pop(job_id, None)
 
-            await self._ops.update_job_status(job_id, JobStatus.DONE)
-            logger.info("Job done: %d nodes written", written)
+                approved = [n for n in result.nodes if n.status == NodeStatus.APPROVED]
+                resol = await self._extraction.run_resolution(job_id, approved=approved)
 
-        except Exception as exc:
-            logger.exception("Job failed (post-approval): %s", exc)
-            await self._ops.fail_job(job_id, "post_approval", str(exc), recoverable=True)
+                result = result._with(relationships=resol.relationships)
+                await self._blob.put_curated_extraction(row["meeting_date"], job_id, result.model_dump_json().encode())
+
+                await self._ops.update_job_status(job_id, JobStatus.WRITING)
+                written = await self._node_repo.write_batch(result)
+
+                mlflow.log_metrics(
+                    {
+                        "nodes.written": written,
+                        "relationships.created": len(resol.relationships),
+                    }
+                )
+                mlflow.set_tag("phase", "finalized")
+
+                await self._ops.update_job_status(job_id, JobStatus.DONE)
+                logger.info("Job done: %d nodes written", written)
+
+            except Exception as exc:
+                mlflow.set_tag("error", str(exc)[:250])
+                logger.exception("Job failed (post-approval): %s", exc)
+                await self._ops.fail_job(job_id, "post_approval", str(exc), recoverable=True)
 
     # -- Private helpers -------------------------------------------------------
+
+    async def _load_extraction_result(self, job_id: str, row: dict) -> ExtractionResult | None:
+        result = self._results.get(job_id)
+        if result:
+            return result
+
+        raw = await self._blob.get_curated_extraction(row["meeting_date"], job_id)
+        return ExtractionResult.model_validate_json(raw) if raw else None
 
     def _effective_auto_mode(self, submission: JobSubmissionRequest) -> bool:
         if submission.auto_mode:
@@ -303,13 +378,10 @@ class JobService:
 
         return self._extraction._config.auto_mode
 
-    async def _delete_non_approved_nodes(self, job_id: str) -> None:
-        from seshat.models.api_graph import NodeFilter
-
+    async def _delete_job_nodes(self, job_id: str) -> None:
         nodes = await self._node_repo.paginated_query(NodeFilter(job_id=job_id))
         for node in nodes:
-            if node.status in (NodeStatus.PENDING_REVIEW, NodeStatus.REJECTED):
-                await self._node_repo.delete_node(node.id)
+            await self._node_repo.delete_node(node.id, cascade=True)
 
     async def _store_result(
         self,
@@ -371,6 +443,9 @@ def _apply_decisions(nodes: list[KBNode], decisions: list[NodeDecision], user_id
             continue
 
         if decision.action == "approve":
+            if node.status == NodeStatus.APPROVED and not decision.edited_content:
+                continue
+
             node_kwargs: dict[str, Any] = {}
             meta_kwargs: dict[str, Any] = {
                 "approval_method": ApprovalMethod.INDIVIDUAL,
@@ -391,7 +466,19 @@ def _apply_decisions(nodes: list[KBNode], decisions: list[NodeDecision], user_id
     return list(node_map.values())
 
 
+def _count_by_status(nodes: list) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for n in nodes:
+        counts[n.status.value] = counts.get(n.status.value, 0) + 1
+    return counts
+
+
 def _job_response_from_row(row: Any) -> JobResponse:
     error = json.loads(row["error_payload"]) if row["error_payload"] else None
-    model_kwargs = dict(row) | {"error": error}
+
+    submission = json.loads(row.get("submission", "{}"))
+    extraction_overrides = submission.get("overrides", {}).get("extraction", {})
+    threshold = extraction_overrides.get("confidence_threshold")
+
+    model_kwargs = dict(row) | {"error": error, "confidence_threshold": threshold}
     return JobResponse.model_validate(model_kwargs)

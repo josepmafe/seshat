@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse
 
 from seshat.api.dependencies import CurrentUser, get_app_state, require_role
 from seshat.api.state import AppState
 from seshat.models.api_jobs import ApproveRequest, RateLimitError
-from seshat.models.api_responses import JobActionResponse, JobSubmitResponse
+from seshat.models.api_responses import JobActionResponse, JobSubmitResponse, TranscriptExcerptResponse
 from seshat.models.enums import JobStatus, UserRole
 from seshat.models.jobs import JobResponse
 from seshat.models.nodes import ExtractionResult
@@ -18,6 +19,7 @@ from seshat.services.job_service import (
     JobNotFoundError,
     JobStateError,
     RateLimitExceededError,
+    TranscriptNotFoundError,
 )
 
 router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_role(UserRole.VIEWER))])
@@ -35,10 +37,20 @@ router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_
 async def list_jobs(
     state: Annotated[AppState, Depends(get_app_state)],
     job_status: JobStatus | None = None,
+    source_type: str | None = None,
+    meeting_date_from: date | None = None,
+    meeting_date_to: date | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[JobResponse]:
-    return await state.job_service.list_jobs(status=job_status, limit=limit, offset=offset)
+    return await state.job_service.list_jobs(
+        status=job_status,
+        source_type=source_type,
+        meeting_date_from=meeting_date_from,
+        meeting_date_to=meeting_date_to,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post(
@@ -65,6 +77,11 @@ async def submit_job(
 
     if submission.overrides is not None and not user.role.is_at_least(UserRole.OPERATOR):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Config overrides require operator role")
+
+    if submission.force and not user.role.is_at_least(UserRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Force re-ingest deletes existing nodes — admin role required"
+        )
 
     file_bytes = await file.read()
 
@@ -129,6 +146,38 @@ async def get_job_results(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Extraction result not found in storage")
 
     return result
+
+
+@router.get(
+    "/{job_id}/transcript/excerpt",
+    response_model=TranscriptExcerptResponse,
+    summary="Retrieve a text slice from the job's transcript blob",
+    responses={
+        200: {"description": "Transcript excerpt returned"},
+        401: {"description": "Missing or invalid API key"},
+        404: {"description": "Job or transcript blob not found"},
+        422: {"description": "char_start or char_end out of range"},
+    },
+)
+async def get_transcript_excerpt(
+    job_id: str,
+    state: Annotated[AppState, Depends(get_app_state)],
+    char_start: Annotated[int, Query(ge=0)] = 0,
+    char_end: Annotated[int, Query(ge=1)] = 500,
+) -> TranscriptExcerptResponse:
+    try:
+        text = await state.job_service.get_transcript_excerpt(job_id, char_start, char_end)
+    except JobNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    except TranscriptNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transcript not found — job may not have completed ingestion yet",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
+
+    return TranscriptExcerptResponse(text=text, char_start=char_start, char_end=char_end)
 
 
 @router.post(

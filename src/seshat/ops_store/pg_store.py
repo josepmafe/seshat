@@ -92,28 +92,43 @@ class PostgresOpsStore:
     async def find_job_by_content_hash(self, content_hash: str) -> str | None:
         return await self.pool.fetchval(
             f"SELECT job_id FROM {self._schema}.jobs "
-            "WHERE content_hash=$1 AND status!='failed' ORDER BY created_at DESC LIMIT 1",
+            "WHERE content_hash=$1 AND status='done' ORDER BY created_at DESC LIMIT 1",
             content_hash,
         )
 
     async def list_jobs(
         self,
         status: JobStatus | None = None,
+        source_type: str | None = None,
+        meeting_date_from: date | None = None,
+        meeting_date_to: date | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict]:
+        conditions: list[str] = []
+        params: list = []
+
         if status is not None:
-            rows = await self.pool.fetch(
-                f"SELECT * FROM {self._schema}.jobs WHERE status=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
-                status.value,
-                limit,
-                offset,
-            )
-            return self._to_dicts(rows)
+            params.append(status.value)
+            conditions.append(f"status=${len(params)}")
+
+        if source_type is not None:
+            params.append(source_type)
+            conditions.append(f"source_type=${len(params)}")
+
+        if meeting_date_from is not None:
+            params.append(meeting_date_from)
+            conditions.append(f"meeting_date >= ${len(params)}")
+
+        if meeting_date_to is not None:
+            params.append(meeting_date_to)
+            conditions.append(f"meeting_date <= ${len(params)}")
+
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.extend([limit, offset])
         rows = await self.pool.fetch(
-            f"SELECT * FROM {self._schema}.jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-            limit,
-            offset,
+            f"SELECT * FROM {self._schema}.jobs {where} ORDER BY created_at DESC LIMIT ${len(params) - 1} OFFSET ${len(params)}",  # noqa: E501
+            *params,
         )
         return self._to_dicts(rows)
 
@@ -126,7 +141,7 @@ class PostgresOpsStore:
     async def count_running_jobs(self) -> int:
         return await self.pool.fetchval(
             f"SELECT COUNT(*) FROM {self._schema}.jobs WHERE status = ANY($1::text[])",
-            JobStatus.running_statuses,
+            [s.value for s in (JobStatus.TRANSCRIBING, JobStatus.EXTRACTING, JobStatus.WRITING)],
         )
 
     async def get_stranded_writing_jobs(self) -> list[str]:
@@ -162,6 +177,13 @@ class PostgresOpsStore:
             " SET status='failed', error_payload=$1, updated_at=$2, finished_at=$2 WHERE job_id=$3",
             payload,
             now,
+            job_id,
+        )
+
+    async def set_job_mlflow_run_id(self, job_id: str, run_id: str) -> None:
+        await self.pool.execute(
+            f"UPDATE {self._schema}.jobs SET mlflow_run_id=$1 WHERE job_id=$2",
+            run_id,
             job_id,
         )
 

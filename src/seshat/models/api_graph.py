@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 from seshat.models.enums import ConceptType, IngestionSource, NodeState, NodeStatus, RelationshipType
+from seshat.models.nodes import KBRelationship
 
 
 class NodeFilter(BaseModel):
@@ -111,4 +112,10 @@ class ResolveRequest(BaseModel):
 
 
 class ResolveResponse(BaseModel):
-    relationships_created: int
+    relationships_created: list[KBRelationship]
+
+
+class RelationshipCreateRequest(BaseModel):
+    source_id: UUID
+    target_id: UUID
+    rel_type: RelationshipType

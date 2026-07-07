@@ -72,14 +72,25 @@ class ExtractionOrchestrator:
     )
     @track_latency_profile("identification")
     async def run_identification(
-        self, doc: TranscriptDocument, job_id: str, user_id: str | None = None
+        self,
+        doc: TranscriptDocument,
+        job_id: str,
+        user_id: str | None = None,
+        config_override: ExtractionConfig | None = None,
     ) -> IdentificationResult:
         raw = await self._blob.get_raw_transcript(doc.metadata.meeting_date, job_id)
         if raw is None:
             raise BlobNotFoundError("", BlobRepository.raw_transcript_key(doc.metadata.meeting_date, job_id))
 
         transcript = raw.decode()
-        coro = self._run_identification(transcript, doc.blob_key, job_id, user_id=user_id)
+        coro = self._run_identification(
+            transcript,
+            doc.blob_key,
+            job_id,
+            meeting_date=doc.metadata.meeting_date,
+            user_id=user_id,
+            config_override=config_override,
+        )
         if self._config.identification_timeout_seconds is not None:
             return await asyncio.wait_for(coro, self._config.identification_timeout_seconds)
         return await coro
@@ -90,16 +101,23 @@ class ExtractionOrchestrator:
         blob_key: str,
         job_id: str,
         hints: dict[ConceptType, str] | None = None,
+        meeting_date: date | None = None,
         user_id: str | None = None,
+        config_override: ExtractionConfig | None = None,
     ) -> IdentificationResult:
         t0 = time.perf_counter()
         logger.info("Starting identification run for blob_key=%s", blob_key)
 
         if hints is None:
             hints = await self._fetch_kb_hints()
-        pending, failed_concept_types = await self._identification_pass(transcript, blob_key, job_id, hints)
+        pending, failed_concept_types = await self._identification_pass(
+            transcript, blob_key, job_id, hints, meeting_date=meeting_date
+        )
 
-        nodes = await self._score_and_finalize(pending, transcript, user_id=user_id)
+        if len(failed_concept_types) == len(self.concept_types):
+            raise RuntimeError(f"All identification agents failed: {[ct.value for ct in failed_concept_types]}")
+
+        nodes = await self._score_and_finalize(pending, transcript, user_id=user_id, config_override=config_override)
 
         elapsed_ms = round((time.perf_counter() - t0) * 1000)
         logger.info(
@@ -202,13 +220,20 @@ class ExtractionOrchestrator:
         return dict(pairs)
 
     async def _identification_pass(
-        self, transcript: str, blob_key: str, job_id: str, hints: dict[ConceptType, str]
+        self,
+        transcript: str,
+        blob_key: str,
+        job_id: str,
+        hints: dict[ConceptType, str],
+        meeting_date: date | None = None,
     ) -> tuple[list[_PendingNode], list[ConceptType]]:
         """Fan-out identification across all concept types, then deduplicate within the meeting."""
         t0 = time.perf_counter()
         logger.info("Identifying %d concept types concurrently", len(self.concept_types))
         tasks = [
-            self._identify_concept_type(transcript, blob_key, concept_type, job_id, hints.get(concept_type, ""))
+            self._identify_concept_type(
+                transcript, blob_key, concept_type, job_id, hints.get(concept_type, ""), meeting_date=meeting_date
+            )
             for concept_type in self.concept_types
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -242,12 +267,15 @@ class ExtractionOrchestrator:
         concept_type: ConceptType,
         job_id: str,
         kb_hint: str = "",
+        meeting_date: date | None = None,
     ) -> list[_PendingNode]:
         t0 = time.perf_counter()
         agent = self._identification_registry.get(concept_type)
         raw = await agent.identify(transcript, kb_hint, transcript_file)
 
-        builder = PendingNodeBuilder(concept_type, job_id, transcript, self._heuristics_scorer)
+        builder = PendingNodeBuilder(
+            concept_type, job_id, transcript, self._heuristics_scorer, meeting_date=meeting_date
+        )
         pending = builder.build_all(raw)
         elapsed_ms = round((time.perf_counter() - t0) * 1000)
         logger.info(
@@ -260,7 +288,11 @@ class ExtractionOrchestrator:
         return pending
 
     async def _score_and_finalize(
-        self, pending: list[_PendingNode], transcript: str, user_id: str | None = None
+        self,
+        pending: list[_PendingNode],
+        transcript: str,
+        user_id: str | None = None,
+        config_override: ExtractionConfig | None = None,
     ) -> list[KBNode]:
         """Score pending nodes (heuristics + optional grounding gate), assign status, build KBNodes."""
         grounding_enabled = self._grounder is not None
@@ -279,7 +311,7 @@ class ExtractionOrchestrator:
                 grounding_passed=pnode.grounding,
                 grounding_enabled=grounding_enabled,
             )
-            pnode.assign_status(self._config, user_id=user_id)
+            pnode.assign_status(config_override or self._config, user_id=user_id)
 
         nodes = [p.build() for p in pending]
         elapsed_ms = round((time.perf_counter() - t0) * 1000)

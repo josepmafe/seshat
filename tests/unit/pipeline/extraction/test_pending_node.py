@@ -1,3 +1,4 @@
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -71,6 +72,7 @@ def _make_builder(scorer=None) -> PendingNodeBuilder:
         job_id="job-1",
         transcript=TRANSCRIPT,
         scorer=scorer,
+        meeting_date=date(2026, 1, 1),
     )
 
 
@@ -217,7 +219,7 @@ class TestPendingNodeBuild:
         assert kb.title == "Use PostgreSQL"
         assert kb.description == "desc"
         assert kb.metadata.job_id == "job-1"
-        assert kb.metadata.ingestion_source == IngestionSource.JOB
+        assert kb.metadata.ingestion_source == IngestionSource.PIPELINE
 
     def test_build_sets_confidence_from_heuristics(self):
         kb = self._built_node(heuristics=0.65)

@@ -80,7 +80,7 @@ def make_node(
         metadata = NodeMetadata(
             job_id="job-1",
             meeting_date=date(2026, 4, 21),
-            ingestion_source=IngestionSource.JOB,
+            ingestion_source=IngestionSource.PIPELINE,
             team=team,
         )
 

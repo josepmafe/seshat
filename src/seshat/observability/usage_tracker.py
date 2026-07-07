@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
@@ -132,16 +133,21 @@ class UsageTracker:
             )
 
     def log_totals(self, label: str) -> None:
-        logger.info(
-            "%s token usage: input=%s (%.1f%%), output=%s (%.1f%%), embedding=%s (%.1f%%)",
-            label,
-            _fmt(self._input_tokens),
-            self._input_tokens / self._max_input * 100,
-            _fmt(self._output_tokens),
-            self._output_tokens / self._max_output * 100,
-            _fmt(self._embedding_input_tokens),
-            self._embedding_input_tokens / self._max_embedding * 100,
-        )
+        if not logger.isEnabledFor(logging.INFO):
+            return
+        parts = []
+        if self._input_tokens:
+            parts.append(f"input={_fmt(self._input_tokens)} ({self._input_tokens / self._max_input * 100:.1f}%)")
+        if self._output_tokens:
+            parts.append(f"output={_fmt(self._output_tokens)} ({self._output_tokens / self._max_output * 100:.1f}%)")
+        if self._embedding_input_tokens:
+            parts.append(
+                f"embedding={_fmt(self._embedding_input_tokens)}"
+                f" ({self._embedding_input_tokens / self._max_embedding * 100:.1f}%)"
+            )
+        if self._audio_seconds:
+            parts.append(f"audio={self._audio_seconds}s")
+        logger.info("%s token usage: %s", label, ", ".join(parts) if parts else "none")
 
 
 class TokenBudgetCallback(AsyncCallbackHandler):
@@ -312,6 +318,7 @@ def track_token_budget(
                         cache_read_tokens=tracker.cache_read_tokens,
                         cache_creation_tokens=tracker.cache_creation_tokens,
                         embedding_input_tokens=tracker.embedding_input_tokens,
+                        audio_seconds=tracker.audio_seconds,
                     )
 
         return wrapper

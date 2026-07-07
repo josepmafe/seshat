@@ -180,8 +180,64 @@ class NodeRepository:
     ) -> list[KBNode]:
         return await self._kb.get_neighbours(str(node_id), rel_types=rel_types, direction=direction)
 
-    async def count_inbound_relationships(self, node_id: UUID) -> int:
-        return await self._kb.count_inbound_relationships(str(node_id))
+    async def get_node_relationships(self, node_id: UUID) -> list[KBRelationship]:
+        return await self._kb.get_node_relationships(str(node_id))
+
+    async def count_inbound_relationships(self, node_id: UUID, rel_types: list[str] | None = None) -> int:
+        return await self._kb.count_inbound_relationships(str(node_id), rel_types=rel_types)
+
+    async def list_relationships(
+        self,
+        node_id: UUID | None = None,
+        rel_type: RelationshipType | None = None,
+        limit: int = 100,
+    ) -> list[KBRelationship]:
+        return await self._kb.list_relationships(
+            node_id=str(node_id) if node_id else None,
+            rel_type=rel_type.value if rel_type else None,
+            limit=limit,
+        )
+
+    async def get_relationship(self, rel_id: UUID) -> KBRelationship | None:
+        return await self._kb.get_relationship(str(rel_id))
+
+    async def create_relationship_manual(self, rel: KBRelationship) -> KBRelationship:
+        """Write a manual relationship and apply NodeState side effects in a single transaction."""
+        new_state = _STATE_TRANSITIONS.get(rel.rel_type)
+        async with self._kb.transaction() as conn:
+            if new_state:
+                await self._kb.update_node_state(str(rel.target_id), new_state, conn=conn)
+                logger.info(
+                    "Node %s state → %s (manual rel %s from %s)",
+                    rel.target_id,
+                    new_state,
+                    rel.rel_type,
+                    rel.source_id,
+                )
+            await self._kb.create_relationship(rel, conn=conn)
+        return rel
+
+    async def delete_relationship(self, rel: KBRelationship) -> None:
+        """Delete a relationship and revert target NodeState if no other sources remain."""
+        revert_types = list(_STATE_TRANSITIONS.keys())
+        if rel.rel_type in revert_types:
+            remaining = await self._kb.count_inbound_relationships(
+                str(rel.target_id),
+                rel_types=[rel.rel_type.value],
+            )
+            async with self._kb.transaction() as conn:
+                await self._kb.delete_relationship(str(rel.rel_id), conn=conn)
+                # Re-count inside the transaction: remaining was fetched before deletion,
+                # so the edge being deleted was still counted → revert when count was 1.
+                if remaining <= 1:
+                    await self._kb.update_node_state(str(rel.target_id), NodeState.CURRENT, conn=conn)
+                    logger.info(
+                        "Reverted node %s to CURRENT (manual rel %s deleted)",
+                        rel.target_id,
+                        rel.rel_id,
+                    )
+        else:
+            await self._kb.delete_relationship(str(rel.rel_id))
 
     async def search(
         self,

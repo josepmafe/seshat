@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
 from seshat.agents.identification.grouping import ConceptGroup
@@ -39,6 +39,7 @@ class _PendingNode:
     concept_fields: dict[str, Any]
     job_id: str
     heuristics: float
+    meeting_date: date | None = None
     grounding: bool | None = None
     breakdown: ConfidenceBreakdown | None = None
     status: NodeStatus = NodeStatus.PENDING_REVIEW
@@ -58,7 +59,8 @@ class _PendingNode:
             status=self.status,
             metadata=NodeMetadata(
                 job_id=self.job_id,
-                ingestion_source=IngestionSource.JOB,
+                meeting_date=self.meeting_date,
+                ingestion_source=IngestionSource.PIPELINE,
                 confidence_breakdown=self.breakdown,
                 approval_method=self.approval_method,
                 approved_at=self.approved_at,
@@ -124,11 +126,18 @@ class PendingNodeBuilder:
         job_id: str,
         transcript: str,
         scorer: HeuristicsScorer,
+        meeting_date: date | None = None,
     ) -> None:
         self._concept_type = concept_type
         self._job_id = job_id
         self._transcript = transcript
         self._scorer = scorer
+        self._meeting_date = meeting_date
+
+    def _require_meeting_date(self) -> date:
+        if self._meeting_date is None:
+            raise ValueError(f"meeting_date is required for job-ingested nodes (job_id={self._job_id!r})")
+        return self._meeting_date
 
     def from_anchored(self, anchored_concept: AnchoredConcept) -> _PendingNode:
         item = anchored_concept.item
@@ -141,6 +150,7 @@ class PendingNodeBuilder:
             quote_anchors=anchors,
             concept_fields=concept_fields,
             job_id=self._job_id,
+            meeting_date=self._require_meeting_date(),
             heuristics=self._scorer.score(_quote_text(anchors, self._transcript), item.title, item.description),
         )
 
@@ -156,6 +166,7 @@ class PendingNodeBuilder:
             quote_anchors=anchors,
             concept_fields={"members": members_fields},
             job_id=self._job_id,
+            meeting_date=self._require_meeting_date(),
             heuristics=self._scorer.score(
                 _quote_text(anchors, self._transcript),
                 group.group_title,
