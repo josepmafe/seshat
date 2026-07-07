@@ -3,7 +3,7 @@ import math
 import pytest
 import spacy
 
-from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
+from seshat.app.pipeline.extraction.heuristics_scorer import HeuristicsScorer
 
 
 @pytest.fixture(scope="module")

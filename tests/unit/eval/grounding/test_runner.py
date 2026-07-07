@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from seshat.agents.grounding import GroundingResult
+from seshat.app.agents.grounding import GroundingResult
 from seshat.eval.grounding.corpus_loader import GroundingCorpusExample, GroundingCorpusNode
 from seshat.eval.grounding.runner import _aggregate_metrics, _build_breakdown, _build_dataframe
 

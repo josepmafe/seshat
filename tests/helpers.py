@@ -2,8 +2,8 @@ from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 from uuid import NAMESPACE_DNS, uuid5
 
-from seshat.agents.identification.base import AnchoredConcept
-from seshat.agents.identification.decision import Decision
+from seshat.app.agents.identification.base import AnchoredConcept
+from seshat.app.agents.identification.decision import Decision
 from seshat.core.models.enums import ConceptType, IngestionSource, NodeStatus
 from seshat.core.models.nodes import KBNode, NodeMetadata
 from seshat.core.models.quote_anchor import QuoteAnchor

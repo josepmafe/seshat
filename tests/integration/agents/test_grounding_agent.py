@@ -1,6 +1,6 @@
 import pytest
 
-from seshat.agents.grounding import GroundingAgent
+from seshat.app.agents.grounding import GroundingAgent
 from tests.integration.conftest import SKIP_IF_NO_LLM_API
 
 pytestmark = [pytest.mark.integration, pytest.mark.agents, pytest.mark.llm, SKIP_IF_NO_LLM_API]

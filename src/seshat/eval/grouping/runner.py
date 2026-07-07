@@ -8,7 +8,7 @@ import mlflow.genai
 import pandas as pd
 from pydantic import BaseModel
 
-from seshat.agents.identification.base import AnchoredConcept, ConceptModel
+from seshat.app.agents.identification.base import AnchoredConcept, ConceptModel
 from seshat.core.models.enums import ConceptType
 from seshat.core.utils.log import set_task_num
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     from mlflow.genai.evaluation.entities import EvaluationResult
 
-    from seshat.agents.identification.grouping import GroupingAgent
+    from seshat.app.agents.identification.grouping import GroupingAgent
     from seshat.core.config.eval_settings import EvalConfig
     from seshat.eval.corpus_tags import CorpusTagFilter
     from seshat.eval.grouping.corpus_loader import GroupingCorpusExample, GroupingCorpusItem

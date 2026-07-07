@@ -1,6 +1,6 @@
 import pytest
 
-from seshat.pipeline.ingestion.audio_validator import AudioValidationError, AudioValidator
+from seshat.app.pipeline.ingestion.audio_validator import AudioValidationError, AudioValidator
 
 
 class TestAudioValidator:

@@ -3,12 +3,12 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from seshat.agents.resolution.base import (
+from seshat.app.agents.resolution.base import (
     ResolutionRetryExhaustedError,
     ResolvedRelationship,
     _EntryBase,
 )
-from seshat.agents.resolution.same_type.decision import DecisionResolutionAgent, _DecisionEntry, _DecisionResult
+from seshat.app.agents.resolution.same_type.decision import DecisionResolutionAgent, _DecisionEntry, _DecisionResult
 from seshat.core.config.settings import ResolutionLLMConfig
 from seshat.core.models.enums import RelationshipType
 from tests.helpers import make_node, make_structured_llm
@@ -171,7 +171,7 @@ def _make_agent_with_llm(return_value=None, side_effect=None, max_retries: int =
 
 
 def _decision_result(source_id: str, target_id: str, rel_type: RelationshipType) -> _DecisionResult:
-    from seshat.agents.resolution.same_type.decision import _DecisionEntry
+    from seshat.app.agents.resolution.same_type.decision import _DecisionEntry
 
     entry = _DecisionEntry(source_id=source_id, target_id=target_id, rel_type=rel_type, rationale="test")
     return _DecisionResult(entries=[entry])

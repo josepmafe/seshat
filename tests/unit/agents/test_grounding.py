@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from seshat.agents.grounding import GroundingAgent, GroundingResult, GroundingRetryExhaustedError
+from seshat.app.agents.grounding import GroundingAgent, GroundingResult, GroundingRetryExhaustedError
 from seshat.core.config.settings import GroundingLLMConfig
 from tests.helpers import make_structured_llm
 
@@ -66,7 +66,7 @@ class TestGroundingAgent:
         expected = GroundingResult(supported=True, rationale=None)
         agent = _make_agent(return_value=expected, use_full_transcript=False)
 
-        with caplog.at_level(logging.WARNING, logger="seshat.agents.grounding"):
+        with caplog.at_level(logging.WARNING, logger="seshat.app.agents.grounding"):
             await agent.verify(title="T", description="D", quote="q", transcript="full text")
 
         assert any("use_full_transcript=False" in r.message for r in caplog.records)
@@ -75,7 +75,7 @@ class TestGroundingAgent:
         expected = GroundingResult(supported=True, rationale=None)
         agent = _make_agent(return_value=expected, use_full_transcript=False)
 
-        with caplog.at_level(logging.WARNING, logger="seshat.agents.grounding"):
+        with caplog.at_level(logging.WARNING, logger="seshat.app.agents.grounding"):
             await agent.verify(title="T", description="D", quote="q")
 
         assert not any("use_full_transcript=False" in r.message for r in caplog.records)

@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from seshat.app.repositories.node_repository import NodeRepository
+from seshat.app.services.graph import GraphService, NodeNotFoundError, NodePreconditionError
 from seshat.core.config.settings import KBStoreConfig
 from seshat.core.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
 from seshat.core.models.enums import (
@@ -16,8 +18,6 @@ from seshat.core.models.enums import (
 )
 from seshat.core.models.nodes import NodeMetadata
 from seshat.infra.knowledge_store.pg_store import PostgresKBStore
-from seshat.infra.repositories.node_repository import NodeRepository
-from seshat.services.graph_service import GraphService, NodeNotFoundError, NodePreconditionError
 from tests.helpers import make_node
 from tests.integration.conftest import SKIP_IF_NO_POSTGRES
 from tests.integration.helpers import make_relationship

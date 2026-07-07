@@ -6,6 +6,13 @@ from uuid import UUID
 
 import pytest
 
+from seshat.app.services.graph import (
+    GraphService,
+    NodeNotFoundError,
+    NodePreconditionError,
+    RelationshipConflictError,
+    RelationshipNotFoundError,
+)
 from seshat.core.models.api_graph import (
     BulkNodeCreate,
     BulkNodeDelete,
@@ -26,13 +33,6 @@ from seshat.core.models.enums import (
     SearchMode,
 )
 from seshat.core.models.nodes import KBNode, KBRelationship, NodeMetadata, ResolutionResult
-from seshat.services.graph_service import (
-    GraphService,
-    NodeNotFoundError,
-    NodePreconditionError,
-    RelationshipConflictError,
-    RelationshipNotFoundError,
-)
 from tests.helpers import make_node
 from tests.integration.helpers import make_relationship
 
@@ -157,7 +157,7 @@ class TestCreate:
     async def test_logs_warning_for_source_quote(self, caplog):
         svc, _ = _make_service()
         payload = _create_payload(source_quote="some quote", blob_key="blobs/key")
-        with caplog.at_level(logging.WARNING, logger="seshat.services.graph_service"):
+        with caplog.at_level(logging.WARNING, logger="seshat.app.services.graph"):
             await svc.create(payload, user_id="alice")
         assert "not yet implemented" in caplog.text
 

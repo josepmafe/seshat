@@ -1,6 +1,6 @@
 import logging
 
-from seshat.agents.identification.grouping import GroupingAgent, _GroupingSchema, _GroupSchema
+from seshat.app.agents.identification.grouping import GroupingAgent, _GroupingSchema, _GroupSchema
 from seshat.core.config.settings import IdentificationLLMConfig
 from seshat.core.models.enums import ConceptType
 from tests.helpers import make_anchored_concept, make_structured_llm
@@ -70,7 +70,7 @@ class TestGroupingAgent:
         schema = _GroupingSchema(groups=[])
         agent = _make_agent(return_value=schema)
 
-        with caplog.at_level(logging.WARNING, logger="seshat.agents.identification.grouping"):
+        with caplog.at_level(logging.WARNING, logger="seshat.app.agents.identification.grouping"):
             result = await agent.group(items=concepts, concept_type=ConceptType.DECISION)
 
         assert len(result) == 1
@@ -88,7 +88,7 @@ class TestGroupingAgent:
         )
         agent = _make_agent(return_value=schema)
 
-        with caplog.at_level(logging.WARNING, logger="seshat.agents.identification.grouping"):
+        with caplog.at_level(logging.WARNING, logger="seshat.app.agents.identification.grouping"):
             result = await agent.group(items=concepts, concept_type=ConceptType.DECISION)
 
         assert len(result) == 1
@@ -105,7 +105,7 @@ class TestGroupingAgent:
         )
         agent = _make_agent(return_value=schema)
 
-        with caplog.at_level(logging.WARNING, logger="seshat.agents.identification.grouping"):
+        with caplog.at_level(logging.WARNING, logger="seshat.app.agents.identification.grouping"):
             result = await agent.group(items=concepts, concept_type=ConceptType.DECISION)
 
         assert len(result) == 2
@@ -126,7 +126,7 @@ class TestGroupingAgent:
         )
         agent = _make_agent(return_value=schema)
 
-        with caplog.at_level(logging.WARNING, logger="seshat.agents.identification.grouping"):
+        with caplog.at_level(logging.WARNING, logger="seshat.app.agents.identification.grouping"):
             result = await agent.group(items=concepts, concept_type=ConceptType.DECISION)
 
         assert len(result) == 2

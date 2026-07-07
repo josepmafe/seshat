@@ -8,7 +8,7 @@ import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
-from seshat.agents.base import RetryExhaustedError, _BaseAgent
+from seshat.app.agents.base import RetryExhaustedError, _BaseAgent
 from seshat.observability.usage_tracker import (
     TokenBudgetCallback,
     TokenBudgetExceededError,

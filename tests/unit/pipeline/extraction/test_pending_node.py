@@ -3,15 +3,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from seshat.agents.identification.base import AnchoredConcept
-from seshat.agents.identification.decision import Decision
-from seshat.agents.identification.grouping import ConceptGroup
+from seshat.app.agents.identification.base import AnchoredConcept
+from seshat.app.agents.identification.decision import Decision
+from seshat.app.agents.identification.grouping import ConceptGroup
+from seshat.app.pipeline.extraction.orchestrator import _deduplicate
+from seshat.app.pipeline.extraction.pending_node import PendingNodeBuilder, _PendingNode
 from seshat.core.config.settings import ExtractionConfig
 from seshat.core.models.enums import ApprovalMethod, ConceptType, IngestionSource, NodeStatus
 from seshat.core.models.nodes import ConfidenceBreakdown
 from seshat.core.models.quote_anchor import QuoteAnchor
-from seshat.pipeline.extraction.orchestrator import _deduplicate
-from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _PendingNode
 
 TRANSCRIPT = "we will use PostgreSQL for the main database"
 
@@ -102,7 +102,7 @@ class TestDeduplicate:
 
     def test_collision_emits_warning_log(self):
         nodes = [_make_pending("Use PostgreSQL"), _make_pending("Use PostgreSQL")]
-        with patch("seshat.pipeline.extraction.orchestrator.logger") as mock_logger:
+        with patch("seshat.app.pipeline.extraction.orchestrator.logger") as mock_logger:
             _deduplicate(nodes)
         mock_logger.warning.assert_called_once()
 

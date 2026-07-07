@@ -2,12 +2,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seshat.agents.identification.base import (
+from seshat.app.agents.identification.base import (
     AnchoredConcept,
     IdentificationRetryExhaustedError,
     _BaseIdentificationAgent,
 )
-from seshat.agents.identification.decision import Decision, DecisionList
+from seshat.app.agents.identification.decision import Decision, DecisionList
 from seshat.core.config.settings import IdentificationLLMConfig
 from seshat.core.models.enums import ConceptType
 from tests.helpers import make_structured_llm
@@ -81,7 +81,7 @@ class TestBaseIdentificationAgent:
         assert results[0].quote_anchor is None
 
     async def test_identify_routes_through_grouping_when_type_in_config(self):
-        from seshat.agents.identification.grouping import ConceptGroup, _GroupingSchema, _GroupSchema
+        from seshat.app.agents.identification.grouping import ConceptGroup, _GroupingSchema, _GroupSchema
 
         item = _make_decision()
         identification_llm = MagicMock()

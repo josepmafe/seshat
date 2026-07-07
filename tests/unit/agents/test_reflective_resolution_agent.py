@@ -3,9 +3,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
-from seshat.agents.resolution.base import ResolvedRelationship
-from seshat.agents.resolution.same_type.decision import DecisionResolutionAgent, _DecisionEntry
-from seshat.agents.resolution.same_type.reflective import (
+from seshat.app.agents.resolution.base import ResolvedRelationship
+from seshat.app.agents.resolution.same_type.decision import DecisionResolutionAgent, _DecisionEntry
+from seshat.app.agents.resolution.same_type.reflective import (
     ReflectiveResolutionAgent,
     TiebreakerEntry,
     TiebreakerResult,

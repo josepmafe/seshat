@@ -24,11 +24,11 @@ if TYPE_CHECKING:
 
     from mlflow.genai.evaluation.entities import EvaluationResult
 
+    from seshat.app.pipeline.extraction.orchestrator import ExtractionOrchestrator
     from seshat.core.config.eval_settings import EvalConfig
     from seshat.core.models.nodes import KBNode
     from seshat.eval.corpus_tags import CorpusTagFilter
     from seshat.eval.models import GateResult, ResolutionCorpusExample, ResolutionCorpusNode
-    from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 
 
 class ResolutionEvalRunner:

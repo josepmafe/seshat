@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
+from seshat.app.pipeline.ingestion.audio_validator import AudioValidationError
+from seshat.app.pipeline.ingestion.orchestrator import IngestionOrchestrator
+from seshat.app.pipeline.ingestion.text_validator import TextValidationError
 from seshat.core.config.settings import TranscriptionConfig
 from seshat.core.models.transcript import TranscriptMetadata
-from seshat.pipeline.ingestion.audio_validator import AudioValidationError
-from seshat.pipeline.ingestion.orchestrator import IngestionOrchestrator
-from seshat.pipeline.ingestion.text_validator import TextValidationError
 from tests.integration.conftest import SKIP_IF_NO_LOCALSTACK
 
 pytestmark = [pytest.mark.integration, SKIP_IF_NO_LOCALSTACK]

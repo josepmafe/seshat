@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from seshat.agents.base import RetryExhaustedError, _BaseAgent
-from seshat.agents.grounding import GroundingResult
+from seshat.app.agents.base import RetryExhaustedError, _BaseAgent
+from seshat.app.agents.grounding import GroundingResult
 from seshat.core.config.settings import IdentificationLLMConfig
 from tests.helpers import make_structured_llm
 
@@ -93,7 +93,7 @@ class TestRetryableStructuredAinvoke:
         llm.with_structured_output = MagicMock(return_value=structured_mock)
         agent = _ConcreteAgent(llm=llm)
 
-        with patch("seshat.agents.base.get_profiling_tracker", return_value=cb):
+        with patch("seshat.app.agents.base.get_profiling_tracker", return_value=cb):
             await agent._retryable_structured_ainvoke(
                 messages=[],
                 response_model=GroundingResult,
@@ -109,7 +109,7 @@ class TestRetryableStructuredAinvoke:
         agent = _make_agent(side_effect=Exception("fail"), max_retries=3)
 
         with (
-            patch("seshat.agents.base.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            patch("seshat.app.agents.base.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
             pytest.raises(RetryExhaustedError),
         ):
             await agent._retryable_structured_ainvoke(

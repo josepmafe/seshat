@@ -6,10 +6,7 @@ from uuid import UUID
 
 import pytest
 
-from seshat.core.models.api_jobs import BulkApproveRule, KBNodeEdit, NodeDecision
-from seshat.core.models.enums import ApprovalMethod, JobStatus, NodeStatus
-from seshat.core.models.nodes import ExtractionResult, IdentificationResult, ResolutionResult
-from seshat.services.job_service import (
+from seshat.app.services.job import (
     ContentAlreadyIngestedError,
     JobNotFoundError,
     JobService,
@@ -20,6 +17,9 @@ from seshat.services.job_service import (
     _apply_bulk_rule,
     _apply_decisions,
 )
+from seshat.core.models.api_jobs import BulkApproveRule, KBNodeEdit, NodeDecision
+from seshat.core.models.enums import ApprovalMethod, JobStatus, NodeStatus
+from seshat.core.models.nodes import ExtractionResult, IdentificationResult, ResolutionResult
 from tests.helpers import make_node
 
 

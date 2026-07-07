@@ -7,7 +7,7 @@ import mlflow
 import mlflow.genai
 import pandas as pd
 
-from seshat.agents.grounding import GroundingResult
+from seshat.app.agents.grounding import GroundingResult
 from seshat.core.utils.log import set_task_num
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.gate import upsert_gate
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     from mlflow.genai.evaluation.entities import EvaluationResult
 
-    from seshat.agents.grounding import GroundingAgent
+    from seshat.app.agents.grounding import GroundingAgent
     from seshat.core.config.eval_settings import EvalConfig
     from seshat.eval.corpus_tags import CorpusTagFilter
     from seshat.eval.grounding.corpus_loader import GroundingCorpusExample

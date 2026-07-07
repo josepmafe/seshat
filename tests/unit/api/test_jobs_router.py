@@ -6,15 +6,15 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from seshat.api.state import AppState
-from seshat.core.models.api_responses import JobActionResponse, JobSubmitResponse
-from seshat.core.models.enums import JobStatus, UserRole
-from seshat.core.models.nodes import ExtractionResult
-from seshat.services.job_service import (
+from seshat.app.services.job import (
     JobNotFoundError,
     JobStateError,
     RateLimitExceededError,
     TranscriptNotFoundError,
 )
+from seshat.core.models.api_responses import JobActionResponse, JobSubmitResponse
+from seshat.core.models.enums import JobStatus, UserRole
+from seshat.core.models.nodes import ExtractionResult
 from tests.helpers import make_node
 from tests.unit.api.conftest import make_current_user
 

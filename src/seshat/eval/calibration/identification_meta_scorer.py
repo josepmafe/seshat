@@ -21,9 +21,9 @@ from seshat.observability.usage_tracker import track_eval_usage
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from seshat.app.pipeline.extraction.orchestrator import ExtractionOrchestrator
     from seshat.core.config.eval_settings import EvalConfig
     from seshat.eval.models import IdentificationCorpusExample
-    from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 
 # corpus_id → (pipeline result, corpus example)
 type _Cache = dict[str, tuple[IdentificationResult, IdentificationCorpusExample]]

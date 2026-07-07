@@ -5,15 +5,15 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 from seshat.api.state import AppState
-from seshat.core.models.api_graph import BulkFailure, BulkResult
-from seshat.core.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse, NodeSearchResult
-from seshat.core.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
-from seshat.services.graph_service import (
+from seshat.app.services.graph import (
     NodeNotFoundError,
     NodePreconditionError,
     RelationshipConflictError,
     RelationshipNotFoundError,
 )
+from seshat.core.models.api_graph import BulkFailure, BulkResult
+from seshat.core.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse, NodeSearchResult
+from seshat.core.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
 from tests.helpers import make_node
 from tests.integration.helpers import make_relationship
 from tests.unit.api.conftest import make_current_user

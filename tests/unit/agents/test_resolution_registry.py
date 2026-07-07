@@ -3,11 +3,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seshat.agents.resolution.base import ResolvedRelationship
-from seshat.agents.resolution.cross_type.registry import CrossTypeResolutionRegistry
-from seshat.agents.resolution.registry import ResolutionRegistry
-from seshat.agents.resolution.same_type.reflective import ReflectiveResolutionAgent
-from seshat.agents.resolution.same_type.registry import SameTypeResolutionRegistry
+from seshat.app.agents.resolution.base import ResolvedRelationship
+from seshat.app.agents.resolution.cross_type.registry import CrossTypeResolutionRegistry
+from seshat.app.agents.resolution.registry import ResolutionRegistry
+from seshat.app.agents.resolution.same_type.reflective import ReflectiveResolutionAgent
+from seshat.app.agents.resolution.same_type.registry import SameTypeResolutionRegistry
 from seshat.core.config.settings import ExtractionConfig
 from seshat.core.models.enums import ConceptType, RelationshipType
 from tests.helpers import make_node

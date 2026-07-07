@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-from seshat.agents.identification.decision import DecisionIdentificationAgent
-from seshat.agents.identification.reflective import (
+from seshat.app.agents.identification.decision import DecisionIdentificationAgent
+from seshat.app.agents.identification.reflective import (
     NodeReview,
     ReflectiveIdentificationAgent,
     SelfReviewResult,

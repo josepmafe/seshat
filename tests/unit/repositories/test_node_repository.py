@@ -4,9 +4,9 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
+from seshat.app.repositories.node_repository import NodeRepository
 from seshat.core.models.enums import NodeState, NodeStatus, RelationshipType
 from seshat.core.models.nodes import ExtractionResult
-from seshat.infra.repositories.node_repository import NodeRepository
 from tests.helpers import make_node
 from tests.integration.helpers import make_relationship
 

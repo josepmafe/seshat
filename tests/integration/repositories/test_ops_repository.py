@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 import asyncpg
 import pytest
 
+from seshat.app.repositories.ops_repository import OpsRepository
 from seshat.core.config.settings import OpsStoreConfig
 from seshat.infra.ops_store.pg_store import PostgresOpsStore
-from seshat.infra.repositories.ops_repository import OpsRepository
 from tests.integration.conftest import SKIP_IF_NO_POSTGRES
 
 if TYPE_CHECKING:

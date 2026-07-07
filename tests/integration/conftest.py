@@ -10,9 +10,9 @@ from aiobotocore.session import get_session
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
+from seshat.app.repositories.blob_repository import BlobRepository
 from seshat.core.config.settings import BlobStoreConfig
 from seshat.infra.blob_store.s3_store import S3BlobStore
-from seshat.infra.repositories.blob_repository import BlobRepository
 
 load_dotenv()
 

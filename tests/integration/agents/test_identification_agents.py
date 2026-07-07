@@ -1,11 +1,11 @@
 import pytest
 
-from seshat.agents.identification.action_item import ActionItemIdentificationAgent
-from seshat.agents.identification.base import AnchoredConcept
-from seshat.agents.identification.decision import Decision, DecisionIdentificationAgent
-from seshat.agents.identification.grouping import ConceptGroup, GroupingAgent
-from seshat.agents.identification.open_question import OpenQuestionIdentificationAgent
-from seshat.agents.identification.risk import RiskIdentificationAgent
+from seshat.app.agents.identification.action_item import ActionItemIdentificationAgent
+from seshat.app.agents.identification.base import AnchoredConcept
+from seshat.app.agents.identification.decision import Decision, DecisionIdentificationAgent
+from seshat.app.agents.identification.grouping import ConceptGroup, GroupingAgent
+from seshat.app.agents.identification.open_question import OpenQuestionIdentificationAgent
+from seshat.app.agents.identification.risk import RiskIdentificationAgent
 from seshat.core.models.enums import ConceptType
 from tests.integration.conftest import SKIP_IF_NO_LLM_API
 

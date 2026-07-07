@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from seshat.agents.grounding import GroundingAgent
-from seshat.agents.identification.grouping import GroupingAgent
-from seshat.agents.identification.registry import IdentificationAgentRegistry
-from seshat.agents.resolution.registry import ResolutionRegistry
+from seshat.app.agents.grounding import GroundingAgent
+from seshat.app.agents.identification.grouping import GroupingAgent
+from seshat.app.agents.identification.registry import IdentificationAgentRegistry
+from seshat.app.agents.resolution.registry import ResolutionRegistry
+from seshat.app.pipeline.extraction.orchestrator import ExtractionOrchestrator
 from seshat.core.config.eval_settings import EvalConfig
 from seshat.core.config.settings import ExtractionConfig, ObservabilityConfig
 from seshat.eval.grounding.runner import GroundingEvalRunner
 from seshat.eval.grouping.runner import GroupingEvalRunner
 from seshat.eval.identification.runner import IdentificationEvalRunner
 from seshat.eval.resolution.runner import ResolutionEvalRunner
-from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 from tests.integration.helpers import (
     cheap_grounding_config,
     cheap_identification_config,

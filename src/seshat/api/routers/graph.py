@@ -7,6 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from seshat.api.dependencies import CurrentUser, get_app_state, require_role
 from seshat.api.state import AppState
+from seshat.app.services.graph import (
+    NodeNotFoundError,
+    NodePreconditionError,
+    RelationshipConflictError,
+    RelationshipNotFoundError,
+)
 from seshat.core.models.api_graph import (
     BulkNodeCreate,
     BulkNodeDelete,
@@ -28,12 +34,6 @@ from seshat.core.models.api_responses import (
 )
 from seshat.core.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
 from seshat.core.models.nodes import KBNode, KBRelationship
-from seshat.services.graph_service import (
-    NodeNotFoundError,
-    NodePreconditionError,
-    RelationshipConflictError,
-    RelationshipNotFoundError,
-)
 
 # Parent router carries the /graph prefix and the baseline VIEWER auth gate.
 # Sub-routers group by resource; fixed prefixes avoid catch-all routing conflicts.

@@ -4,7 +4,7 @@ from datetime import date
 import pytest
 import yaml
 
-from seshat.pipeline.ingestion.text_validator import ParsedTextInput, TextValidationError, TextValidator
+from seshat.app.pipeline.ingestion.text_validator import ParsedTextInput, TextValidationError, TextValidator
 
 
 class TestTextValidator:

@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING
 
 import mlflow
 
+from seshat.app.pipeline.bootstrap import build_vector_store
 from seshat.core.utils.log import get_logger
 from seshat.eval.calibration.retrieval_meta_scorer import RetrievalMetaScorer
 from seshat.eval.mlflow_logging import log_retrieval_model
-from seshat.pipeline.bootstrap import build_vector_store
 
 if TYPE_CHECKING:
     from seshat.core.config.eval_settings import EvalConfig

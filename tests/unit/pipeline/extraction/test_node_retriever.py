@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from seshat.app.pipeline.extraction.node_retriever import NodeRetriever
 from seshat.core.config.settings import RAGConfig
 from seshat.core.models.api_graph import NodeFilter, SearchResult
 from seshat.core.models.enums import ConceptType, NodeStatus
-from seshat.pipeline.extraction.node_retriever import NodeRetriever
 from tests.helpers import make_node
 
 
@@ -170,7 +170,7 @@ class TestNodeRetriever:
         ]
         retriever = _make_retriever(search_results=search_results, kb_nodes=[candidate])
 
-        with caplog.at_level(logging.WARNING, logger="seshat.pipeline.extraction.node_retriever"):
+        with caplog.at_level(logging.WARNING, logger="seshat.app.pipeline.extraction.node_retriever"):
             result = await retriever.retrieve(make_node("n1"))
 
         ids = [n.id for n in result]

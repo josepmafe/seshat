@@ -2,9 +2,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from seshat.app.pipeline.llm_factory import _build_llm
 from seshat.core.config.settings import ExtractionConfig, GroundingLLMConfig, IdentificationLLMConfig, SeshatConfig
 from seshat.core.models.enums import LLMProvider
-from seshat.pipeline.llm_factory import _build_llm
 
 
 @pytest.mark.usefixtures("mocked_secrets_resolver")
@@ -13,7 +13,7 @@ class TestBuildLlm:
         llm_cfg = IdentificationLLMConfig(provider=LLMProvider.ANTHROPIC, model="claude-haiku-4-5-20251001")
         stub = MagicMock()
 
-        with patch("seshat.pipeline.llm_factory.init_chat_model", return_value=stub) as mock_init:
+        with patch("seshat.app.pipeline.llm_factory.init_chat_model", return_value=stub) as mock_init:
             result = _build_llm(llm_cfg, minimal_config)
 
         mock_init.assert_called_once()
@@ -25,7 +25,7 @@ class TestBuildLlm:
     def test_uses_api_key_secret_key(self, minimal_config, mocked_secrets_resolver):
         llm_cfg = IdentificationLLMConfig(provider=LLMProvider.ANTHROPIC, api_key_secret_key="my_custom_key")
 
-        with patch("seshat.pipeline.llm_factory.init_chat_model"):
+        with patch("seshat.app.pipeline.llm_factory.init_chat_model"):
             _build_llm(llm_cfg, minimal_config)
 
         mocked_secrets_resolver.get_secret.assert_called_once_with("my_custom_key")
@@ -33,7 +33,7 @@ class TestBuildLlm:
     def test_default_api_key_secret_key_derived_from_provider(self, minimal_config, mocked_secrets_resolver):
         llm_cfg = IdentificationLLMConfig(provider=LLMProvider.OPENAI, model="gpt-4o-mini")
 
-        with patch("seshat.pipeline.llm_factory.init_chat_model"):
+        with patch("seshat.app.pipeline.llm_factory.init_chat_model"):
             _build_llm(llm_cfg, minimal_config)
 
         mocked_secrets_resolver.get_secret.assert_called_once_with("openai_api_key")
@@ -41,7 +41,7 @@ class TestBuildLlm:
     def test_bedrock_converse_skips_api_key(self, minimal_config, mocked_secrets_resolver):
         llm_cfg = IdentificationLLMConfig(provider=LLMProvider.BEDROCK_CONVERSE, model="anthropic.claude-sonnet-4-5")
 
-        with patch("seshat.pipeline.llm_factory.init_chat_model") as mock_init:
+        with patch("seshat.app.pipeline.llm_factory.init_chat_model") as mock_init:
             _build_llm(llm_cfg, minimal_config)
 
         mocked_secrets_resolver.get_secret.assert_not_called()
@@ -51,7 +51,7 @@ class TestBuildLlm:
     def test_anthropic_provider_sends_prompt_caching_header(self, minimal_config):
         llm_cfg = IdentificationLLMConfig(provider=LLMProvider.ANTHROPIC, model="claude-haiku-4-5-20251001")
 
-        with patch("seshat.pipeline.llm_factory.init_chat_model") as mock_init:
+        with patch("seshat.app.pipeline.llm_factory.init_chat_model") as mock_init:
             _build_llm(llm_cfg, minimal_config)
 
         call_kwargs = mock_init.call_args.kwargs
@@ -60,7 +60,7 @@ class TestBuildLlm:
     def test_bedrock_converse_does_not_send_prompt_caching_header(self, minimal_config):
         llm_cfg = IdentificationLLMConfig(provider=LLMProvider.BEDROCK_CONVERSE, model="anthropic.claude-sonnet-4-5")
 
-        with patch("seshat.pipeline.llm_factory.init_chat_model") as mock_init:
+        with patch("seshat.app.pipeline.llm_factory.init_chat_model") as mock_init:
             _build_llm(llm_cfg, minimal_config)
 
         call_kwargs = mock_init.call_args.kwargs
@@ -69,14 +69,14 @@ class TestBuildLlm:
     def test_azure_openai_does_not_send_prompt_caching_header(self, minimal_config):
         llm_cfg = IdentificationLLMConfig(provider=LLMProvider.AZURE_OPENAI, model="gpt-4o")
 
-        with patch("seshat.pipeline.llm_factory.init_chat_model") as mock_init:
+        with patch("seshat.app.pipeline.llm_factory.init_chat_model") as mock_init:
             _build_llm(llm_cfg, minimal_config)
 
         call_kwargs = mock_init.call_args.kwargs
         assert "model_kwargs" not in call_kwargs
 
     def test_get_grounding_llm_raises_value_error_when_not_configured(self):
-        from seshat.pipeline.llm_factory import get_grounding_llm
+        from seshat.app.pipeline.llm_factory import get_grounding_llm
 
         cfg = SeshatConfig(
             _env_file=None,  # type: ignore[call-arg]
@@ -90,7 +90,7 @@ class TestBuildLlm:
             get_grounding_llm(cfg)
 
     def test_grounding_llm_uses_its_own_secret_key(self, mocked_secrets_resolver):
-        from seshat.pipeline.llm_factory import get_grounding_llm
+        from seshat.app.pipeline.llm_factory import get_grounding_llm
 
         grd_cfg = GroundingLLMConfig(provider=LLMProvider.OPENAI, api_key_secret_key="openai_grounding_key")
         cfg = SeshatConfig(
@@ -101,7 +101,7 @@ class TestBuildLlm:
             ),
         )
 
-        with patch("seshat.pipeline.llm_factory.init_chat_model"):
+        with patch("seshat.app.pipeline.llm_factory.init_chat_model"):
             get_grounding_llm(cfg)
 
         mocked_secrets_resolver.get_secret.assert_called_once_with("openai_grounding_key")

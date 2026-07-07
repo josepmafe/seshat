@@ -4,10 +4,10 @@ import os
 
 import pytest
 
+from seshat.app.transcription.assemblyai_transcriber import AssemblyAITranscriber
+from seshat.app.transcription.openai_transcriber import OpenAITranscriber
 from seshat.core.config.settings import TranscriptionConfig
 from seshat.core.models.enums import TranscriptionProvider
-from seshat.transcription.assemblyai_transcriber import AssemblyAITranscriber
-from seshat.transcription.openai_transcriber import OpenAITranscriber
 from tests.integration.conftest import SKIP_IF_NO_ASSEMBLYAI_API, SKIP_IF_NO_OPENAI_API
 
 pytestmark = [pytest.mark.integration, pytest.mark.llm, pytest.mark.transcription]

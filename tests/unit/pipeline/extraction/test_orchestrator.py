@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seshat.agents.grounding import GroundingRetryExhaustedError
-from seshat.agents.identification.base import IdentificationRetryExhaustedError
+from seshat.app.agents.grounding import GroundingRetryExhaustedError
+from seshat.app.agents.identification.base import IdentificationRetryExhaustedError
+from seshat.app.pipeline.extraction.orchestrator import ExtractionOrchestrator, _assemble_kb_hint
 from seshat.core.config.settings import ExtractionConfig, GroundingLLMConfig
 from seshat.core.models.enums import ApprovalMethod, ConceptType, NodeStatus
-from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator, _assemble_kb_hint
 from tests.helpers import make_anchored_concept, make_doc, make_node
 
 TRANSCRIPT = "we will use PostgreSQL for the main database"
@@ -173,7 +173,7 @@ class TestExtractionOrchestrator:
         assert result.nodes[0].status == NodeStatus.PENDING_REVIEW
 
     async def test_relationships_built_from_resolution(self):
-        from seshat.agents.resolution.base import ResolvedRelationship
+        from seshat.app.agents.resolution.base import ResolvedRelationship
         from seshat.core.models.enums import RelationshipType
 
         candidate = make_node("n2", title="Use MySQL")
@@ -198,7 +198,7 @@ class TestExtractionOrchestrator:
         assert result.relationships[0].rel_type == RelationshipType.SUPERSEDES
 
     async def test_grounding_called_when_grounder_present(self):
-        from seshat.agents.grounding import GroundingResult
+        from seshat.app.agents.grounding import GroundingResult
 
         concept = _make_concept("Use PostgreSQL")
 
@@ -231,7 +231,7 @@ class TestExtractionOrchestrator:
         assert result.nodes[0].metadata.confidence_breakdown.grounding_enabled is True
 
     async def test_grounding_supported_node_approved_unsupported_rejected_in_auto_mode(self):
-        from seshat.agents.grounding import GroundingResult
+        from seshat.app.agents.grounding import GroundingResult
 
         concept = _make_concept("Use PostgreSQL", quote="use PostgreSQL")
 
