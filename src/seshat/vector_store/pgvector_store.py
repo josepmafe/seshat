@@ -12,8 +12,8 @@ from sqlalchemy.dialects.postgresql import TSVECTOR
 
 from seshat.core.models.api_graph import SearchResult
 from seshat.core.models.enums import SearchMode
-from seshat.utils.db import ensure_psycopg_scheme
-from seshat.utils.log import get_logger
+from seshat.core.utils.db import ensure_psycopg_scheme
+from seshat.core.utils.log import get_logger
 from seshat.vector_store.base_store import AbstractVectorStore
 
 if TYPE_CHECKING:

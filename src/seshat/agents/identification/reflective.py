@@ -13,7 +13,7 @@ from seshat.agents.identification.base import (
     ConceptModel,
     _BaseIdentificationAgent,
 )
-from seshat.utils.log import get_logger
+from seshat.core.utils.log import get_logger
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel

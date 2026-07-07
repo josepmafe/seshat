@@ -9,7 +9,7 @@ from seshat.agents.resolution.cross_type.open_question import OpenQuestionCrossT
 from seshat.agents.resolution.cross_type.risk import RiskCrossTypeResolutionAgent
 from seshat.agents.resolution.same_type.registry import _scope_targets
 from seshat.core.models.enums import ConceptType
-from seshat.utils.log import get_logger
+from seshat.core.utils.log import get_logger
 
 logger = get_logger(__name__)
 

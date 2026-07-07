@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Any
 
 import bcrypt
 
+from seshat.core.utils.concurrency import run_in_thread
 from seshat.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
-from seshat.utils.concurrency import run_in_thread
 
 if TYPE_CHECKING:
     from seshat.core.models.enums import UserRole

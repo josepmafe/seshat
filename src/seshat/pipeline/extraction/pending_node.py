@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from seshat.agents.identification.grouping import ConceptGroup
 from seshat.core.models.enums import ApprovalMethod, ConceptType, IngestionSource, NodeStatus
 from seshat.core.models.nodes import ConfidenceBreakdown, KBNode, NodeMetadata
-from seshat.utils.log import get_logger
+from seshat.core.utils.log import get_logger
 
 logger = get_logger(__name__)
 

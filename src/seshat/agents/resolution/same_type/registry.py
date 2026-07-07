@@ -9,7 +9,7 @@ from seshat.agents.resolution.same_type.open_question import OpenQuestionResolut
 from seshat.agents.resolution.same_type.reflective import ReflectiveResolutionAgent
 from seshat.agents.resolution.same_type.risk import RiskResolutionAgent
 from seshat.core.models.enums import ConceptType
-from seshat.utils.log import get_logger
+from seshat.core.utils.log import get_logger
 
 logger = get_logger(__name__)
 

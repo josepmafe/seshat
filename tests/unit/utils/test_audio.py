@@ -6,7 +6,7 @@ import wave
 
 import pytest
 
-from seshat.utils.audio import audio_duration_seconds, audio_duration_seconds_ceil
+from seshat.core.utils.audio import audio_duration_seconds, audio_duration_seconds_ceil
 
 
 def _make_wav_bytes(duration_seconds: int = 1) -> bytes:

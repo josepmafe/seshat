@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from seshat.utils.tokens import count_tokens
+from seshat.core.utils.tokens import count_tokens
 
 
 def test_count_tokens_nonempty_string():

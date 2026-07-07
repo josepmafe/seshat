@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 from seshat.agents.resolution.cross_type.registry import CrossTypeResolutionRegistry
 from seshat.agents.resolution.same_type.registry import SameTypeResolutionRegistry
 from seshat.core.models.enums import ConceptType, RelationshipType
-from seshat.utils.hashing import fingerprint
-from seshat.utils.log import get_logger
+from seshat.core.utils.hashing import fingerprint
+from seshat.core.utils.log import get_logger
 
 if TYPE_CHECKING:
     from uuid import UUID

@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from seshat.core.models.transcript import TranscriptDocument, TranscriptMetadata
+from seshat.core.utils.log import get_logger
 from seshat.observability.usage_tracker import track_token_budget
 from seshat.pipeline.ingestion.audio_validator import AudioValidator
 from seshat.pipeline.ingestion.text_validator import TextValidationError, TextValidator
-from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from datetime import date

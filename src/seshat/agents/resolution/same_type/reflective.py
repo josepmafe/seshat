@@ -14,7 +14,7 @@ from seshat.agents.resolution.base import (
     _SameTypeEntry,
 )
 from seshat.core.models.enums import RelationshipType
-from seshat.utils.log import get_logger
+from seshat.core.utils.log import get_logger
 
 if TYPE_CHECKING:
     from uuid import UUID

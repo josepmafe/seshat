@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Protocol
 
 from seshat.core.models.api_graph import NodeFilter
 from seshat.core.models.enums import GraphDirection
-from seshat.utils.log import get_logger
-from seshat.utils.retry import async_retry
-from seshat.utils.tokens import count_tokens
+from seshat.core.utils.log import get_logger
+from seshat.core.utils.retry import async_retry
+from seshat.core.utils.tokens import count_tokens
 
 if TYPE_CHECKING:
     from uuid import UUID

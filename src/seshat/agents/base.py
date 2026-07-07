@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, TypeVar
 
 from pydantic import BaseModel
 
+from seshat.core.utils.hashing import fingerprint
+from seshat.core.utils.log import get_logger
 from seshat.observability.latency_tracker import get_profiling_tracker
 from seshat.observability.usage_tracker import get_run_tracker
-from seshat.utils.hashing import fingerprint
-from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel

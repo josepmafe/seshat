@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from seshat.core.utils.log import get_logger
 from seshat.eval.bootstrap import build_extraction_orchestrator
 from seshat.eval.identification.runner import IdentificationEvalRunner
 from seshat.eval.mlflow_logging import log_eval_model
-from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from seshat.core.config.eval_settings import EvalConfig

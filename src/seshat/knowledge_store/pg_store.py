@@ -13,8 +13,8 @@ import asyncpg
 
 from seshat.core.models.enums import GraphDirection, NodeState, RelationshipType
 from seshat.core.models.nodes import KBNode, KBRelationship
-from seshat.utils.log import get_logger
-from seshat.utils.retry import async_retry
+from seshat.core.utils.log import get_logger
+from seshat.core.utils.retry import async_retry
 
 type _Conn = asyncpg.Connection | asyncpg.pool.PoolConnectionProxy
 

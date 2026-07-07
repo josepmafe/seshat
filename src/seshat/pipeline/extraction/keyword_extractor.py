@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
+from seshat.core.utils.log import get_logger
 from seshat.observability.usage_tracker import get_run_tracker
-from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

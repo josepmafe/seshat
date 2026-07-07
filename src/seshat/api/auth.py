@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import bcrypt
 
-from seshat.utils.concurrency import run_in_thread
+from seshat.core.utils.concurrency import run_in_thread
 
 
 class AuthenticationError(Exception):

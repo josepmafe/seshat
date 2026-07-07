@@ -14,7 +14,7 @@ from seshat.core.models.enums import ApprovalMethod, JobStatus, NodeStatus
 from seshat.core.models.jobs import JobResponse
 from seshat.core.models.nodes import ExtractionResult, IdentificationResult
 from seshat.core.models.submission import JobSubmissionRequest
-from seshat.utils.log import get_logger, set_job_id
+from seshat.core.utils.log import get_logger, set_job_id
 
 if TYPE_CHECKING:
     from seshat.core.config.settings import SeshatConfig

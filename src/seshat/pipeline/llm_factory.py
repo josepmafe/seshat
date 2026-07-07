@@ -6,8 +6,8 @@ from langchain.chat_models import init_chat_model
 from pydantic import SecretStr
 
 from seshat.core.models.enums import LLMProvider
+from seshat.core.utils.log import get_logger
 from seshat.secrets.factory import get_secrets_resolver
-from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel

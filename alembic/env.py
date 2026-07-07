@@ -4,7 +4,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine
 
-from seshat.utils.db import ensure_psycopg_scheme
+from seshat.core.utils.db import ensure_psycopg_scheme
 
 config = context.config
 if config.config_file_name is not None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from seshat.utils.log import get_logger
+from seshat.core.utils.log import get_logger
 
 if TYPE_CHECKING:
     from seshat.core.config.settings import SecretsConfig

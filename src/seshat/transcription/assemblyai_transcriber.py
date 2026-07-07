@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Any
 
 import assemblyai as aai
 
+from seshat.core.utils.concurrency import run_in_thread
+from seshat.core.utils.log import get_logger
 from seshat.transcription.base import AbstractTranscriber
-from seshat.utils.concurrency import run_in_thread
-from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from seshat.core.config.settings import TranscriptionConfig

@@ -15,11 +15,11 @@ from seshat.core.models.enums import (
     TranscriptionProvider,
     VectorStoreProvider,
 )
-from seshat.utils.log import get_logger
+from seshat.core.utils.log import get_logger
 
 logger = get_logger(__name__)
 
-PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent.parent
+PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent.parent.parent
 DEFAULT_EVAL_GATE_PATH: Path = PROJECT_ROOT / "eval_gate.json"
 
 

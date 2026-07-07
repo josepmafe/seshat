@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, cast
 from aiobotocore.session import get_session
 from botocore.exceptions import ClientError
 
-from seshat.utils.log import get_logger
-from seshat.utils.retry import async_retry
+from seshat.core.utils.log import get_logger
+from seshat.core.utils.retry import async_retry
 
 if TYPE_CHECKING:
     from aiobotocore.session import ClientCreatorContext

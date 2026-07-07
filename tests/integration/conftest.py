@@ -200,7 +200,7 @@ async def _init_langchain_tables(database_url: str) -> None:
     from langchain_core.embeddings.fake import DeterministicFakeEmbedding
     from langchain_postgres import PGVector
 
-    from seshat.utils.db import ensure_psycopg_scheme
+    from seshat.core.utils.db import ensure_psycopg_scheme
 
     pg_url = ensure_psycopg_scheme(database_url)
     store = PGVector(

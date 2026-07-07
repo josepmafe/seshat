@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from seshat.agents.base import RetryExhaustedError, _BaseAgent
 from seshat.agents.identification.base import AnchoredConcept, ConceptModel
-from seshat.utils.log import get_logger
+from seshat.core.utils.log import get_logger
 
 if TYPE_CHECKING:
     from seshat.core.models.enums import ConceptType

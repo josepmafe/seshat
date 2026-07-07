@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from pydantic import BaseModel
 
-from seshat.utils.hashing import fingerprint
-from seshat.utils.log import get_logger
+from seshat.core.utils.hashing import fingerprint
+from seshat.core.utils.log import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine

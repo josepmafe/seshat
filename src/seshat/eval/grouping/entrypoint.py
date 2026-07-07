@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from seshat.agents.identification.grouping import GroupingAgent
+from seshat.core.utils.log import get_logger
 from seshat.eval.grouping.runner import GroupingEvalRunner
 from seshat.eval.mlflow_logging import log_eval_model
 from seshat.pipeline.llm_factory import get_identification_llm
-from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from seshat.core.config.eval_settings import EvalConfig

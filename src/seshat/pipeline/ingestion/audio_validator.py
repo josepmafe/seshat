@@ -1,4 +1,4 @@
-from seshat.utils.audio import audio_duration_seconds
+from seshat.core.utils.audio import audio_duration_seconds
 
 
 class AudioValidationError(Exception):

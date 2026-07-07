@@ -1,6 +1,6 @@
 import re
 
-from seshat.utils.log import get_logger
+from seshat.core.utils.log import get_logger
 
 logger = get_logger(__name__)
 

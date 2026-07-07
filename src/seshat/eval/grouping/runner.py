@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from seshat.agents.identification.base import AnchoredConcept, ConceptModel
 from seshat.core.models.enums import ConceptType
+from seshat.core.utils.log import set_task_num
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.gate import upsert_gate
 from seshat.eval.grouping.corpus_loader import load_corpus
@@ -17,7 +18,6 @@ from seshat.eval.grouping.scorers import scorer
 from seshat.eval.mlflow_logging import log_eval_run_metadata
 from seshat.observability.latency_tracker import track_eval_latency
 from seshat.observability.usage_tracker import track_eval_usage
-from seshat.utils.log import set_task_num
 
 if TYPE_CHECKING:
     from pathlib import Path

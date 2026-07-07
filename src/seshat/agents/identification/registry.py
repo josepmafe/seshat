@@ -8,8 +8,8 @@ from seshat.agents.identification.reflective import ReflectiveIdentificationAgen
 from seshat.agents.identification.risk import RiskIdentificationAgent
 from seshat.core.config.settings import ExtractionConfig
 from seshat.core.models.enums import ConceptType
-from seshat.utils.hashing import fingerprint
-from seshat.utils.log import get_logger
+from seshat.core.utils.hashing import fingerprint
+from seshat.core.utils.log import get_logger
 
 logger = get_logger(__name__)
 

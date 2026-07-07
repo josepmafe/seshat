@@ -8,9 +8,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from seshat.api.dependencies import get_app_state
 from seshat.api.state import AppState
 from seshat.core.models.api_responses import ApiKeyResponse, CreateApiKeyRequest, CreateApiKeyResponse
+from seshat.core.utils.concurrency import run_in_thread
 from seshat.secrets.factory import get_secrets_resolver
 from seshat.services.admin_service import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
-from seshat.utils.concurrency import run_in_thread
 
 
 async def _get_root_key(state: Annotated[AppState, Depends(get_app_state)]) -> str:

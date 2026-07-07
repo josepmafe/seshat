@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from seshat.utils.retry import async_retry
+from seshat.core.utils.retry import async_retry
 
 
 async def test_success_on_first_attempt():

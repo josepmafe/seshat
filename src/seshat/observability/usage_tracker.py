@@ -11,11 +11,11 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
+from seshat.core.utils.audio import audio_duration_seconds_ceil
+from seshat.core.utils.log import get_logger
+from seshat.core.utils.tokens import count_tokens
 from seshat.observability.mlflow_metrics import log_token_metrics
 from seshat.transcription.base import AbstractTranscriber
-from seshat.utils.audio import audio_duration_seconds_ceil
-from seshat.utils.log import get_logger
-from seshat.utils.tokens import count_tokens
 
 if TYPE_CHECKING:
     from collections.abc import Callable

@@ -20,9 +20,9 @@ from seshat.core.models.enums import (
     SearchMode,
 )
 from seshat.core.models.nodes import KBNode, KBRelationship, NodeMetadata
+from seshat.core.utils.log import get_logger
 from seshat.observability.latency_tracker import track_latency_profile
 from seshat.observability.usage_tracker import UsageTracker, track_token_budget
-from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from seshat.core.models.api_graph import (
