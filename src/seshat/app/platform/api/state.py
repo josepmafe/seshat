@@ -9,6 +9,7 @@ from seshat.app.pipeline.bootstrap import (
     build_ingestion_orchestrator,
     build_vector_store,
 )
+from seshat.app.platform.worker.queue import AsyncioTaskQueue
 from seshat.app.repositories.blob_repository import BlobRepository
 from seshat.app.repositories.node_repository import NodeRepository
 from seshat.app.repositories.ops_repository import OpsRepository
@@ -19,7 +20,6 @@ from seshat.app.services.job import JobService
 from seshat.infra.blob_store.factory import get_blob_store
 from seshat.infra.knowledge_store.factory import get_kb_store
 from seshat.infra.ops_store.factory import get_ops_store
-from seshat.worker.queue import AsyncioTaskQueue
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator

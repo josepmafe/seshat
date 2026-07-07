@@ -7,7 +7,7 @@ import pytest
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
-from seshat.observability.usage_tracker import (
+from seshat.app.platform.observability.usage_tracker import (
     TokenBudgetCallback,
     TokenBudgetExceededError,
     TrackingTranscriber,
@@ -170,7 +170,7 @@ class TestLogTotals:
         tracker = UsageTracker(max_input_tokens=1000, max_output_tokens=500)
         await tracker.add(input_tokens=100, output_tokens=0)
 
-        with caplog.at_level(logging.INFO, logger="seshat.observability.usage_tracker"):
+        with caplog.at_level(logging.INFO, logger="seshat.app.platform.observability.usage_tracker"):
             tracker.log_totals("test-run")
 
         assert "input=" in caplog.text
@@ -181,7 +181,7 @@ class TestLogTotals:
 
         tracker = UsageTracker(max_input_tokens=1000, max_output_tokens=500)
 
-        with caplog.at_level(logging.INFO, logger="seshat.observability.usage_tracker"):
+        with caplog.at_level(logging.INFO, logger="seshat.app.platform.observability.usage_tracker"):
             tracker.log_totals("test-run")
 
         assert "none" in caplog.text

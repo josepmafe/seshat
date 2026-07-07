@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-from seshat.api.state import AppState
+from seshat.app.platform.api.state import AppState
 from seshat.app.services.job import (
     JobNotFoundError,
     JobStateError,

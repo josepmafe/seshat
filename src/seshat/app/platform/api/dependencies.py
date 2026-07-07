@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
-from seshat.api.auth import AuthenticationError, verify_api_key
-from seshat.api.state import AppState
+from seshat.app.platform.api.auth import AuthenticationError, verify_api_key
+from seshat.app.platform.api.state import AppState
 from seshat.core.models.enums import UserRole
 
 if TYPE_CHECKING:

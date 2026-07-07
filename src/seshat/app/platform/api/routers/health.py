@@ -4,8 +4,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
 
-from seshat.api.dependencies import get_app_state
-from seshat.api.state import AppState
+from seshat.app.platform.api.dependencies import get_app_state
+from seshat.app.platform.api.state import AppState
 from seshat.core.models.api_responses import HealthResponse, HealthStatus
 
 router = APIRouter(prefix="/health", tags=["health"])

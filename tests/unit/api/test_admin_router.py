@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
-from seshat.api.routers.admin import _get_root_key
-from seshat.api.state import AppState
+from seshat.app.platform.api.routers.admin import _get_root_key
+from seshat.app.platform.api.state import AppState
 from seshat.app.services.admin import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
 
 

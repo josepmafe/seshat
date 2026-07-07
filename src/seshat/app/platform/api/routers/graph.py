@@ -5,8 +5,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from seshat.api.dependencies import CurrentUser, get_app_state, require_role
-from seshat.api.state import AppState
+from seshat.app.platform.api.dependencies import CurrentUser, get_app_state, require_role
+from seshat.app.platform.api.state import AppState
 from seshat.app.services.graph import (
     NodeNotFoundError,
     NodePreconditionError,

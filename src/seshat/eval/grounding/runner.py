@@ -8,14 +8,14 @@ import mlflow.genai
 import pandas as pd
 
 from seshat.app.agents.grounding import GroundingResult
+from seshat.app.platform.observability.latency_tracker import track_eval_latency
+from seshat.app.platform.observability.usage_tracker import track_eval_usage
 from seshat.core.utils.log import set_task_num
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.gate import upsert_gate
 from seshat.eval.grounding.corpus_loader import load_corpus
 from seshat.eval.grounding.scorers import scorer
 from seshat.eval.mlflow_logging import configure_trace_processors, log_eval_run_metadata, make_input_redactor
-from seshat.observability.latency_tracker import track_eval_latency
-from seshat.observability.usage_tracker import track_eval_usage
 
 if TYPE_CHECKING:
     from pathlib import Path

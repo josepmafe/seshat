@@ -6,8 +6,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse
 
-from seshat.api.dependencies import CurrentUser, get_app_state, require_role
-from seshat.api.state import AppState
+from seshat.app.platform.api.dependencies import CurrentUser, get_app_state, require_role
+from seshat.app.platform.api.state import AppState
 from seshat.app.services.job import (
     ContentAlreadyIngestedError,
     JobNotFoundError,

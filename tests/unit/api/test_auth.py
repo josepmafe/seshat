@@ -3,7 +3,7 @@ from __future__ import annotations
 import bcrypt
 import pytest
 
-from seshat.api.auth import AuthenticationError, verify_api_key
+from seshat.app.platform.api.auth import AuthenticationError, verify_api_key
 
 
 class TestVerifyApiKey:

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from seshat.app.platform.observability.usage_tracker import TrackingTranscriber
 from seshat.core.models.enums import TranscriptionProvider
 from seshat.core.utils.log import get_logger
 from seshat.infra.secrets.factory import get_secrets_resolver
-from seshat.observability.usage_tracker import TrackingTranscriber
 
 if TYPE_CHECKING:
     from seshat.app.transcription.base import AbstractTranscriber

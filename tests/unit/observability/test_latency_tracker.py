@@ -8,13 +8,13 @@ from uuid import uuid4
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
-from seshat.observability.latency_tracker import (
+from seshat.app.platform.observability.latency_tracker import (
     LatencyTracker,
     LatencyTrackerCallback,
     track_eval_latency,
     track_latency_profile,
 )
-from seshat.observability.mlflow_metrics import log_latency_metrics
+from seshat.app.platform.observability.mlflow_metrics import log_latency_metrics
 
 
 def _make_llm_result() -> LLMResult:
@@ -36,7 +36,7 @@ class TestLatencyTracker:
         t = LatencyTracker()
         t._durations = [100.0, 200.0, 300.0]
 
-        with caplog.at_level(logging.INFO, logger="seshat.observability.latency_tracker"):
+        with caplog.at_level(logging.INFO, logger="seshat.app.platform.observability.latency_tracker"):
             t.log_totals("grounding")
 
         assert any("grounding latency" in r.message for r in caplog.records)
@@ -44,7 +44,7 @@ class TestLatencyTracker:
     def test_log_totals_noop_when_empty(self, caplog):
         t = LatencyTracker()
 
-        with caplog.at_level(logging.INFO, logger="seshat.observability.latency_tracker"):
+        with caplog.at_level(logging.INFO, logger="seshat.app.platform.observability.latency_tracker"):
             t.log_totals("grounding")
 
         assert not caplog.records
@@ -71,7 +71,7 @@ class TestLatencyTrackerCallback:
     async def test_unknown_run_id_on_end_logs_warning_and_skips(self, caplog):
         cb = _make_callback()
 
-        with caplog.at_level(logging.WARNING, logger="seshat.observability.latency_tracker"):
+        with caplog.at_level(logging.WARNING, logger="seshat.app.platform.observability.latency_tracker"):
             await cb.on_llm_end(_make_llm_result(), run_id=uuid4())
 
         assert len(cb.tracker.durations) == 0
@@ -116,7 +116,7 @@ class TestLogLatencyMetrics:
 
 class TestTrackLatencyProfile:
     async def test_decorator_calls_log_latency_metrics(self):
-        with patch("seshat.observability.latency_tracker.log_latency_metrics") as mock_log:
+        with patch("seshat.app.platform.observability.latency_tracker.log_latency_metrics") as mock_log:
 
             class _Dummy:
                 @track_latency_profile("my_stage")
@@ -132,7 +132,7 @@ class TestTrackLatencyProfile:
         assert isinstance(durations, list)
 
     async def test_metrics_label_overrides_stage(self):
-        with patch("seshat.observability.latency_tracker.log_latency_metrics") as mock_log:
+        with patch("seshat.app.platform.observability.latency_tracker.log_latency_metrics") as mock_log:
 
             class _Dummy:
                 @track_latency_profile("my_stage", metrics_label="")
@@ -145,7 +145,7 @@ class TestTrackLatencyProfile:
         assert stage == ""
 
     async def test_track_eval_latency_uses_empty_metrics_label(self):
-        with patch("seshat.observability.latency_tracker.log_latency_metrics") as mock_log:
+        with patch("seshat.app.platform.observability.latency_tracker.log_latency_metrics") as mock_log:
 
             class _Dummy:
                 @track_eval_latency("identification")

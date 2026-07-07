@@ -9,6 +9,7 @@ import mlflow.genai
 import openai
 import pandas as pd
 
+from seshat.app.platform.observability.usage_tracker import track_eval_usage
 from seshat.core.models.api_graph import NodeFilter
 from seshat.core.models.enums import SearchMode
 from seshat.core.utils.hashing import fingerprint
@@ -20,7 +21,6 @@ from seshat.eval.mlflow_logging import log_eval_run_metadata
 from seshat.eval.models import RetrievalScoredResult
 from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.retrieval.scorers import TOP_K, scorer
-from seshat.observability.usage_tracker import track_eval_usage
 
 if TYPE_CHECKING:
     from pathlib import Path

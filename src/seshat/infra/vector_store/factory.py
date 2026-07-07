@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING
 
 from pydantic import SecretStr
 
+from seshat.app.platform.observability.usage_tracker import TrackingEmbeddings
 from seshat.core.models.enums import EmbeddingProvider, VectorStoreProvider
 from seshat.core.utils.log import get_logger
 from seshat.infra.secrets.factory import get_secrets_resolver
-from seshat.observability.usage_tracker import TrackingEmbeddings
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from seshat.api.state import AppState
+from seshat.app.platform.api.state import AppState
 from seshat.core.models.enums import UserRole
 from tests.unit.api.conftest import make_current_user
 

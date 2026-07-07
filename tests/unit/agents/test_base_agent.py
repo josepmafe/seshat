@@ -81,7 +81,7 @@ class TestRetryableStructuredAinvoke:
     async def test_attaches_profiling_callback_when_set(self):
         from unittest.mock import AsyncMock, MagicMock
 
-        from seshat.observability.latency_tracker import LatencyTracker, LatencyTrackerCallback
+        from seshat.app.platform.observability.latency_tracker import LatencyTracker, LatencyTrackerCallback
 
         cb = LatencyTrackerCallback(LatencyTracker())
         structured_mock = MagicMock()

@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, FastAPI
 from langchain_core.messages import HumanMessage
 
-from seshat.api.routers import admin, graph, health, identity, jobs
-from seshat.api.state import build_app_state
 from seshat.app.pipeline.llm_factory import _build_llm
+from seshat.app.platform.api.routers import admin, graph, health, identity, jobs
+from seshat.app.platform.api.state import build_app_state
+from seshat.app.platform.observability.mlflow_setup import setup_mlflow
 from seshat.core.config.settings import SeshatConfig, get_config
 from seshat.core.utils.log import configure_logging, get_logger, set_job_id
-from seshat.observability.mlflow_setup import setup_mlflow
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

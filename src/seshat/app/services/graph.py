@@ -7,6 +7,8 @@ from uuid import UUID, uuid4
 
 import asyncpg
 
+from seshat.app.platform.observability.latency_tracker import track_latency_profile
+from seshat.app.platform.observability.usage_tracker import UsageTracker, track_token_budget
 from seshat.core.models.api_graph import BulkFailure, BulkNodeCreate, BulkNodeDelete, BulkResult
 from seshat.core.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse, NodeSearchResult
 from seshat.core.models.enums import (
@@ -21,8 +23,6 @@ from seshat.core.models.enums import (
 )
 from seshat.core.models.nodes import KBNode, KBRelationship, NodeMetadata
 from seshat.core.utils.log import get_logger
-from seshat.observability.latency_tracker import track_latency_profile
-from seshat.observability.usage_tracker import UsageTracker, track_token_budget
 
 if TYPE_CHECKING:
     from seshat.app.pipeline.extraction.orchestrator import ExtractionOrchestrator

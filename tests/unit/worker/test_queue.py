@@ -1,7 +1,7 @@
 import asyncio
 
+from seshat.app.platform.worker.queue import AsyncioTaskQueue
 from seshat.core.models.enums import JobStatus
-from seshat.worker.queue import AsyncioTaskQueue
 
 
 class TestAsyncioTaskQueue:

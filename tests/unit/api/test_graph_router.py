@@ -4,7 +4,7 @@ import typing
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
-from seshat.api.state import AppState
+from seshat.app.platform.api.state import AppState
 from seshat.app.services.graph import (
     NodeNotFoundError,
     NodePreconditionError,

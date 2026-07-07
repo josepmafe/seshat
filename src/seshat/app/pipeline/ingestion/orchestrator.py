@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING
 
 from seshat.app.pipeline.ingestion.audio_validator import AudioValidator
 from seshat.app.pipeline.ingestion.text_validator import TextValidationError, TextValidator
+from seshat.app.platform.observability.usage_tracker import track_token_budget
 from seshat.core.models.transcript import TranscriptDocument, TranscriptMetadata
 from seshat.core.utils.log import get_logger
-from seshat.observability.usage_tracker import track_token_budget
 
 if TYPE_CHECKING:
     from datetime import date

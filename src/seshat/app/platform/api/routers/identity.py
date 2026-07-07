@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from seshat.api.dependencies import CurrentUser, _get_current_user
+from seshat.app.platform.api.dependencies import CurrentUser, _get_current_user
 
 router = APIRouter(tags=["identity"])
 

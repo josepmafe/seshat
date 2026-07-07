@@ -19,13 +19,13 @@ from seshat.core.utils.log import get_logger, set_job_id
 if TYPE_CHECKING:
     from seshat.app.pipeline.extraction.orchestrator import ExtractionOrchestrator
     from seshat.app.pipeline.ingestion.orchestrator import IngestionOrchestrator
+    from seshat.app.platform.worker.queue import AsyncioTaskQueue
     from seshat.app.repositories.blob_repository import BlobRepository
     from seshat.app.repositories.node_repository import NodeRepository
     from seshat.app.repositories.ops_repository import OpsRepository
     from seshat.core.config.settings import SeshatConfig
     from seshat.core.models.api_jobs import ApproveRequest, BulkApproveRule, NodeDecision
     from seshat.core.models.nodes import KBNode, KBRelationship
-    from seshat.worker.queue import AsyncioTaskQueue
 
 logger = get_logger(__name__)
 

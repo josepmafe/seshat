@@ -2,8 +2,8 @@ import pytest
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import AzureOpenAIEmbeddings
 
+from seshat.app.platform.observability.usage_tracker import TrackingEmbeddings
 from seshat.core.config.settings import IdentificationLLMConfig
-from seshat.observability.usage_tracker import TrackingEmbeddings
 from tests.integration.helpers import cheap_identification_config, make_cheap_llm
 
 
