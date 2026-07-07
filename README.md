@@ -20,24 +20,41 @@ Built as a master's thesis project.
 seshat/
 ├── src/
 │   └── seshat/
-│       ├── agents/          # LLM agents: identification (extraction) and resolution families
-│       ├── blob_store/      # S3 blob store abstraction (aioboto3)
-│       ├── config/          # Pydantic settings (EvalConfig, LLMConfig, ExtractionConfig, …)
-│       ├── eval/            # MLflow-backed eval harnesses and calibration meta-scorers
-│       ├── knowledge_store/ # Postgres-backed KB node persistence
-│       ├── models/          # Pydantic domain models (KBNode, enums, …)
-│       ├── observability/   # MLflow tracing and run management
-│       ├── pipeline/        # ExtractionOrchestrator and extraction sub-pipeline
-│       ├── secrets/         # AWS Secrets Manager helpers
-│       ├── utils/           # Shared utilities
-│       └── vector_store/    # pgvector semantic search abstraction
-├── scripts/         # Standalone helper scripts (not part of the package)
+│       ├── core/                        # Pure data and config — no I/O, no AI
+│       │   ├── models/                  # Pydantic domain models (KBNode, enums, …)
+│       │   ├── config/                  # Pydantic settings (SeshatConfig, LLMConfig, ExtractionConfig, …)
+│       │   └── utils/                   # Shared pure utilities (audio, retry, tokens, logging)
+│       ├── infra/                       # External system adapters — I/O only, no business logic
+│       │   ├── blob_store/              # S3 blob store abstraction (aioboto3)
+│       │   ├── vector_store/            # pgvector semantic search abstraction
+│       │   ├── knowledge_store/         # Postgres-backed KB node persistence
+│       │   ├── ops_store/               # Postgres-backed job/ops ledger
+│       │   └── secrets/                 # AWS Secrets Manager helpers
+│       ├── app/                         # Runtime application — orchestration, AI, and services
+│       │   ├── agents/                  # LLM agents
+│       │   │   ├── identification/      # Extraction agents (grouping, registry)
+│       │   │   └── resolution/          # Resolution agents (same_type, cross_type)
+│       │   ├── transcription/           # Transcriber interface and provider implementations
+│       │   ├── pipeline/                # Orchestration
+│       │   │   ├── extraction/          # Extraction sub-pipeline (identification, scoring, resolution)
+│       │   │   └── ingestion/           # Ingestion sub-pipeline (audio/text validation, blob upload)
+│       │   ├── repositories/            # NodeRepository and ops/blob repository facades
+│       │   ├── services/                # Domain services (GraphService, JobService, AdminService, …)
+│       │   └── platform/                # Deployment-layer concerns
+│       │       ├── api/                 # FastAPI routers, auth, app state, startup
+│       │       ├── worker/              # Async task queue and job worker
+│       │       └── observability/       # MLflow tracing, usage tracking, latency metrics
+│       ├── eval/                        # Eval harnesses and calibration meta-scorers (tooling, not runtime)
+│       └── cli/                         # CLI entry points (seshat eval, seshat init, …)
+├── scripts/                             # Standalone helper scripts (not part of the package)
 ├── tests/
 ├── data/
-├── docs/
-├── alembic/
-├── docker/
-└── development/
+│   ├── eval/                            # Ground-truth YAML corpus fixtures for eval harnesses
+│   └── fixtures/                        # Generated fixtures (e.g. synthetic audio)
+├── alembic/                             # DB migration scripts
+├── docs/                                # Architecture docs, SDD, design specs
+├── docker/                              # Dockerfiles for API, worker, and UI images
+└── pyproject.toml                       # Single source of truth for deps, tool config, metadata
 ```
 
 ## Running tests
