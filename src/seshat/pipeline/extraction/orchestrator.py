@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 
 from seshat.agents.grounding import GroundingRetryExhaustedError
 from seshat.blob_store.s3_store import BlobNotFoundError
-from seshat.models.api_graph import NodeFilter
-from seshat.models.enums import ConceptType, NodeStatus
-from seshat.models.nodes import (
+from seshat.core.models.api_graph import NodeFilter
+from seshat.core.models.enums import ConceptType, NodeStatus
+from seshat.core.models.nodes import (
     ConfidenceBreakdown,
     IdentificationResult,
     KBNode,
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from seshat.agents.resolution.base import ResolvedRelationship
     from seshat.agents.resolution.registry import ResolutionRegistry
     from seshat.config.settings import ExtractionConfig
-    from seshat.models.transcript import TranscriptDocument
+    from seshat.core.models.transcript import TranscriptDocument
     from seshat.pipeline.extraction.node_retriever import NodeRetriever
     from seshat.repositories.node_repository import NodeRepository
 

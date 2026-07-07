@@ -4,10 +4,10 @@ from uuid import NAMESPACE_DNS, uuid5
 
 from seshat.agents.identification.base import AnchoredConcept
 from seshat.agents.identification.decision import Decision
-from seshat.models.enums import ConceptType, IngestionSource, NodeStatus
-from seshat.models.nodes import KBNode, NodeMetadata
-from seshat.models.quote_anchor import QuoteAnchor
-from seshat.models.transcript import TranscriptDocument, TranscriptMetadata
+from seshat.core.models.enums import ConceptType, IngestionSource, NodeStatus
+from seshat.core.models.nodes import KBNode, NodeMetadata
+from seshat.core.models.quote_anchor import QuoteAnchor
+from seshat.core.models.transcript import TranscriptDocument, TranscriptMetadata
 
 
 def make_structured_llm(return_value=None, side_effect=None) -> MagicMock:

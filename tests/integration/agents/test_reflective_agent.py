@@ -2,7 +2,7 @@ import pytest
 
 from seshat.agents.identification.decision import DecisionIdentificationAgent
 from seshat.agents.identification.reflective import ReflectiveIdentificationAgent
-from seshat.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType
 from tests.integration.conftest import SKIP_IF_NO_LLM_API
 
 pytestmark = [pytest.mark.integration, pytest.mark.llm, pytest.mark.agents, SKIP_IF_NO_LLM_API]

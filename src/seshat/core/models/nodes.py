@@ -4,8 +4,8 @@ from uuid import UUID, uuid4
 
 from pydantic import Field
 
-from seshat.models.base import SeshatModel
-from seshat.models.enums import (
+from seshat.core.models.base import SeshatModel
+from seshat.core.models.enums import (
     ApprovalMethod,
     ConceptType,
     IngestionSource,
@@ -14,7 +14,7 @@ from seshat.models.enums import (
     RelationshipSource,
     RelationshipType,
 )
-from seshat.models.quote_anchor import QuoteAnchor
+from seshat.core.models.quote_anchor import QuoteAnchor
 
 
 class KBRelationship(SeshatModel):

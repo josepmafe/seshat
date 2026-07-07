@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path  # noqa: TC003
 
+from seshat.core.models.enums import ConceptType
 from seshat.eval.models import GateResult, MetricEntry
 from seshat.eval.thresholds import (
     GROUNDING_PRECISION,
@@ -16,7 +17,6 @@ from seshat.eval.thresholds import (
     RETRIEVAL_MRR_AT_5,
     RETRIEVAL_RECALL_AT_5,
 )
-from seshat.models.enums import ConceptType
 
 
 def write_gate(result: GateResult, gate_path: Path) -> None:

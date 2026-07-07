@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import SecretStr
 
-from seshat.models.enums import EmbeddingProvider, VectorStoreProvider
+from seshat.core.models.enums import EmbeddingProvider, VectorStoreProvider
 from seshat.observability.usage_tracker import TrackingEmbeddings
 from seshat.secrets.factory import get_secrets_resolver
 from seshat.utils.log import get_logger

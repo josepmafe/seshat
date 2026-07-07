@@ -6,7 +6,7 @@ from uuid import UUID
 import pytest
 from langchain_core.documents import Document
 
-from seshat.models.api_graph import NodeFilter
+from seshat.core.models.api_graph import NodeFilter
 from seshat.vector_store.pgvector_store import PGVectorStore, _rrf
 
 _N1 = "00000000-0000-0000-0000-000000000001"
@@ -121,7 +121,7 @@ class TestBuildSemanticFilter:
         assert self._store()._build_semantic_filter(None) is None
 
     def test_supported_node_type_filter_applied(self):
-        from seshat.models.enums import ConceptType
+        from seshat.core.models.enums import ConceptType
 
         nf = NodeFilter(node_type=ConceptType.DECISION)
         result = self._store()._build_semantic_filter(nf)
@@ -133,7 +133,7 @@ class TestBuildSemanticFilter:
         assert result == {"confidence": {"$gte": 0.7}}
 
     def test_unsupported_fields_warn_and_are_ignored(self, caplog):
-        from seshat.models.enums import NodeStatus
+        from seshat.core.models.enums import NodeStatus
 
         nf = NodeFilter(status=NodeStatus.APPROVED)
         with caplog.at_level(logging.WARNING, logger="seshat.vector_store.pgvector_store"):
@@ -144,7 +144,7 @@ class TestBuildSemanticFilter:
         assert result == {}
 
     def test_unsupported_fields_do_not_prevent_supported_fields_from_applying(self, caplog):
-        from seshat.models.enums import ConceptType, NodeStatus
+        from seshat.core.models.enums import ConceptType, NodeStatus
 
         nf = NodeFilter(node_type=ConceptType.DECISION, status=NodeStatus.APPROVED)
         with caplog.at_level(logging.WARNING, logger="seshat.vector_store.pgvector_store"):

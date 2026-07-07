@@ -2,8 +2,8 @@ from enum import StrEnum, auto
 
 from pydantic import BaseModel, Field
 
+from seshat.core.models.nodes import KBNode
 from seshat.eval.models import IdentificationCorpusNode
-from seshat.models.nodes import KBNode
 
 # Minimum score for a (expected, predicted) pair to count as a true positive.
 # Pairs below this are rejected: the predicted node becomes spurious (FP) and the expected node

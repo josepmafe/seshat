@@ -3,10 +3,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from seshat.models.enums import SearchMode
+from seshat.core.models.enums import SearchMode
 
 if TYPE_CHECKING:
-    from seshat.models.api_graph import NodeFilter, SearchResult
+    from seshat.core.models.api_graph import NodeFilter, SearchResult
 
 
 class AbstractVectorStore(ABC):

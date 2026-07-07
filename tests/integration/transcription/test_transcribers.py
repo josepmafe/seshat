@@ -5,7 +5,7 @@ import os
 import pytest
 
 from seshat.config.settings import TranscriptionConfig
-from seshat.models.enums import TranscriptionProvider
+from seshat.core.models.enums import TranscriptionProvider
 from seshat.transcription.assemblyai_transcriber import AssemblyAITranscriber
 from seshat.transcription.openai_transcriber import OpenAITranscriber
 from tests.integration.conftest import SKIP_IF_NO_ASSEMBLYAI_API, SKIP_IF_NO_OPENAI_API

@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 from seshat.config.settings import OpsStoreConfig
-from seshat.models.enums import JobStatus, UserRole
+from seshat.core.models.enums import JobStatus, UserRole
 from seshat.ops_store.pg_store import PostgresOpsStore
 
 

@@ -8,18 +8,18 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import mlflow
 
-from seshat.models.api_graph import NodeFilter
-from seshat.models.api_responses import JobActionResponse, JobSubmitResponse
-from seshat.models.enums import ApprovalMethod, JobStatus, NodeStatus
-from seshat.models.jobs import JobResponse
-from seshat.models.nodes import ExtractionResult, IdentificationResult
-from seshat.models.submission import JobSubmissionRequest
+from seshat.core.models.api_graph import NodeFilter
+from seshat.core.models.api_responses import JobActionResponse, JobSubmitResponse
+from seshat.core.models.enums import ApprovalMethod, JobStatus, NodeStatus
+from seshat.core.models.jobs import JobResponse
+from seshat.core.models.nodes import ExtractionResult, IdentificationResult
+from seshat.core.models.submission import JobSubmissionRequest
 from seshat.utils.log import get_logger, set_job_id
 
 if TYPE_CHECKING:
     from seshat.config.settings import SeshatConfig
-    from seshat.models.api_jobs import ApproveRequest, BulkApproveRule, NodeDecision
-    from seshat.models.nodes import KBNode, KBRelationship
+    from seshat.core.models.api_jobs import ApproveRequest, BulkApproveRule, NodeDecision
+    from seshat.core.models.nodes import KBNode, KBRelationship
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
     from seshat.pipeline.ingestion.orchestrator import IngestionOrchestrator
     from seshat.repositories.blob_repository import BlobRepository

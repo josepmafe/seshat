@@ -7,7 +7,7 @@ from httpx import ASGITransport, AsyncClient
 
 from seshat.api.app import create_app
 from seshat.api.dependencies import CurrentUser, _get_current_user, get_app_state
-from seshat.models.enums import UserRole
+from seshat.core.models.enums import UserRole
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator

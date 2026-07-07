@@ -4,7 +4,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from seshat.models.enums import (
+from seshat.core.models.enums import (
     ConceptType,
     DocumentLoaderProvider,
     EmbeddingProvider,

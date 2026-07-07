@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from seshat.config.settings import TranscriptionConfig
-from seshat.models.enums import TranscriptionProvider
+from seshat.core.models.enums import TranscriptionProvider
 from seshat.observability.usage_tracker import TrackingTranscriber
 from seshat.transcription.assemblyai_transcriber import AssemblyAITranscriber
 from seshat.transcription.factory import get_transcriber

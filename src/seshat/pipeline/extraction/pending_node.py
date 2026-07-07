@@ -5,8 +5,8 @@ from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
 from seshat.agents.identification.grouping import ConceptGroup
-from seshat.models.enums import ApprovalMethod, ConceptType, IngestionSource, NodeStatus
-from seshat.models.nodes import ConfidenceBreakdown, KBNode, NodeMetadata
+from seshat.core.models.enums import ApprovalMethod, ConceptType, IngestionSource, NodeStatus
+from seshat.core.models.nodes import ConfidenceBreakdown, KBNode, NodeMetadata
 from seshat.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 if TYPE_CHECKING:
     from seshat.agents.identification.base import AnchoredConcept
     from seshat.config.settings import ExtractionConfig
-    from seshat.models.quote_anchor import QuoteAnchor
+    from seshat.core.models.quote_anchor import QuoteAnchor
     from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
 
 

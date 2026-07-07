@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from seshat.models.enums import JobStatus
+from seshat.core.models.enums import JobStatus
 from seshat.utils.log import get_logger
 
 logger = get_logger(__name__)

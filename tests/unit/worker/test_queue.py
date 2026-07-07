@@ -1,6 +1,6 @@
 import asyncio
 
-from seshat.models.enums import JobStatus
+from seshat.core.models.enums import JobStatus
 from seshat.worker.queue import AsyncioTaskQueue
 
 

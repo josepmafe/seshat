@@ -5,9 +5,8 @@ import asyncpg
 import pytest
 
 from seshat.config.settings import KBStoreConfig
-from seshat.knowledge_store.pg_store import PostgresKBStore
-from seshat.models.api_graph import NodeFilter
-from seshat.models.enums import (
+from seshat.core.models.api_graph import NodeFilter
+from seshat.core.models.enums import (
     ConceptType,
     GraphDirection,
     IngestionSource,
@@ -15,6 +14,7 @@ from seshat.models.enums import (
     NodeStatus,
     RelationshipType,
 )
+from seshat.knowledge_store.pg_store import PostgresKBStore
 from tests.helpers import make_node
 from tests.integration.conftest import SKIP_IF_NO_POSTGRES
 from tests.integration.helpers import make_relationship

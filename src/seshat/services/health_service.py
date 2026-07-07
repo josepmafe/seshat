@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from seshat.models.api_responses import HealthStatus
+from seshat.core.models.api_responses import HealthStatus
 
 if TYPE_CHECKING:
     from seshat.config.settings import BlobStoreConfig, ObservabilityConfig

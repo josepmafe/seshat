@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, computed_field
 
-from seshat.models.enums import ConceptType, RelationshipType
+from seshat.core.models.enums import ConceptType, RelationshipType
 
 # ── Identification corpus ────────────────────────────────────────────────────
 

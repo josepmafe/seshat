@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 from seshat.agents.resolution.base import BaseCrossTypeResolutionAgent, _CrossTypeEntry, _ResultBase
-from seshat.models.enums import ConceptType, RelationshipType
+from seshat.core.models.enums import ConceptType, RelationshipType
 
 
 class _DecisionToRiskEntry(_CrossTypeEntry):

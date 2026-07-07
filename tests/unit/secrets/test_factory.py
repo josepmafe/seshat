@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from seshat.config.settings import SecretsConfig, SeshatConfig
-from seshat.models.enums import SecretsProvider
+from seshat.core.models.enums import SecretsProvider
 from seshat.secrets.aws_resolver import AWSSecretsResolver
 from seshat.secrets.env_resolver import EnvSecretsResolver
 from seshat.secrets.factory import _cached_resolver, get_secrets_resolver

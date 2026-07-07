@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from seshat.models.enums import TranscriptionProvider
+from seshat.core.models.enums import TranscriptionProvider
 from seshat.observability.usage_tracker import TrackingTranscriber
 from seshat.secrets.factory import get_secrets_resolver
 from seshat.utils.log import get_logger

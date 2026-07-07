@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 from seshat.api.state import AppState
-from seshat.models.api_graph import BulkFailure, BulkResult
-from seshat.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse, NodeSearchResult
-from seshat.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
+from seshat.core.models.api_graph import BulkFailure, BulkResult
+from seshat.core.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse, NodeSearchResult
+from seshat.core.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
 from seshat.services.graph_service import (
     NodeNotFoundError,
     NodePreconditionError,

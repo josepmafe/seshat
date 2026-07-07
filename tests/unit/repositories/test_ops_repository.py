@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seshat.models.enums import JobStatus, UserRole
+from seshat.core.models.enums import JobStatus, UserRole
 from seshat.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError, OpsRepository
 
 

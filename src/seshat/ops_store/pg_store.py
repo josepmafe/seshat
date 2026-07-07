@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal
 
 import asyncpg
 
-from seshat.models.enums import JobStatus, UserRole
+from seshat.core.models.enums import JobStatus, UserRole
 
 if TYPE_CHECKING:
     from seshat.config.settings import OpsStoreConfig

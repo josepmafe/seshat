@@ -6,7 +6,7 @@ from fastapi import Depends, Header, HTTPException, Request, status
 
 from seshat.api.auth import AuthenticationError, verify_api_key
 from seshat.api.state import AppState
-from seshat.models.enums import UserRole
+from seshat.core.models.enums import UserRole
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine

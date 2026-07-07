@@ -1,7 +1,7 @@
 from pydantic import Field
 
 from seshat.agents.identification.base import ConceptList, ConceptModel, _BaseIdentificationAgent
-from seshat.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType
 
 
 class OpenQuestion(ConceptModel):

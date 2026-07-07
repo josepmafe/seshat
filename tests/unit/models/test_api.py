@@ -4,9 +4,9 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from seshat.models.api_graph import ManualNodeCreate, NodeFilter, SearchResult
-from seshat.models.api_jobs import ApproveRequest, BulkApproveRule
-from seshat.models.enums import ConceptType
+from seshat.core.models.api_graph import ManualNodeCreate, NodeFilter, SearchResult
+from seshat.core.models.api_jobs import ApproveRequest, BulkApproveRule
+from seshat.core.models.enums import ConceptType
 
 
 class TestNodeFilterValidation:

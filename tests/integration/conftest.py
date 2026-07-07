@@ -143,7 +143,7 @@ SKIP_IF_NO_OPENAI_API = pytest.mark.skipif(
 @pytest.fixture
 async def vector_store(pg_test_url):
     from seshat.config.settings import SecretsConfig, SeshatConfig, VectorStoreConfig
-    from seshat.models.enums import SecretsProvider
+    from seshat.core.models.enums import SecretsProvider
     from seshat.vector_store.factory import _build_embeddings
     from seshat.vector_store.pgvector_store import PGVectorStore
 

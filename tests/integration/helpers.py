@@ -10,8 +10,8 @@ from seshat.config.settings import (
     IdentificationLLMConfig,
     ResolutionLLMConfig,
 )
-from seshat.models.enums import LLMProvider, RelationshipType
-from seshat.models.nodes import KBNode, KBRelationship
+from seshat.core.models.enums import LLMProvider, RelationshipType
+from seshat.core.models.nodes import KBNode, KBRelationship
 from seshat.repositories.node_repository import NodeRepository
 from tests.integration.conftest import _BEDROCK_PROFILE, _anthropic_reachable, _azure_available, _bedrock_available
 

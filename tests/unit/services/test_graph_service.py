@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 
-from seshat.models.api_graph import (
+from seshat.core.models.api_graph import (
     BulkNodeCreate,
     BulkNodeDelete,
     ManualNodeCreate,
@@ -14,7 +14,7 @@ from seshat.models.api_graph import (
     NodeOverride,
     RelationshipInput,
 )
-from seshat.models.enums import (
+from seshat.core.models.enums import (
     ApprovalMethod,
     ConceptType,
     GraphDirection,
@@ -25,7 +25,7 @@ from seshat.models.enums import (
     RelationshipType,
     SearchMode,
 )
-from seshat.models.nodes import KBNode, KBRelationship, NodeMetadata, ResolutionResult
+from seshat.core.models.nodes import KBNode, KBRelationship, NodeMetadata, ResolutionResult
 from seshat.services.graph_service import (
     GraphService,
     NodeNotFoundError,
@@ -596,7 +596,7 @@ class TestSearch:
         repo.search = AsyncMock(return_value=[result])
         repo.get_neighbours = AsyncMock(return_value=[])
 
-        from seshat.models.api_graph import NodeFilter
+        from seshat.core.models.api_graph import NodeFilter
 
         details = await svc.search("auth risk", limit=5, node_filter=NodeFilter())
 
@@ -609,7 +609,7 @@ class TestSearch:
         svc, repo = _make_service(node=None)
         repo.search = AsyncMock(return_value=[result])
 
-        from seshat.models.api_graph import NodeFilter
+        from seshat.core.models.api_graph import NodeFilter
 
         details = await svc.search("auth risk", limit=5, node_filter=NodeFilter())
 
@@ -619,7 +619,7 @@ class TestSearch:
         svc, repo = _make_service()
         repo.search = AsyncMock(return_value=[])
 
-        from seshat.models.api_graph import NodeFilter
+        from seshat.core.models.api_graph import NodeFilter
 
         details = await svc.search("nothing", limit=10, node_filter=NodeFilter())
 
@@ -629,7 +629,7 @@ class TestSearch:
         svc, repo = _make_service()
         repo.search = AsyncMock(return_value=[])
 
-        from seshat.models.api_graph import NodeFilter
+        from seshat.core.models.api_graph import NodeFilter
 
         await svc.search("q", limit=5, node_filter=NodeFilter(), mode=SearchMode.KEYWORD)
 

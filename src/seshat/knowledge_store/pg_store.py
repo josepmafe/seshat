@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 
 import asyncpg
 
-from seshat.models.enums import GraphDirection, NodeState, RelationshipType
-from seshat.models.nodes import KBNode, KBRelationship
+from seshat.core.models.enums import GraphDirection, NodeState, RelationshipType
+from seshat.core.models.nodes import KBNode, KBRelationship
 from seshat.utils.log import get_logger
 from seshat.utils.retry import async_retry
 
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from seshat.config.settings import KBStoreConfig
-    from seshat.models.api_graph import NodeFilter
+    from seshat.core.models.api_graph import NodeFilter
 
 logger = get_logger(__name__)
 

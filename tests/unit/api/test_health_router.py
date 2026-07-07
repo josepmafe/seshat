@@ -3,8 +3,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 from seshat.api.state import AppState
-from seshat.models.api_responses import HealthStatus
-from seshat.models.enums import UserRole
+from seshat.core.models.api_responses import HealthStatus
+from seshat.core.models.enums import UserRole
 from tests.unit.api.conftest import make_current_user
 
 

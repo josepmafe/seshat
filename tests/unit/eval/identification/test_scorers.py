@@ -2,9 +2,9 @@ from datetime import date
 
 import pytest
 
+from seshat.core.models.enums import ConceptType, IngestionSource, NodeStatus
+from seshat.core.models.nodes import NodeMetadata
 from seshat.eval.identification.scorers import scorer
-from seshat.models.enums import ConceptType, IngestionSource, NodeStatus
-from seshat.models.nodes import NodeMetadata
 from tests.helpers import make_node
 from tests.unit.eval.identification.helpers import corpus_node
 

@@ -6,9 +6,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from seshat.api.state import AppState
-from seshat.models.api_responses import JobActionResponse, JobSubmitResponse
-from seshat.models.enums import JobStatus, UserRole
-from seshat.models.nodes import ExtractionResult
+from seshat.core.models.api_responses import JobActionResponse, JobSubmitResponse
+from seshat.core.models.enums import JobStatus, UserRole
+from seshat.core.models.nodes import ExtractionResult
 from seshat.services.job_service import (
     JobNotFoundError,
     JobStateError,
@@ -46,7 +46,7 @@ def _make_app_state(**overrides) -> AppState:
 
 
 def _make_job_response(status: str = "pending") -> dict[str, Any]:
-    from seshat.models.jobs import JobResponse
+    from seshat.core.models.jobs import JobResponse
 
     now = datetime.now(UTC)
     return JobResponse(

@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from seshat.models.enums import CallType, JobStatus
+from seshat.core.models.enums import CallType, JobStatus
 
 
 class UsageRecord(BaseModel):

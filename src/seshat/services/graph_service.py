@@ -7,9 +7,9 @@ from uuid import UUID, uuid4
 
 import asyncpg
 
-from seshat.models.api_graph import BulkFailure, BulkNodeCreate, BulkNodeDelete, BulkResult
-from seshat.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse, NodeSearchResult
-from seshat.models.enums import (
+from seshat.core.models.api_graph import BulkFailure, BulkNodeCreate, BulkNodeDelete, BulkResult
+from seshat.core.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse, NodeSearchResult
+from seshat.core.models.enums import (
     ApprovalMethod,
     GraphDirection,
     IngestionSource,
@@ -19,13 +19,19 @@ from seshat.models.enums import (
     RelationshipType,
     SearchMode,
 )
-from seshat.models.nodes import KBNode, KBRelationship, NodeMetadata
+from seshat.core.models.nodes import KBNode, KBRelationship, NodeMetadata
 from seshat.observability.latency_tracker import track_latency_profile
 from seshat.observability.usage_tracker import UsageTracker, track_token_budget
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from seshat.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeFilter, NodeOverride, RelationshipInput
+    from seshat.core.models.api_graph import (
+        ManualNodeCreate,
+        ManualNodeUpdate,
+        NodeFilter,
+        NodeOverride,
+        RelationshipInput,
+    )
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
     from seshat.repositories.node_repository import NodeRepository
 

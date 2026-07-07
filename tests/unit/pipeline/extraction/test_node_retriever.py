@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from seshat.config.settings import RAGConfig
-from seshat.models.api_graph import NodeFilter, SearchResult
-from seshat.models.enums import ConceptType, NodeStatus
+from seshat.core.models.api_graph import NodeFilter, SearchResult
+from seshat.core.models.enums import ConceptType, NodeStatus
 from seshat.pipeline.extraction.node_retriever import NodeRetriever
 from tests.helpers import make_node
 
@@ -243,7 +243,7 @@ class TestNodeRetriever:
         assert len(ids) == len(set(ids))
 
     async def test_search_mode_forwarded_to_vector_search(self):
-        from seshat.models.enums import SearchMode
+        from seshat.core.models.enums import SearchMode
 
         retriever = _make_retriever(search_mode=SearchMode.HYBRID)
         await retriever.retrieve(make_node("n1"))
@@ -251,7 +251,7 @@ class TestNodeRetriever:
         assert call_kwargs["mode"] == SearchMode.HYBRID
 
     async def test_search_mode_defaults_semantic(self):
-        from seshat.models.enums import SearchMode
+        from seshat.core.models.enums import SearchMode
 
         retriever = _make_retriever()
         await retriever.retrieve(make_node("n1"))

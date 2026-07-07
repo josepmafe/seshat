@@ -5,7 +5,7 @@ from seshat.agents.resolution.same_type.action_item import ActionItemResolutionA
 from seshat.agents.resolution.same_type.decision import DecisionResolutionAgent
 from seshat.agents.resolution.same_type.open_question import OpenQuestionResolutionAgent
 from seshat.agents.resolution.same_type.risk import RiskResolutionAgent
-from seshat.models.enums import ConceptType, RelationshipType
+from seshat.core.models.enums import ConceptType, RelationshipType
 from tests.helpers import make_node
 from tests.integration.conftest import SKIP_IF_NO_LLM_API
 

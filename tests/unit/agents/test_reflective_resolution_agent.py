@@ -12,7 +12,7 @@ from seshat.agents.resolution.same_type.reflective import (
     _SelfReviewRetryExhaustedError,
 )
 from seshat.config.settings import ResolutionLLMConfig
-from seshat.models.enums import RelationshipType
+from seshat.core.models.enums import RelationshipType
 from tests.helpers import make_node, make_structured_llm
 
 

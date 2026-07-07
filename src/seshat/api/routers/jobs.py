@@ -8,12 +8,12 @@ from fastapi.responses import JSONResponse
 
 from seshat.api.dependencies import CurrentUser, get_app_state, require_role
 from seshat.api.state import AppState
-from seshat.models.api_jobs import ApproveRequest, RateLimitError
-from seshat.models.api_responses import JobActionResponse, JobSubmitResponse, TranscriptExcerptResponse
-from seshat.models.enums import JobStatus, UserRole
-from seshat.models.jobs import JobResponse
-from seshat.models.nodes import ExtractionResult
-from seshat.models.submission import JobSubmissionRequest
+from seshat.core.models.api_jobs import ApproveRequest, RateLimitError
+from seshat.core.models.api_responses import JobActionResponse, JobSubmitResponse, TranscriptExcerptResponse
+from seshat.core.models.enums import JobStatus, UserRole
+from seshat.core.models.jobs import JobResponse
+from seshat.core.models.nodes import ExtractionResult
+from seshat.core.models.submission import JobSubmissionRequest
 from seshat.services.job_service import (
     ContentAlreadyIngestedError,
     JobNotFoundError,

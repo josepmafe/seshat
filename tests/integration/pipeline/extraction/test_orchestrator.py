@@ -7,8 +7,8 @@ from seshat.agents.grounding import GroundingAgent
 from seshat.agents.identification.registry import IdentificationAgentRegistry
 from seshat.agents.resolution.registry import ResolutionRegistry
 from seshat.config.settings import ExtractionConfig, RAGConfig
-from seshat.models.enums import ConceptType, NodeStatus
-from seshat.models.transcript import TranscriptDocument, TranscriptMetadata
+from seshat.core.models.enums import ConceptType, NodeStatus
+from seshat.core.models.transcript import TranscriptDocument, TranscriptMetadata
 from seshat.pipeline.extraction.node_retriever import NodeRetriever
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 from seshat.repositories.blob_repository import BlobRepository

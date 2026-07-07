@@ -13,7 +13,7 @@ from seshat.config.settings import (
     TranscriptionConfig,
     get_request_settings,
 )
-from seshat.models.enums import LLMProvider, SecretsProvider
+from seshat.core.models.enums import LLMProvider, SecretsProvider
 
 
 class TestReflectiveLLMConfig:

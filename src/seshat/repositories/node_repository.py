@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from seshat.models.enums import GraphDirection, NodeState, NodeStatus, RelationshipType, SearchMode
+from seshat.core.models.enums import GraphDirection, NodeState, NodeStatus, RelationshipType, SearchMode
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from seshat.core.models.api_graph import NodeFilter, SearchResult
+    from seshat.core.models.nodes import ExtractionResult, KBNode, KBRelationship
     from seshat.knowledge_store.pg_store import PostgresKBStore, _Conn
-    from seshat.models.api_graph import NodeFilter, SearchResult
-    from seshat.models.nodes import ExtractionResult, KBNode, KBRelationship
     from seshat.vector_store.base_store import AbstractVectorStore
 
 logger = get_logger(__name__)

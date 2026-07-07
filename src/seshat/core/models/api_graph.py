@@ -6,8 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-from seshat.models.enums import ConceptType, IngestionSource, NodeState, NodeStatus, RelationshipType
-from seshat.models.nodes import KBRelationship
+from seshat.core.models.enums import ConceptType, IngestionSource, NodeState, NodeStatus, RelationshipType
+from seshat.core.models.nodes import KBRelationship
 
 
 class NodeFilter(BaseModel):

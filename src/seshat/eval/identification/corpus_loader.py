@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from seshat.core.models.enums import ConceptType
 from seshat.eval.corpus_tags import matches_tags
 from seshat.eval.models import IdentificationCorpusExample, IdentificationCorpusNode
-from seshat.models.enums import ConceptType
 
 if TYPE_CHECKING:
     from pathlib import Path

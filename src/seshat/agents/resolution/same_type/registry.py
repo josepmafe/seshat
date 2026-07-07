@@ -8,7 +8,7 @@ from seshat.agents.resolution.same_type.decision import DecisionResolutionAgent
 from seshat.agents.resolution.same_type.open_question import OpenQuestionResolutionAgent
 from seshat.agents.resolution.same_type.reflective import ReflectiveResolutionAgent
 from seshat.agents.resolution.same_type.risk import RiskResolutionAgent
-from seshat.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType
 from seshat.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
     from seshat.agents.resolution.base import BaseSameTypeResolutionAgent, ResolvedRelationship, _BaseResolutionAgent
     from seshat.config.settings import ExtractionConfig
-    from seshat.models.nodes import FailedResolutionSource, KBNode
+    from seshat.core.models.nodes import FailedResolutionSource, KBNode
 
 
 class SameTypeResolutionRegistry:

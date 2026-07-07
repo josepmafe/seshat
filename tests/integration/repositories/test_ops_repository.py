@@ -62,7 +62,7 @@ class TestUpdateJobStatus:
         submission = '{"source_type": "text", "metadata": {"meeting_date": "2026-06-01"}}'
         raw_key = "jobs/2026-06-01/job-2/raw/input.txt"
 
-        from seshat.models.enums import JobStatus
+        from seshat.core.models.enums import JobStatus
 
         await repo.create_job("job-2", "user-1", "text", None, datetime.now(UTC), meeting_date, submission, raw_key)
         await repo.update_job_status("job-2", JobStatus.EXTRACTING)

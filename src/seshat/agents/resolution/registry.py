@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from seshat.agents.resolution.cross_type.registry import CrossTypeResolutionRegistry
 from seshat.agents.resolution.same_type.registry import SameTypeResolutionRegistry
-from seshat.models.enums import ConceptType, RelationshipType
+from seshat.core.models.enums import ConceptType, RelationshipType
 from seshat.utils.hashing import fingerprint
 from seshat.utils.log import get_logger
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from seshat.agents.resolution.base import ResolvedRelationship
     from seshat.config.settings import ExtractionConfig
-    from seshat.models.nodes import FailedResolutionSource, KBNode
+    from seshat.core.models.nodes import FailedResolutionSource, KBNode
 
 logger = get_logger(__name__)
 

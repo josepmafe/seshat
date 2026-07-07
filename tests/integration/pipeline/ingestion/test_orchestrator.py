@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from seshat.config.settings import TranscriptionConfig
-from seshat.models.transcript import TranscriptMetadata
+from seshat.core.models.transcript import TranscriptMetadata
 from seshat.pipeline.ingestion.audio_validator import AudioValidationError
 from seshat.pipeline.ingestion.orchestrator import IngestionOrchestrator
 from seshat.pipeline.ingestion.text_validator import TextValidationError

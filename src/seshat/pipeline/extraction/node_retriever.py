@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
-from seshat.models.api_graph import NodeFilter
-from seshat.models.enums import GraphDirection
+from seshat.core.models.api_graph import NodeFilter
+from seshat.core.models.enums import GraphDirection
 from seshat.utils.log import get_logger
 from seshat.utils.retry import async_retry
 from seshat.utils.tokens import count_tokens
@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from seshat.config.settings import RAGConfig
-    from seshat.models.api_graph import SearchResult
-    from seshat.models.nodes import KBNode
+    from seshat.core.models.api_graph import SearchResult
+    from seshat.core.models.nodes import KBNode
     from seshat.repositories.node_repository import NodeRepository
 
 logger = get_logger(__name__)

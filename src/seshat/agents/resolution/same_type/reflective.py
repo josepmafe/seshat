@@ -13,7 +13,7 @@ from seshat.agents.resolution.base import (
     _ResultBase,
     _SameTypeEntry,
 )
-from seshat.models.enums import RelationshipType
+from seshat.core.models.enums import RelationshipType
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
     from langchain_core.language_models import BaseChatModel
 
-    from seshat.models.nodes import KBNode
+    from seshat.core.models.nodes import KBNode
 
 logger = get_logger(__name__)
 

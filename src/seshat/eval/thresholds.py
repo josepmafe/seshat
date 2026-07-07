@@ -1,4 +1,4 @@
-from seshat.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType
 
 # Targets are intentionally in code, not config — lowering them requires a deliberate,
 # reviewable code change.

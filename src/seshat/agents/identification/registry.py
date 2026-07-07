@@ -7,7 +7,7 @@ from seshat.agents.identification.open_question import OpenQuestionIdentificatio
 from seshat.agents.identification.reflective import ReflectiveIdentificationAgent
 from seshat.agents.identification.risk import RiskIdentificationAgent
 from seshat.config.settings import ExtractionConfig
-from seshat.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType
 from seshat.utils.hashing import fingerprint
 from seshat.utils.log import get_logger
 

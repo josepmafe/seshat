@@ -7,7 +7,7 @@ import pytest
 from seshat.agents.grounding import GroundingRetryExhaustedError
 from seshat.agents.identification.base import IdentificationRetryExhaustedError
 from seshat.config.settings import ExtractionConfig, GroundingLLMConfig
-from seshat.models.enums import ApprovalMethod, ConceptType, NodeStatus
+from seshat.core.models.enums import ApprovalMethod, ConceptType, NodeStatus
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator, _assemble_kb_hint
 from tests.helpers import make_anchored_concept, make_doc, make_node
 
@@ -174,7 +174,7 @@ class TestExtractionOrchestrator:
 
     async def test_relationships_built_from_resolution(self):
         from seshat.agents.resolution.base import ResolvedRelationship
-        from seshat.models.enums import RelationshipType
+        from seshat.core.models.enums import RelationshipType
 
         candidate = make_node("n2", title="Use MySQL")
         approved_node = make_node("n1", title="Use PostgreSQL", status=NodeStatus.APPROVED)
@@ -291,7 +291,7 @@ class TestExtractionOrchestrator:
         assert node_filter.node_type is None
 
     async def test_resolution_failed_sources_propagated_to_result(self):
-        from seshat.models.nodes import FailedResolutionSource
+        from seshat.core.models.nodes import FailedResolutionSource
 
         approved_node = make_node("n1", status=NodeStatus.APPROVED)
         failed_source = FailedResolutionSource(node_id=approved_node.id, concept_type=ConceptType.DECISION)

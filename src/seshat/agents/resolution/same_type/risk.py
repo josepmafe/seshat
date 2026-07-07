@@ -1,7 +1,7 @@
 from typing import Literal
 
 from seshat.agents.resolution.base import BaseSameTypeResolutionAgent, _ResultBase, _SameTypeEntry
-from seshat.models.enums import RelationshipType
+from seshat.core.models.enums import RelationshipType
 
 _RISK_RELATION_TYPES = Literal[RelationshipType.AMENDS]
 

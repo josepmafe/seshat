@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from seshat.models.transcript import TranscriptDocument, TranscriptMetadata
+from seshat.core.models.transcript import TranscriptDocument, TranscriptMetadata
 from seshat.observability.usage_tracker import track_token_budget
 from seshat.pipeline.ingestion.audio_validator import AudioValidator
 from seshat.pipeline.ingestion.text_validator import TextValidationError, TextValidator

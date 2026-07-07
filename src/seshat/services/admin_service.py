@@ -10,7 +10,7 @@ from seshat.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKey
 from seshat.utils.concurrency import run_in_thread
 
 if TYPE_CHECKING:
-    from seshat.models.enums import UserRole
+    from seshat.core.models.enums import UserRole
     from seshat.repositories.ops_repository import OpsRepository
 
 __all__ = ["AdminService", "ApiKeyAlreadyRevokedError", "ApiKeyNotFoundError"]

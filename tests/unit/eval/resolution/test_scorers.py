@@ -1,7 +1,7 @@
 import pytest
 
+from seshat.core.models.enums import ConceptType
 from seshat.eval.resolution.scorers import scorer
-from seshat.models.enums import ConceptType
 
 # src node is action_item; tgt is decision — slug-based, matching how the runner serialises
 _SLUG_TO_TYPE = {"src": ConceptType.ACTION_ITEM, "tgt": ConceptType.DECISION}

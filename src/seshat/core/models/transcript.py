@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 
 from pydantic import Field
 
-from seshat.models.base import SeshatModel
+from seshat.core.models.base import SeshatModel
 
 
 class TranscriptMetadata(SeshatModel):

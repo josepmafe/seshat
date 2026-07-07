@@ -11,16 +11,16 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from seshat.agents.base import RetryExhaustedError, _BaseAgent
-from seshat.models.enums import RelationshipType
-from seshat.models.nodes import FailedResolutionSource
+from seshat.core.models.enums import RelationshipType
+from seshat.core.models.nodes import FailedResolutionSource
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
     from seshat.config.settings import ResolutionLLMConfig
-    from seshat.models.enums import ConceptType
-    from seshat.models.nodes import KBNode
+    from seshat.core.models.enums import ConceptType
+    from seshat.core.models.nodes import KBNode
 
 logger = get_logger(__name__)
 

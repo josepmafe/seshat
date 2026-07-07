@@ -7,13 +7,13 @@ import mlflow
 import mlflow.genai
 import pandas as pd
 
+from seshat.core.models.enums import ConceptType
+from seshat.core.models.nodes import ResolutionResult
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.gate import upsert_gate
 from seshat.eval.mlflow_logging import log_eval_run_metadata
 from seshat.eval.resolution.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.resolution.scorers import scorer
-from seshat.models.enums import ConceptType
-from seshat.models.nodes import ResolutionResult
 from seshat.observability.latency_tracker import track_eval_latency
 from seshat.observability.usage_tracker import track_eval_usage
 from seshat.utils.log import set_task_num
@@ -25,9 +25,9 @@ if TYPE_CHECKING:
     from mlflow.genai.evaluation.entities import EvaluationResult
 
     from seshat.config.eval_settings import EvalConfig
+    from seshat.core.models.nodes import KBNode
     from seshat.eval.corpus_tags import CorpusTagFilter
     from seshat.eval.models import GateResult, ResolutionCorpusExample, ResolutionCorpusNode
-    from seshat.models.nodes import KBNode
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 
 

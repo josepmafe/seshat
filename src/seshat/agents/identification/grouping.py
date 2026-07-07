@@ -12,7 +12,7 @@ from seshat.agents.identification.base import AnchoredConcept, ConceptModel
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from seshat.models.enums import ConceptType
+    from seshat.core.models.enums import ConceptType
 
 logger = get_logger(__name__)
 

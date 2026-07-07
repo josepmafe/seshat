@@ -8,7 +8,7 @@ from seshat.agents.resolution.cross_type.decision import DecisionCrossTypeResolu
 from seshat.agents.resolution.cross_type.open_question import OpenQuestionCrossTypeResolutionAgent
 from seshat.agents.resolution.cross_type.risk import RiskCrossTypeResolutionAgent
 from seshat.agents.resolution.same_type.registry import _scope_targets
-from seshat.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType
 from seshat.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
     from seshat.agents.resolution.base import BaseCrossTypeResolutionAgent, ResolvedRelationship, _BaseResolutionAgent
     from seshat.config.settings import ExtractionConfig
-    from seshat.models.nodes import FailedResolutionSource, KBNode
+    from seshat.core.models.nodes import FailedResolutionSource, KBNode
 
 
 class CrossTypeResolutionRegistry:

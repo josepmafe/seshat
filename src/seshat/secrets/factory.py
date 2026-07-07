@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
-from seshat.models.enums import SecretsProvider
+from seshat.core.models.enums import SecretsProvider
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:

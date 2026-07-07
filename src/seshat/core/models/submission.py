@@ -3,8 +3,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from seshat.config.settings import SeshatConfigOverride
-from seshat.models.api_graph import NodeFilter
-from seshat.models.transcript import TranscriptMetadata
+from seshat.core.models.api_graph import NodeFilter
+from seshat.core.models.transcript import TranscriptMetadata
 
 
 class JobSubmissionRequest(BaseModel):

@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from seshat.core.models.enums import SearchMode
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.calibration.models import RetrievalSweepPoint, RetrievalSweepResult
 from seshat.eval.models import RetrievalScoredResult
 from seshat.eval.retrieval.corpus_loader import load_corpus
 from seshat.eval.retrieval.scorers import TOP_K
-from seshat.models.enums import SearchMode
 from seshat.observability.usage_tracker import track_eval_usage
 from seshat.utils.hashing import fingerprint
 

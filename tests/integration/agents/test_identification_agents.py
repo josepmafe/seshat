@@ -6,7 +6,7 @@ from seshat.agents.identification.decision import Decision, DecisionIdentificati
 from seshat.agents.identification.grouping import ConceptGroup, GroupingAgent
 from seshat.agents.identification.open_question import OpenQuestionIdentificationAgent
 from seshat.agents.identification.risk import RiskIdentificationAgent
-from seshat.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType
 from tests.integration.conftest import SKIP_IF_NO_LLM_API
 
 pytestmark = [pytest.mark.integration, pytest.mark.agents, pytest.mark.llm, SKIP_IF_NO_LLM_API]

@@ -9,7 +9,7 @@ from seshat.agents.identification.base import (
 )
 from seshat.agents.identification.decision import Decision, DecisionList
 from seshat.config.settings import IdentificationLLMConfig
-from seshat.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType
 from tests.helpers import make_structured_llm
 
 

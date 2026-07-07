@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from seshat.agents.base import RetryExhaustedError, _BaseAgent
-from seshat.models.quote_anchor import QuoteAnchor
+from seshat.core.models.quote_anchor import QuoteAnchor
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     from seshat.agents.identification.grouping import ConceptGroup
     from seshat.config.settings import IdentificationLLMConfig
-    from seshat.models.enums import ConceptType
+    from seshat.core.models.enums import ConceptType
 
 logger = get_logger(__name__)
 

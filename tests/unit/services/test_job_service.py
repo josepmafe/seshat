@@ -6,9 +6,9 @@ from uuid import UUID
 
 import pytest
 
-from seshat.models.api_jobs import BulkApproveRule, KBNodeEdit, NodeDecision
-from seshat.models.enums import ApprovalMethod, JobStatus, NodeStatus
-from seshat.models.nodes import ExtractionResult, IdentificationResult, ResolutionResult
+from seshat.core.models.api_jobs import BulkApproveRule, KBNodeEdit, NodeDecision
+from seshat.core.models.enums import ApprovalMethod, JobStatus, NodeStatus
+from seshat.core.models.nodes import ExtractionResult, IdentificationResult, ResolutionResult
 from seshat.services.job_service import (
     ContentAlreadyIngestedError,
     JobNotFoundError,
@@ -511,7 +511,7 @@ class TestSubmitRateLimit:
 
     async def test_force_resubmit_deletes_non_approved_nodes(self):
         svc, *_ = _make_service()
-        from seshat.models.enums import NodeStatus
+        from seshat.core.models.enums import NodeStatus
 
         pending = make_node(status=NodeStatus.PENDING_REVIEW)
         svc._ops.find_job_by_content_hash = AsyncMock(return_value="old-job")

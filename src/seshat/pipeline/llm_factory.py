@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 from langchain.chat_models import init_chat_model
 from pydantic import SecretStr
 
-from seshat.models.enums import LLMProvider
+from seshat.core.models.enums import LLMProvider
 from seshat.secrets.factory import get_secrets_resolver
 from seshat.utils.log import get_logger
 

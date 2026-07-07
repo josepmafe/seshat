@@ -6,16 +6,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from seshat.config.settings import KBStoreConfig
-from seshat.knowledge_store.pg_store import PostgresKBStore
-from seshat.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
-from seshat.models.enums import (
+from seshat.core.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
+from seshat.core.models.enums import (
     ApprovalMethod,
     ConceptType,
     GraphDirection,
     IngestionSource,
     RelationshipType,
 )
-from seshat.models.nodes import NodeMetadata
+from seshat.core.models.nodes import NodeMetadata
+from seshat.knowledge_store.pg_store import PostgresKBStore
 from seshat.repositories.node_repository import NodeRepository
 from seshat.services.graph_service import GraphService, NodeNotFoundError, NodePreconditionError
 from tests.helpers import make_node
@@ -235,7 +235,7 @@ class TestDeleteIntegration:
 
     async def test_delete_superseding_node_reverts_target_to_current(self, svc, kb_store):
         """Deleting the only superseding node must revert the target back to CURRENT."""
-        from seshat.models.enums import NodeState
+        from seshat.core.models.enums import NodeState
 
         target = make_node("revert-target")
         await kb_store.write_node(target)

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from seshat.api.dependencies import CurrentUser, get_app_state, require_role
 from seshat.api.state import AppState
-from seshat.models.api_graph import (
+from seshat.core.models.api_graph import (
     BulkNodeCreate,
     BulkNodeDelete,
     BulkResult,
@@ -19,15 +19,15 @@ from seshat.models.api_graph import (
     ResolveRequest,
     ResolveResponse,
 )
-from seshat.models.api_responses import (
+from seshat.core.models.api_responses import (
     ImpactResponse,
     NodeDetailResponse,
     NodeListResponse,
     NodeSearchResponse,
     RelationshipListResponse,
 )
-from seshat.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
-from seshat.models.nodes import KBNode, KBRelationship
+from seshat.core.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
+from seshat.core.models.nodes import KBNode, KBRelationship
 from seshat.services.graph_service import (
     NodeNotFoundError,
     NodePreconditionError,
