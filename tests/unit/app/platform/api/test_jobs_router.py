@@ -16,7 +16,7 @@ from seshat.core.models.api_responses import JobActionResponse, JobSubmitRespons
 from seshat.core.models.enums import JobStatus, UserRole
 from seshat.core.models.nodes import ExtractionResult
 from tests.helpers import make_node
-from tests.unit.api.conftest import make_current_user
+from tests.unit.app.platform.api.conftest import make_current_user
 
 
 def _make_app_state(**overrides) -> AppState:

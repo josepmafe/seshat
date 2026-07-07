@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 from seshat.app.platform.api.state import AppState
 from seshat.core.models.api_responses import HealthStatus
 from seshat.core.models.enums import UserRole
-from tests.unit.api.conftest import make_current_user
+from tests.unit.app.platform.api.conftest import make_current_user
 
 
 def _make_app_state(*, pg_ok: bool = True, mlflow_ok: bool = True, blob_ok: bool = True) -> AppState:

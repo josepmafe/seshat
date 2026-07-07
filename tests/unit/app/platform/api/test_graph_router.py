@@ -16,7 +16,7 @@ from seshat.core.models.api_responses import ImpactNode, ImpactResponse, NodeDet
 from seshat.core.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
 from tests.helpers import make_node
 from tests.integration.helpers import make_relationship
-from tests.unit.api.conftest import make_current_user
+from tests.unit.app.platform.api.conftest import make_current_user
 
 _NODE_ID = UUID("00000000-0000-0000-0000-000000000001")
 _NODE_PATH = str(_NODE_ID)
