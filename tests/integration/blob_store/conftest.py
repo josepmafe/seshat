@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from seshat.blob_store.s3_store import S3BlobStore
 from seshat.core.config.settings import BlobStoreConfig
+from seshat.infra.blob_store.s3_store import S3BlobStore
 from tests.integration.conftest import LOCALSTACK_REGION, LOCALSTACK_TEST_BUCKET
 
 

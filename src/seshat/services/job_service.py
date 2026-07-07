@@ -20,11 +20,11 @@ if TYPE_CHECKING:
     from seshat.core.config.settings import SeshatConfig
     from seshat.core.models.api_jobs import ApproveRequest, BulkApproveRule, NodeDecision
     from seshat.core.models.nodes import KBNode, KBRelationship
+    from seshat.infra.repositories.blob_repository import BlobRepository
+    from seshat.infra.repositories.node_repository import NodeRepository
+    from seshat.infra.repositories.ops_repository import OpsRepository
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
     from seshat.pipeline.ingestion.orchestrator import IngestionOrchestrator
-    from seshat.repositories.blob_repository import BlobRepository
-    from seshat.repositories.node_repository import NodeRepository
-    from seshat.repositories.ops_repository import OpsRepository
     from seshat.worker.queue import AsyncioTaskQueue
 
 logger = get_logger(__name__)

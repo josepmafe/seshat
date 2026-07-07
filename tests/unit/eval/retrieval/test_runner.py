@@ -10,7 +10,7 @@ from seshat.core.config.eval_settings import EvalConfig
 from seshat.core.models.enums import ConceptType
 from seshat.eval.models import RetrievalCorpusExample, RetrievalCorpusNode
 from seshat.eval.retrieval.runner import RetrievalEvalRunner, _aggregate_metrics, _build_dataframe
-from seshat.vector_store.base_store import AbstractVectorStore
+from seshat.infra.vector_store.base_store import AbstractVectorStore
 from tests.unit.eval.helpers import make_eval_result
 
 if TYPE_CHECKING:

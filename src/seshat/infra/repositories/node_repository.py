@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 
     from seshat.core.models.api_graph import NodeFilter, SearchResult
     from seshat.core.models.nodes import ExtractionResult, KBNode, KBRelationship
-    from seshat.knowledge_store.pg_store import PostgresKBStore, _Conn
-    from seshat.vector_store.base_store import AbstractVectorStore
+    from seshat.infra.knowledge_store.pg_store import PostgresKBStore, _Conn
+    from seshat.infra.vector_store.base_store import AbstractVectorStore
 
 logger = get_logger(__name__)
 

@@ -12,7 +12,7 @@ from seshat.core.config.settings import (
 )
 from seshat.core.models.enums import LLMProvider, RelationshipType
 from seshat.core.models.nodes import KBNode, KBRelationship
-from seshat.repositories.node_repository import NodeRepository
+from seshat.infra.repositories.node_repository import NodeRepository
 from tests.integration.conftest import _BEDROCK_PROFILE, _anthropic_reachable, _azure_available, _bedrock_available
 
 _PROVIDER2CHEAP_MODEL_MAPPING: dict[LLMProvider, str] = {

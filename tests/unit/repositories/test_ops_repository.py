@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from seshat.core.models.enums import JobStatus, UserRole
-from seshat.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError, OpsRepository
+from seshat.infra.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError, OpsRepository
 
 
 def _make_repo(**store_returns) -> OpsRepository:

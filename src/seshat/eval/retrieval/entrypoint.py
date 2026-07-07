@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from seshat.core.config.eval_settings import EvalConfig
     from seshat.core.config.settings import SeshatConfig, VectorIndexConfig
     from seshat.eval.corpus_tags import CorpusTagFilter
-    from seshat.vector_store.base_store import AbstractVectorStore
+    from seshat.infra.vector_store.base_store import AbstractVectorStore
 
 
 logger = get_logger(__name__)

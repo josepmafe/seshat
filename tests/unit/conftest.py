@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from seshat.core.config.settings import SeshatConfig
-from seshat.secrets.factory import _cached_resolver
+from seshat.infra.secrets.factory import _cached_resolver
 
 _FAKE_DB_URL = "postgresql://user:pass@host/dbname"
 
@@ -33,5 +33,5 @@ def mocked_secrets_resolver():
     """
     resolver = MagicMock()
     resolver.get_secret.return_value = _FAKE_DB_URL
-    with patch("seshat.secrets.factory._cached_resolver", return_value=resolver):
+    with patch("seshat.infra.secrets.factory._cached_resolver", return_value=resolver):
         yield resolver

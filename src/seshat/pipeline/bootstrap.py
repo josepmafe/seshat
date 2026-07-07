@@ -5,19 +5,19 @@ from typing import TYPE_CHECKING
 from seshat.agents.grounding import GroundingAgent
 from seshat.agents.identification.registry import IdentificationAgentRegistry
 from seshat.agents.resolution.registry import ResolutionRegistry
+from seshat.infra.vector_store.factory import get_vector_store
 from seshat.pipeline.extraction.keyword_extractor import build_keyword_extractor
 from seshat.pipeline.extraction.node_retriever import NodeRetriever
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 from seshat.pipeline.ingestion.orchestrator import IngestionOrchestrator
 from seshat.pipeline.llm_factory import _build_llm, get_grounding_llm, get_identification_llm, get_resolution_llm
 from seshat.transcription.factory import get_transcriber
-from seshat.vector_store.factory import get_vector_store
 
 if TYPE_CHECKING:
     from seshat.core.config.settings import SeshatConfig
-    from seshat.repositories.blob_repository import BlobRepository
-    from seshat.repositories.node_repository import NodeRepository
-    from seshat.vector_store.base_store import AbstractVectorStore
+    from seshat.infra.repositories.blob_repository import BlobRepository
+    from seshat.infra.repositories.node_repository import NodeRepository
+    from seshat.infra.vector_store.base_store import AbstractVectorStore
 
 
 def build_vector_store(seshat_config: SeshatConfig) -> AbstractVectorStore:

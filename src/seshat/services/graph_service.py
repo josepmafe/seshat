@@ -32,8 +32,8 @@ if TYPE_CHECKING:
         NodeOverride,
         RelationshipInput,
     )
+    from seshat.infra.repositories.node_repository import NodeRepository
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
-    from seshat.repositories.node_repository import NodeRepository
 
 logger = get_logger(__name__)
 

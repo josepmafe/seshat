@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
-from seshat.secrets.base_resolver import AbstractSecretsResolver
+from seshat.infra.secrets.base_resolver import AbstractSecretsResolver
 
 if TYPE_CHECKING:
     from seshat.core.config.settings import SecretsConfig

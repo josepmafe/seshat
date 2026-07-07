@@ -3,12 +3,12 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from seshat.blob_store.factory import get_blob_store
-from seshat.knowledge_store.factory import get_kb_store
+from seshat.infra.blob_store.factory import get_blob_store
+from seshat.infra.knowledge_store.factory import get_kb_store
+from seshat.infra.repositories.blob_repository import BlobRepository
+from seshat.infra.repositories.node_repository import NodeRepository
 from seshat.pipeline.bootstrap import build_extraction_orchestrator as _build_extraction_orchestrator
 from seshat.pipeline.bootstrap import build_vector_store
-from seshat.repositories.blob_repository import BlobRepository
-from seshat.repositories.node_repository import NodeRepository
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator

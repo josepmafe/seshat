@@ -8,8 +8,8 @@ from seshat.core.models.api_responses import HealthStatus
 
 if TYPE_CHECKING:
     from seshat.core.config.settings import BlobStoreConfig, ObservabilityConfig
-    from seshat.repositories.blob_repository import BlobRepository
-    from seshat.repositories.ops_repository import OpsRepository
+    from seshat.infra.repositories.blob_repository import BlobRepository
+    from seshat.infra.repositories.ops_repository import OpsRepository
 
 
 class HealthService:

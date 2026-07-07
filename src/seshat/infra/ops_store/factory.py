@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from seshat.ops_store.pg_store import PostgresOpsStore
-from seshat.secrets.factory import get_secrets_resolver
+from seshat.infra.ops_store.pg_store import PostgresOpsStore
+from seshat.infra.secrets.factory import get_secrets_resolver
 
 if TYPE_CHECKING:
     from seshat.core.config.settings import SeshatConfig

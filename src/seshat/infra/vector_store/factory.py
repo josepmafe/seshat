@@ -6,8 +6,8 @@ from pydantic import SecretStr
 
 from seshat.core.models.enums import EmbeddingProvider, VectorStoreProvider
 from seshat.core.utils.log import get_logger
+from seshat.infra.secrets.factory import get_secrets_resolver
 from seshat.observability.usage_tracker import TrackingEmbeddings
-from seshat.secrets.factory import get_secrets_resolver
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from langchain_core.embeddings import Embeddings
 
     from seshat.core.config.settings import SeshatConfig, VectorIndexConfig
-    from seshat.vector_store.base_store import AbstractVectorStore
+    from seshat.infra.vector_store.base_store import AbstractVectorStore
 
 
 logger = get_logger(__name__)
@@ -54,7 +54,7 @@ def get_vector_store(
     logger.debug("Initialising vector store: %s", config.vector_store.provider)
     match config.vector_store.provider:
         case VectorStoreProvider.PGVECTOR:
-            from seshat.vector_store.pgvector_store import PGVectorStore
+            from seshat.infra.vector_store.pgvector_store import PGVectorStore
 
             return PGVectorStore(
                 config.vector_store, config.vector_index, embeddings, connection_string, keyword_extractor

@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from seshat.core.utils.log import get_logger
-from seshat.knowledge_store.pg_store import PostgresKBStore
-from seshat.secrets.factory import get_secrets_resolver
+from seshat.infra.knowledge_store.pg_store import PostgresKBStore
+from seshat.infra.secrets.factory import get_secrets_resolver
 
 if TYPE_CHECKING:
     from seshat.core.config.settings import SeshatConfig

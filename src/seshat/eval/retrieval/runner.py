@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from seshat.core.models.nodes import KBNode
     from seshat.eval.corpus_tags import CorpusTagFilter
     from seshat.eval.models import GateResult, RetrievalCorpusExample, RetrievalCorpusNode
-    from seshat.vector_store.base_store import AbstractVectorStore
+    from seshat.infra.vector_store.base_store import AbstractVectorStore
 
 
 logger = get_logger(__name__)

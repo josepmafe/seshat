@@ -6,7 +6,7 @@ from uuid import UUID
 
 from seshat.core.models.enums import NodeState, NodeStatus, RelationshipType
 from seshat.core.models.nodes import ExtractionResult
-from seshat.repositories.node_repository import NodeRepository
+from seshat.infra.repositories.node_repository import NodeRepository
 from tests.helpers import make_node
 from tests.integration.helpers import make_relationship
 

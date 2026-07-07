@@ -14,7 +14,7 @@ from seshat.core.models.enums import (
     NodeStatus,
     RelationshipType,
 )
-from seshat.knowledge_store.pg_store import PostgresKBStore
+from seshat.infra.knowledge_store.pg_store import PostgresKBStore
 from tests.helpers import make_node
 from tests.integration.conftest import SKIP_IF_NO_POSTGRES
 from tests.integration.helpers import make_relationship

@@ -6,7 +6,7 @@ import pytest
 
 from seshat.core.models.api_graph import NodeFilter, SearchResult
 from seshat.eval.calibration.retrieval_meta_scorer import RetrievalMetaScorer
-from seshat.vector_store.base_store import AbstractVectorStore
+from seshat.infra.vector_store.base_store import AbstractVectorStore
 from tests.integration.eval.helpers import make_eval_config
 
 if TYPE_CHECKING:

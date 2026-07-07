@@ -41,11 +41,11 @@ class TestGroundingModelValidator:
 
 class TestGetRequestSettings:
     def test_none_override_returns_singleton(self, monkeypatch, minimal_config: SeshatConfig):
-        monkeypatch.setattr("seshat.config.settings._config", minimal_config)
+        monkeypatch.setattr("seshat.core.config.settings._config", minimal_config)
         assert get_request_settings(None) is minimal_config
 
     def test_override_applies_and_preserves_unset_fields(self, monkeypatch, minimal_config: SeshatConfig):
-        monkeypatch.setattr("seshat.config.settings._config", minimal_config)
+        monkeypatch.setattr("seshat.core.config.settings._config", minimal_config)
         result = get_request_settings(SeshatConfigOverride(extraction=ExtractionConfig(confidence_threshold=0.5)))
         assert result.extraction.confidence_threshold == 0.5
         assert result.extraction.identification.provider == minimal_config.extraction.identification.provider
@@ -63,7 +63,7 @@ class TestGetRequestSettings:
             extraction=ExtractionConfig(identification=IdentificationLLMConfig(max_output_tokens=1024)),
             api=APIConfig(max_jobs_per_user_per_hour=5),
         )
-        monkeypatch.setattr("seshat.config.settings._config", base)
+        monkeypatch.setattr("seshat.core.config.settings._config", base)
 
         # Override only confidence_threshold, the other fields should survive unchanged:
         # - transcription.max_retries (another config class)

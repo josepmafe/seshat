@@ -9,7 +9,7 @@ from seshat.api.dependencies import get_app_state
 from seshat.api.state import AppState
 from seshat.core.models.api_responses import ApiKeyResponse, CreateApiKeyRequest, CreateApiKeyResponse
 from seshat.core.utils.concurrency import run_in_thread
-from seshat.secrets.factory import get_secrets_resolver
+from seshat.infra.secrets.factory import get_secrets_resolver
 from seshat.services.admin_service import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
 
 

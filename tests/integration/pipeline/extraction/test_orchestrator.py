@@ -9,10 +9,10 @@ from seshat.agents.resolution.registry import ResolutionRegistry
 from seshat.core.config.settings import ExtractionConfig, RAGConfig
 from seshat.core.models.enums import ConceptType, NodeStatus
 from seshat.core.models.transcript import TranscriptDocument, TranscriptMetadata
+from seshat.infra.repositories.blob_repository import BlobRepository
+from seshat.infra.repositories.node_repository import NodeRepository
 from seshat.pipeline.extraction.node_retriever import NodeRetriever
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
-from seshat.repositories.blob_repository import BlobRepository
-from seshat.repositories.node_repository import NodeRepository
 from tests.helpers import make_node
 from tests.integration.conftest import (
     SKIP_IF_NO_EMBEDDINGS_API,

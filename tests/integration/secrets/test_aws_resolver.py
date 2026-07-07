@@ -1,7 +1,7 @@
 import boto3
 import pytest
 
-from seshat.secrets.aws_resolver import AWSSecretsResolver
+from seshat.infra.secrets.aws_resolver import AWSSecretsResolver
 from tests.integration.conftest import LOCALSTACK_REGION, SKIP_IF_NO_LOCALSTACK
 
 pytestmark = [pytest.mark.integration, SKIP_IF_NO_LOCALSTACK]

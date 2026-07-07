@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from datetime import date
 
     from seshat.core.config.settings import TranscriptionConfig
-    from seshat.repositories.blob_repository import BlobRepository
+    from seshat.infra.repositories.blob_repository import BlobRepository
     from seshat.transcription.base import AbstractTranscriber
 
 logger = get_logger(__name__)

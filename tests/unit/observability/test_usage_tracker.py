@@ -208,7 +208,7 @@ class TestTrackingTranscriber:
         inner_transcriber = AsyncMock()
         inner_transcriber.transcribe.return_value = "hello world"
 
-        with patch("seshat.utils.audio.mutagen.File") as mock_mutagen:
+        with patch("seshat.core.utils.audio.mutagen.File") as mock_mutagen:
             mock_mutagen.return_value.info.length = 10.0
             transcriber = TrackingTranscriber(inner_transcriber)
             result = await transcriber.transcribe(audio_bytes, extension="mp3")
@@ -226,7 +226,7 @@ class TestTrackingTranscriber:
         callback = TokenBudgetCallback(tracker)
         set_run_tracker(callback)
 
-        with patch("seshat.utils.audio.mutagen.File") as mock_mutagen:
+        with patch("seshat.core.utils.audio.mutagen.File") as mock_mutagen:
             mock_mutagen.return_value.info.length = 7.3
             transcriber = TrackingTranscriber(inner_transcriber)
             await transcriber.transcribe(audio_bytes, extension="mp3")

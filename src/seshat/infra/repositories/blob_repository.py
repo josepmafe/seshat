@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from datetime import date
 
-    from seshat.blob_store.s3_store import S3BlobStore
+    from seshat.infra.blob_store.s3_store import S3BlobStore
 
 
 class BlobRepository:

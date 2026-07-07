@@ -15,7 +15,7 @@ from seshat.observability.usage_tracker import track_eval_usage
 
 if TYPE_CHECKING:
     from seshat.core.config.eval_settings import EvalConfig
-    from seshat.vector_store.base_store import AbstractVectorStore
+    from seshat.infra.vector_store.base_store import AbstractVectorStore
 
 type _Slug = str
 type _ScoredResult = tuple[_Slug, float]  # (corpus slug, similarity score)

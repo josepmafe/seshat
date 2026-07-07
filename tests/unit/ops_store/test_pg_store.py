@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from seshat.core.config.settings import OpsStoreConfig
 from seshat.core.models.enums import JobStatus, UserRole
-from seshat.ops_store.pg_store import PostgresOpsStore
+from seshat.infra.ops_store.pg_store import PostgresOpsStore
 
 
 def _make_store(**fetch_results) -> tuple[PostgresOpsStore, MagicMock]:

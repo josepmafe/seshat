@@ -15,8 +15,8 @@ from seshat.core.models.enums import (
     RelationshipType,
 )
 from seshat.core.models.nodes import NodeMetadata
-from seshat.knowledge_store.pg_store import PostgresKBStore
-from seshat.repositories.node_repository import NodeRepository
+from seshat.infra.knowledge_store.pg_store import PostgresKBStore
+from seshat.infra.repositories.node_repository import NodeRepository
 from seshat.services.graph_service import GraphService, NodeNotFoundError, NodePreconditionError
 from tests.helpers import make_node
 from tests.integration.conftest import SKIP_IF_NO_POSTGRES

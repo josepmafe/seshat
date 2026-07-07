@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
-from seshat.repositories.blob_repository import BlobRepository
+from seshat.infra.repositories.blob_repository import BlobRepository
 
 
 def _make_repo(**store_returns) -> tuple[BlobRepository, MagicMock]:

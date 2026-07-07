@@ -7,7 +7,7 @@ from langchain_core.embeddings import Embeddings
 
 from seshat.core.models.api_graph import NodeFilter
 from seshat.core.models.enums import ConceptType, SearchMode
-from seshat.vector_store.pgvector_store import PGVectorStore
+from seshat.infra.vector_store.pgvector_store import PGVectorStore
 from tests.integration.conftest import SKIP_IF_NO_EMBEDDINGS_API, SKIP_IF_NO_POSTGRES
 
 pytestmark = [pytest.mark.integration, SKIP_IF_NO_POSTGRES]

@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from datetime import date, datetime
 
     from seshat.core.models.enums import JobStatus, UserRole
-    from seshat.ops_store.pg_store import PostgresOpsStore
+    from seshat.infra.ops_store.pg_store import PostgresOpsStore
 
 
 class ApiKeyNotFoundError(Exception):

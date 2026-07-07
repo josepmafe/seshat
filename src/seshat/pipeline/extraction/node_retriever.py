@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from seshat.core.config.settings import RAGConfig
     from seshat.core.models.api_graph import SearchResult
     from seshat.core.models.nodes import KBNode
-    from seshat.repositories.node_repository import NodeRepository
+    from seshat.infra.repositories.node_repository import NodeRepository
 
 logger = get_logger(__name__)
 

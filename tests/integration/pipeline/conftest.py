@@ -1,8 +1,8 @@
 import pytest
 
 from seshat.core.config.settings import KBStoreConfig
-from seshat.knowledge_store.pg_store import PostgresKBStore
-from seshat.repositories.node_repository import NodeRepository
+from seshat.infra.knowledge_store.pg_store import PostgresKBStore
+from seshat.infra.repositories.node_repository import NodeRepository
 
 
 @pytest.fixture

@@ -7,7 +7,7 @@ import pytest
 from langchain_core.documents import Document
 
 from seshat.core.models.api_graph import NodeFilter
-from seshat.vector_store.pgvector_store import PGVectorStore, _rrf
+from seshat.infra.vector_store.pgvector_store import PGVectorStore, _rrf
 
 _N1 = "00000000-0000-0000-0000-000000000001"
 _N2 = "00000000-0000-0000-0000-000000000002"
@@ -52,7 +52,7 @@ class TestSparseSearchGuard:
         store = PGVectorStore.__new__(PGVectorStore)
         store._keyword_extractor = None
 
-        with caplog.at_level(logging.WARNING, logger="seshat.vector_store.pgvector_store"):
+        with caplog.at_level(logging.WARNING, logger="seshat.infra.vector_store.pgvector_store"):
             result = await store._sparse_search("some query", top_k=5, node_filter=None, exclude_job_id=None)
 
         assert result == []
@@ -89,12 +89,12 @@ class TestValidateConnectionString:
         assert result == "postgresql+psycopg://user:pass@host/db"
 
     def test_wrong_qualifier_logs_warning(self, caplog):
-        with caplog.at_level(logging.WARNING, logger="seshat.vector_store.pgvector_store"):
+        with caplog.at_level(logging.WARNING, logger="seshat.infra.vector_store.pgvector_store"):
             PGVectorStore._validate_connection_string("postgresql+asyncpg://user:pass@host/db")
         assert "+asyncpg" in caplog.text
 
     def test_plain_scheme_no_warning(self, caplog):
-        with caplog.at_level(logging.WARNING, logger="seshat.vector_store.pgvector_store"):
+        with caplog.at_level(logging.WARNING, logger="seshat.infra.vector_store.pgvector_store"):
             PGVectorStore._validate_connection_string("postgresql://user:pass@host/db")
         assert caplog.text == ""
 
@@ -136,7 +136,7 @@ class TestBuildSemanticFilter:
         from seshat.core.models.enums import NodeStatus
 
         nf = NodeFilter(status=NodeStatus.APPROVED)
-        with caplog.at_level(logging.WARNING, logger="seshat.vector_store.pgvector_store"):
+        with caplog.at_level(logging.WARNING, logger="seshat.infra.vector_store.pgvector_store"):
             result = self._store()._build_semantic_filter(nf)
 
         assert "status" in caplog.text
@@ -147,7 +147,7 @@ class TestBuildSemanticFilter:
         from seshat.core.models.enums import ConceptType, NodeStatus
 
         nf = NodeFilter(node_type=ConceptType.DECISION, status=NodeStatus.APPROVED)
-        with caplog.at_level(logging.WARNING, logger="seshat.vector_store.pgvector_store"):
+        with caplog.at_level(logging.WARNING, logger="seshat.infra.vector_store.pgvector_store"):
             result = self._store()._build_semantic_filter(nf)
 
         assert result == {"node_type": ConceptType.DECISION.value}

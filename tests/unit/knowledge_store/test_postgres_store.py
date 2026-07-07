@@ -13,7 +13,7 @@ from seshat.core.models.enums import (
     ConceptType,
     NodeState,
 )
-from seshat.knowledge_store.pg_store import PostgresKBStore
+from seshat.infra.knowledge_store.pg_store import PostgresKBStore
 from tests.helpers import make_node as _make_node
 
 if TYPE_CHECKING:
@@ -85,7 +85,7 @@ class TestValidateConnectionString:
         assert result == "postgresql://user:pass@host/db"
 
     def test_driver_qualifier_stripped_logs_warning(self, caplog):
-        with caplog.at_level(logging.WARNING, logger="seshat.knowledge_store.pg_store"):
+        with caplog.at_level(logging.WARNING, logger="seshat.infra.knowledge_store.pg_store"):
             PostgresKBStore._validate_connection_string("postgresql+asyncpg://user:pass@host/db")
         assert "+asyncpg" in caplog.text
 

@@ -1,7 +1,7 @@
 import pytest
 
-from seshat.knowledge_store.factory import get_kb_store
-from seshat.knowledge_store.pg_store import PostgresKBStore
+from seshat.infra.knowledge_store.factory import get_kb_store
+from seshat.infra.knowledge_store.pg_store import PostgresKBStore
 
 
 @pytest.mark.usefixtures("mocked_secrets_resolver")

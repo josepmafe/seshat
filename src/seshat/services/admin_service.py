@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, Any
 import bcrypt
 
 from seshat.core.utils.concurrency import run_in_thread
-from seshat.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
+from seshat.infra.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
 
 if TYPE_CHECKING:
     from seshat.core.models.enums import UserRole
-    from seshat.repositories.ops_repository import OpsRepository
+    from seshat.infra.repositories.ops_repository import OpsRepository
 
 __all__ = ["AdminService", "ApiKeyAlreadyRevokedError", "ApiKeyNotFoundError"]
 

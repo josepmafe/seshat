@@ -6,8 +6,8 @@ from unittest.mock import patch
 import pytest
 
 from seshat.core.config.settings import VectorIndexConfig, VectorStoreConfig
-from seshat.vector_store.factory import get_vector_store
-from seshat.vector_store.pgvector_store import PGVectorStore
+from seshat.infra.vector_store.factory import get_vector_store
+from seshat.infra.vector_store.pgvector_store import PGVectorStore
 
 if TYPE_CHECKING:
     from seshat.core.config.settings import SeshatConfig
@@ -16,17 +16,17 @@ if TYPE_CHECKING:
 @pytest.mark.usefixtures("mocked_secrets_resolver")
 class TestGetVectorStore:
     def test_pgvector_provider_returns_pgvector_store(self, minimal_config: SeshatConfig):
-        with patch("seshat.vector_store.pgvector_store.PGVector"), patch("langchain_openai.OpenAIEmbeddings"):
+        with patch("seshat.infra.vector_store.pgvector_store.PGVector"), patch("langchain_openai.OpenAIEmbeddings"):
             store = get_vector_store(minimal_config)
         assert isinstance(store, PGVectorStore)
 
     def test_resolves_connection_string_from_secret_key(self, minimal_config: SeshatConfig, mocked_secrets_resolver):
-        with patch("seshat.vector_store.pgvector_store.PGVector"), patch("langchain_openai.OpenAIEmbeddings"):
+        with patch("seshat.infra.vector_store.pgvector_store.PGVector"), patch("langchain_openai.OpenAIEmbeddings"):
             get_vector_store(minimal_config)
         mocked_secrets_resolver.get_secret.assert_any_call(minimal_config.vector_store.connection_secret_key)
 
     def test_resolves_embedding_api_key(self, minimal_config: SeshatConfig, mocked_secrets_resolver):
-        with patch("seshat.vector_store.pgvector_store.PGVector"), patch("langchain_openai.OpenAIEmbeddings"):
+        with patch("seshat.infra.vector_store.pgvector_store.PGVector"), patch("langchain_openai.OpenAIEmbeddings"):
             get_vector_store(minimal_config)
         mocked_secrets_resolver.get_secret.assert_any_call(minimal_config.vector_index.api_key_secret_key)
 

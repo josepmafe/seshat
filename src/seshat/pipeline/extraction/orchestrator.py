@@ -6,7 +6,6 @@ from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 from seshat.agents.grounding import GroundingRetryExhaustedError
-from seshat.blob_store.s3_store import BlobNotFoundError
 from seshat.core.models.api_graph import NodeFilter
 from seshat.core.models.enums import ConceptType, NodeStatus
 from seshat.core.models.nodes import (
@@ -18,11 +17,12 @@ from seshat.core.models.nodes import (
 )
 from seshat.core.utils.log import get_logger
 from seshat.core.utils.tokens import count_tokens
+from seshat.infra.blob_store.s3_store import BlobNotFoundError
+from seshat.infra.repositories.blob_repository import BlobRepository
 from seshat.observability.latency_tracker import track_latency_profile
 from seshat.observability.usage_tracker import UsageTracker, track_token_budget
 from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
 from seshat.pipeline.extraction.pending_node import PendingNodeBuilder, _PendingNode, _quote_text
-from seshat.repositories.blob_repository import BlobRepository
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -33,8 +33,8 @@ if TYPE_CHECKING:
     from seshat.agents.resolution.registry import ResolutionRegistry
     from seshat.core.config.settings import ExtractionConfig
     from seshat.core.models.transcript import TranscriptDocument
+    from seshat.infra.repositories.node_repository import NodeRepository
     from seshat.pipeline.extraction.node_retriever import NodeRetriever
-    from seshat.repositories.node_repository import NodeRepository
 
 logger = get_logger(__name__)
 
