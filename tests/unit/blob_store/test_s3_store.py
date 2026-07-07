@@ -8,7 +8,7 @@ import pytest
 from seshat.blob_store.s3_store import S3BlobStore
 
 if TYPE_CHECKING:
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.settings import SeshatConfig
 
 
 @pytest.fixture

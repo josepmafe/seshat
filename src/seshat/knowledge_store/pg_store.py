@@ -21,7 +21,7 @@ type _Conn = asyncpg.Connection | asyncpg.pool.PoolConnectionProxy
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from seshat.config.settings import KBStoreConfig
+    from seshat.core.config.settings import KBStoreConfig
     from seshat.core.models.api_graph import NodeFilter
 
 logger = get_logger(__name__)

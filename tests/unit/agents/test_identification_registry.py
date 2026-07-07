@@ -5,7 +5,7 @@ import pytest
 from seshat.agents.identification.decision import DecisionIdentificationAgent
 from seshat.agents.identification.reflective import ReflectiveIdentificationAgent
 from seshat.agents.identification.registry import IdentificationAgentRegistry
-from seshat.config.settings import ExtractionConfig, ReflectiveLLMConfig
+from seshat.core.config.settings import ExtractionConfig, ReflectiveLLMConfig
 from seshat.core.models.enums import ConceptType
 
 

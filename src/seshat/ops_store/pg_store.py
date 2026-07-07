@@ -10,7 +10,7 @@ import asyncpg
 from seshat.core.models.enums import JobStatus, UserRole
 
 if TYPE_CHECKING:
-    from seshat.config.settings import OpsStoreConfig
+    from seshat.core.config.settings import OpsStoreConfig
 
 logger = logging.getLogger(__name__)
 

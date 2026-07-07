@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from aiobotocore.session import ClientCreatorContext
     from types_aiobotocore_s3.client import S3Client
 
-    from seshat.config.settings import BlobStoreConfig
+    from seshat.core.config.settings import BlobStoreConfig
 
 
 # ClientError.Code is either a numeric HTTP status or an S3 semantic code depending on the error path.

@@ -17,7 +17,7 @@ from seshat.knowledge_store.pg_store import PostgresKBStore
 from tests.helpers import make_node as _make_node
 
 if TYPE_CHECKING:
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.settings import SeshatConfig
 
 
 @pytest.fixture

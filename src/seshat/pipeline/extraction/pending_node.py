@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from seshat.agents.identification.base import AnchoredConcept
-    from seshat.config.settings import ExtractionConfig
+    from seshat.core.config.settings import ExtractionConfig
     from seshat.core.models.quote_anchor import QuoteAnchor
     from seshat.pipeline.extraction.heuristics_scorer import HeuristicsScorer
 

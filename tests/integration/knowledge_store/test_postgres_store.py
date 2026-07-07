@@ -4,7 +4,7 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
-from seshat.config.settings import KBStoreConfig
+from seshat.core.config.settings import KBStoreConfig
 from seshat.core.models.api_graph import NodeFilter
 from seshat.core.models.enums import (
     ConceptType,

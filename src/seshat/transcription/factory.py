@@ -8,7 +8,7 @@ from seshat.secrets.factory import get_secrets_resolver
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.settings import SeshatConfig
     from seshat.transcription.base import AbstractTranscriber
 
 logger = get_logger(__name__)

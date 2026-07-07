@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from mlflow.genai.evaluation.entities import EvaluationResult
 
     from seshat.agents.grounding import GroundingAgent
-    from seshat.config.eval_settings import EvalConfig
+    from seshat.core.config.eval_settings import EvalConfig
     from seshat.eval.corpus_tags import CorpusTagFilter
     from seshat.eval.grounding.corpus_loader import GroundingCorpusExample
     from seshat.eval.models import GateResult

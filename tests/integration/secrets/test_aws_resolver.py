@@ -9,7 +9,7 @@ pytestmark = [pytest.mark.integration, SKIP_IF_NO_LOCALSTACK]
 
 @pytest.fixture
 def secrets_config(localstack_secretsmanager_url):
-    from seshat.config.settings import SecretsConfig
+    from seshat.core.config.settings import SecretsConfig
 
     return SecretsConfig(
         region=LOCALSTACK_REGION,

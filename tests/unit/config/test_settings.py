@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from seshat.config.settings import (
+from seshat.core.config.settings import (
     APIConfig,
     ExtractionConfig,
     GroundingLLMConfig,

@@ -7,7 +7,7 @@ from seshat.core.models.enums import SecretsProvider
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from seshat.config.settings import SecretsConfig, SeshatConfig
+    from seshat.core.config.settings import SecretsConfig, SeshatConfig
     from seshat.secrets.base_resolver import AbstractSecretsResolver
 
 

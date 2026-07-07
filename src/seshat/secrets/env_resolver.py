@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from seshat.secrets.base_resolver import AbstractSecretsResolver
 
 if TYPE_CHECKING:
-    from seshat.config.settings import SecretsConfig
+    from seshat.core.config.settings import SecretsConfig
 
 
 class EnvSecretsResolver(AbstractSecretsResolver):

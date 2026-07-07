@@ -1,7 +1,7 @@
 import pytest
 from langchain_core.language_models import BaseChatModel
 
-from seshat.config.settings import ExtractionConfig, GroundingLLMConfig, ResolutionLLMConfig
+from seshat.core.config.settings import ExtractionConfig, GroundingLLMConfig, ResolutionLLMConfig
 from tests.integration.helpers import (
     cheap_grounding_config,
     cheap_identification_config,

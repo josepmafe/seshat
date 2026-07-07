@@ -3,7 +3,7 @@ import logging
 import pytest
 
 from seshat.agents.grounding import GroundingAgent, GroundingResult, GroundingRetryExhaustedError
-from seshat.config.settings import GroundingLLMConfig
+from seshat.core.config.settings import GroundingLLMConfig
 from tests.helpers import make_structured_llm
 
 

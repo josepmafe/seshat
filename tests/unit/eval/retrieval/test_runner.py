@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 
-from seshat.config.eval_settings import EvalConfig
+from seshat.core.config.eval_settings import EvalConfig
 from seshat.core.models.enums import ConceptType
 from seshat.eval.models import RetrievalCorpusExample, RetrievalCorpusNode
 from seshat.eval.retrieval.runner import RetrievalEvalRunner, _aggregate_metrics, _build_dataframe

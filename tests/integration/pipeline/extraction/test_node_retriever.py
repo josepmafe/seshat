@@ -1,6 +1,6 @@
 import pytest
 
-from seshat.config.settings import RAGConfig
+from seshat.core.config.settings import RAGConfig
 from seshat.core.models.enums import ConceptType, NodeStatus, RelationshipType
 from seshat.pipeline.extraction.node_retriever import NodeRetriever
 from tests.helpers import make_node

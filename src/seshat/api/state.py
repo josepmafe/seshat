@@ -20,7 +20,7 @@ from seshat.worker.queue import AsyncioTaskQueue
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.settings import SeshatConfig
 
 
 @dataclass

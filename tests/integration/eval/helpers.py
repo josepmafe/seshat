@@ -6,8 +6,8 @@ from seshat.agents.grounding import GroundingAgent
 from seshat.agents.identification.grouping import GroupingAgent
 from seshat.agents.identification.registry import IdentificationAgentRegistry
 from seshat.agents.resolution.registry import ResolutionRegistry
-from seshat.config.eval_settings import EvalConfig
-from seshat.config.settings import ExtractionConfig, ObservabilityConfig
+from seshat.core.config.eval_settings import EvalConfig
+from seshat.core.config.settings import ExtractionConfig, ObservabilityConfig
 from seshat.eval.grounding.runner import GroundingEvalRunner
 from seshat.eval.grouping.runner import GroupingEvalRunner
 from seshat.eval.identification.runner import IdentificationEvalRunner

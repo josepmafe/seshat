@@ -21,7 +21,7 @@ from seshat.observability.usage_tracker import track_eval_usage
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from seshat.config.eval_settings import EvalConfig
+    from seshat.core.config.eval_settings import EvalConfig
     from seshat.eval.models import IdentificationCorpusExample
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 

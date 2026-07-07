@@ -6,7 +6,7 @@ import pytest
 
 from seshat.agents.base import RetryExhaustedError, _BaseAgent
 from seshat.agents.grounding import GroundingResult
-from seshat.config.settings import IdentificationLLMConfig
+from seshat.core.config.settings import IdentificationLLMConfig
 from tests.helpers import make_structured_llm
 
 

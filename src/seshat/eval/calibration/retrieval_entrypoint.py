@@ -10,8 +10,8 @@ from seshat.pipeline.bootstrap import build_vector_store
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from seshat.config.eval_settings import EvalConfig
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.eval_settings import EvalConfig
+    from seshat.core.config.settings import SeshatConfig
 
 logger = get_logger(__name__)
 

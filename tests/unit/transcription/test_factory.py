@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from seshat.config.settings import TranscriptionConfig
+from seshat.core.config.settings import TranscriptionConfig
 from seshat.core.models.enums import TranscriptionProvider
 from seshat.observability.usage_tracker import TrackingTranscriber
 from seshat.transcription.assemblyai_transcriber import AssemblyAITranscriber
@@ -12,7 +12,7 @@ from seshat.transcription.factory import get_transcriber
 from seshat.transcription.openai_transcriber import OpenAITranscriber
 
 if TYPE_CHECKING:
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.settings import SeshatConfig
 
 
 class TestGetTranscriber:

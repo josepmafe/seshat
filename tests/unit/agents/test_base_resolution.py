@@ -9,7 +9,7 @@ from seshat.agents.resolution.base import (
     _EntryBase,
 )
 from seshat.agents.resolution.same_type.decision import DecisionResolutionAgent, _DecisionEntry, _DecisionResult
-from seshat.config.settings import ResolutionLLMConfig
+from seshat.core.config.settings import ResolutionLLMConfig
 from seshat.core.models.enums import RelationshipType
 from tests.helpers import make_node, make_structured_llm
 

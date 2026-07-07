@@ -2,7 +2,7 @@ import logging
 
 import mlflow
 
-from seshat.config.settings import ObservabilityConfig
+from seshat.core.config.settings import ObservabilityConfig
 
 logger = logging.getLogger(__name__)
 

@@ -10,7 +10,7 @@ from seshat.utils.concurrency import run_in_thread
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from seshat.config.settings import TranscriptionConfig
+    from seshat.core.config.settings import TranscriptionConfig
 
 logger = get_logger(__name__)
 

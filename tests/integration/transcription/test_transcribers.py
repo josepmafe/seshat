@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from seshat.config.settings import TranscriptionConfig
+from seshat.core.config.settings import TranscriptionConfig
 from seshat.core.models.enums import TranscriptionProvider
 from seshat.transcription.assemblyai_transcriber import AssemblyAITranscriber
 from seshat.transcription.openai_transcriber import OpenAITranscriber

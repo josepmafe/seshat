@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from seshat.agents.identification.registry import IdentificationAgentRegistry
     from seshat.agents.resolution.base import ResolvedRelationship
     from seshat.agents.resolution.registry import ResolutionRegistry
-    from seshat.config.settings import ExtractionConfig
+    from seshat.core.config.settings import ExtractionConfig
     from seshat.core.models.transcript import TranscriptDocument
     from seshat.pipeline.extraction.node_retriever import NodeRetriever
     from seshat.repositories.node_repository import NodeRepository

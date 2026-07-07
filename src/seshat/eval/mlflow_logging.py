@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from mlflow.entities.span import LiveSpan
     from mlflow.tracking.fluent import ActiveModel
 
-    from seshat.config.settings import ReflectiveLLMConfig, VectorIndexConfig, _LLMConfig
+    from seshat.core.config.settings import ReflectiveLLMConfig, VectorIndexConfig, _LLMConfig
 
 
 class Fingerprintable(Protocol):

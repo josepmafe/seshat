@@ -33,7 +33,7 @@ class _DummyEmbeddings(Embeddings):
 
 
 async def _make_store_with_extractor(pg_test_url, collection: str) -> PGVectorStore:
-    from seshat.config.settings import VectorIndexConfig, VectorStoreConfig
+    from seshat.core.config.settings import VectorIndexConfig, VectorStoreConfig
 
     async def _passthrough_extractor(query: str) -> str:
         return query

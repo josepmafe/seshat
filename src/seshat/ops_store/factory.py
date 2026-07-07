@@ -6,7 +6,7 @@ from seshat.ops_store.pg_store import PostgresOpsStore
 from seshat.secrets.factory import get_secrets_resolver
 
 if TYPE_CHECKING:
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.settings import SeshatConfig
 
 
 def get_ops_store(seshat_config: SeshatConfig) -> PostgresOpsStore:

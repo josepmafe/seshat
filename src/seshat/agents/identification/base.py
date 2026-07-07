@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
     from seshat.agents.identification.grouping import ConceptGroup
-    from seshat.config.settings import IdentificationLLMConfig
+    from seshat.core.config.settings import IdentificationLLMConfig
     from seshat.core.models.enums import ConceptType
 
 logger = get_logger(__name__)

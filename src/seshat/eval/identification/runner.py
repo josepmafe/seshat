@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from mlflow.entities.span import LiveSpan
     from mlflow.genai.evaluation.entities import EvaluationResult
 
-    from seshat.config.eval_settings import EvalConfig
+    from seshat.core.config.eval_settings import EvalConfig
     from seshat.core.models.nodes import KBNode
     from seshat.eval.corpus_tags import CorpusTagFilter
     from seshat.eval.models import GateResult

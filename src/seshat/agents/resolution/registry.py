@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
     from seshat.agents.resolution.base import ResolvedRelationship
-    from seshat.config.settings import ExtractionConfig
+    from seshat.core.config.settings import ExtractionConfig
     from seshat.core.models.nodes import FailedResolutionSource, KBNode
 
 logger = get_logger(__name__)

@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from seshat.config.settings import LoggingConfig
+    from seshat.core.config.settings import LoggingConfig
 
 _job_id_var: ContextVar[str] = ContextVar("job_id", default="")
 _task_num_var: ContextVar[str] = ContextVar("task_num", default="")
@@ -43,7 +43,7 @@ def get_logger(name: str) -> logging.Logger:
 
 def configure_logging(config: LoggingConfig | None = None) -> None:
     """Configure a StreamHandler with job_id in the format. Call once at app startup."""
-    from seshat.config.settings import LoggingConfig as _LoggingConfig  # avoid circular import at module load
+    from seshat.core.config.settings import LoggingConfig as _LoggingConfig  # avoid circular import at module load
 
     if config is None:
         config = _LoggingConfig()

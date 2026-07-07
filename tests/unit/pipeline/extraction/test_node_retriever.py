@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seshat.config.settings import RAGConfig
+from seshat.core.config.settings import RAGConfig
 from seshat.core.models.api_graph import NodeFilter, SearchResult
 from seshat.core.models.enums import ConceptType, NodeStatus
 from seshat.pipeline.extraction.node_retriever import NodeRetriever

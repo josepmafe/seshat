@@ -13,7 +13,7 @@ from seshat.repositories.node_repository import NodeRepository
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.settings import SeshatConfig
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 
 

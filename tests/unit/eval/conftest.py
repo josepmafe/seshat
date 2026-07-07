@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from seshat.config.eval_settings import EvalConfig
+from seshat.core.config.eval_settings import EvalConfig
 
 if TYPE_CHECKING:
     from collections.abc import Callable

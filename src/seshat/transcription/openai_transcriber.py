@@ -8,7 +8,7 @@ from seshat.transcription.base import AbstractTranscriber
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from seshat.config.settings import TranscriptionConfig
+    from seshat.core.config.settings import TranscriptionConfig
 
 
 _DEFAULT_TRANSCRIPTION_MODEL = "whisper-1"

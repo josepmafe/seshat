@@ -1,6 +1,6 @@
 import pytest
 
-from seshat.config.settings import KBStoreConfig
+from seshat.core.config.settings import KBStoreConfig
 from seshat.knowledge_store.pg_store import PostgresKBStore
 from seshat.repositories.node_repository import NodeRepository
 

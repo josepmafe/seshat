@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from seshat.config.settings import SeshatConfig
+from seshat.core.config.settings import SeshatConfig
 from seshat.secrets.factory import _cached_resolver
 
 _FAKE_DB_URL = "postgresql://user:pass@host/dbname"

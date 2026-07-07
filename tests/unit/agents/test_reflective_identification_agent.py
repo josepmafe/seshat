@@ -9,7 +9,7 @@ from seshat.agents.identification.reflective import (
     SelfReviewResult,
     _SelfReviewRetryExhaustedError,
 )
-from seshat.config.settings import IdentificationLLMConfig
+from seshat.core.config.settings import IdentificationLLMConfig
 from seshat.core.models.enums import ConceptType
 from tests.helpers import make_anchored_concept, make_structured_llm
 

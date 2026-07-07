@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
     from langchain_core.embeddings import Embeddings
 
-    from seshat.config.settings import SeshatConfig, VectorIndexConfig
+    from seshat.core.config.settings import SeshatConfig, VectorIndexConfig
     from seshat.vector_store.base_store import AbstractVectorStore
 
 

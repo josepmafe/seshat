@@ -18,7 +18,7 @@ from seshat.utils.log import get_logger
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
-    from seshat.config.settings import ResolutionLLMConfig
+    from seshat.core.config.settings import ResolutionLLMConfig
     from seshat.core.models.enums import ConceptType
     from seshat.core.models.nodes import KBNode
 

@@ -8,7 +8,7 @@ from seshat.agents.resolution.cross_type.registry import CrossTypeResolutionRegi
 from seshat.agents.resolution.registry import ResolutionRegistry
 from seshat.agents.resolution.same_type.reflective import ReflectiveResolutionAgent
 from seshat.agents.resolution.same_type.registry import SameTypeResolutionRegistry
-from seshat.config.settings import ExtractionConfig
+from seshat.core.config.settings import ExtractionConfig
 from seshat.core.models.enums import ConceptType, RelationshipType
 from tests.helpers import make_node
 

@@ -5,12 +5,12 @@ from unittest.mock import patch
 
 import pytest
 
-from seshat.config.settings import VectorIndexConfig, VectorStoreConfig
+from seshat.core.config.settings import VectorIndexConfig, VectorStoreConfig
 from seshat.vector_store.factory import get_vector_store
 from seshat.vector_store.pgvector_store import PGVectorStore
 
 if TYPE_CHECKING:
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.settings import SeshatConfig
 
 
 @pytest.mark.usefixtures("mocked_secrets_resolver")

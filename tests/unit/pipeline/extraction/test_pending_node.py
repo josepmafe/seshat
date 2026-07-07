@@ -6,7 +6,7 @@ import pytest
 from seshat.agents.identification.base import AnchoredConcept
 from seshat.agents.identification.decision import Decision
 from seshat.agents.identification.grouping import ConceptGroup
-from seshat.config.settings import ExtractionConfig
+from seshat.core.config.settings import ExtractionConfig
 from seshat.core.models.enums import ApprovalMethod, ConceptType, IngestionSource, NodeStatus
 from seshat.core.models.nodes import ConfidenceBreakdown
 from seshat.core.models.quote_anchor import QuoteAnchor

@@ -1,6 +1,6 @@
 import pytest
 
-from seshat.config.settings import SecretsConfig
+from seshat.core.config.settings import SecretsConfig
 from seshat.core.models.enums import SecretsProvider
 from seshat.secrets.aws_resolver import AWSSecretsResolver
 from seshat.secrets.env_resolver import EnvSecretsResolver

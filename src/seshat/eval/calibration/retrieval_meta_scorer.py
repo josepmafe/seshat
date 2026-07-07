@@ -14,7 +14,7 @@ from seshat.observability.usage_tracker import track_eval_usage
 from seshat.utils.hashing import fingerprint
 
 if TYPE_CHECKING:
-    from seshat.config.eval_settings import EvalConfig
+    from seshat.core.config.eval_settings import EvalConfig
     from seshat.vector_store.base_store import AbstractVectorStore
 
 type _Slug = str

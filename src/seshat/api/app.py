@@ -9,15 +9,15 @@ from langchain_core.messages import HumanMessage
 
 from seshat.api.routers import admin, graph, health, identity, jobs
 from seshat.api.state import build_app_state
-from seshat.config.settings import SeshatConfig, get_config
+from seshat.core.config.settings import SeshatConfig, get_config
+from seshat.core.utils.log import configure_logging, get_logger, set_job_id
 from seshat.observability.mlflow_setup import setup_mlflow
 from seshat.pipeline.llm_factory import _build_llm
-from seshat.utils.log import configure_logging, get_logger, set_job_id
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from seshat.config.settings import APIConfig, _LLMConfig
+    from seshat.core.config.settings import APIConfig, _LLMConfig
 
 
 logger = get_logger(__name__)

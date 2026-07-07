@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from seshat.config.settings import SecretsConfig
+    from seshat.core.config.settings import SecretsConfig
 
 
 logger = get_logger(__name__)

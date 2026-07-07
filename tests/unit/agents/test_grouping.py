@@ -1,7 +1,7 @@
 import logging
 
 from seshat.agents.identification.grouping import GroupingAgent, _GroupingSchema, _GroupSchema
-from seshat.config.settings import IdentificationLLMConfig
+from seshat.core.config.settings import IdentificationLLMConfig
 from seshat.core.models.enums import ConceptType
 from tests.helpers import make_anchored_concept, make_structured_llm
 

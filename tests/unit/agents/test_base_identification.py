@@ -8,7 +8,7 @@ from seshat.agents.identification.base import (
     _BaseIdentificationAgent,
 )
 from seshat.agents.identification.decision import Decision, DecisionList
-from seshat.config.settings import IdentificationLLMConfig
+from seshat.core.config.settings import IdentificationLLMConfig
 from seshat.core.models.enums import ConceptType
 from tests.helpers import make_structured_llm
 

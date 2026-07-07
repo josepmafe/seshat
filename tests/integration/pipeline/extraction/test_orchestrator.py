@@ -6,7 +6,7 @@ import pytest
 from seshat.agents.grounding import GroundingAgent
 from seshat.agents.identification.registry import IdentificationAgentRegistry
 from seshat.agents.resolution.registry import ResolutionRegistry
-from seshat.config.settings import ExtractionConfig, RAGConfig
+from seshat.core.config.settings import ExtractionConfig, RAGConfig
 from seshat.core.models.enums import ConceptType, NodeStatus
 from seshat.core.models.transcript import TranscriptDocument, TranscriptMetadata
 from seshat.pipeline.extraction.node_retriever import NodeRetriever

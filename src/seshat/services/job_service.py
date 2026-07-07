@@ -17,7 +17,7 @@ from seshat.core.models.submission import JobSubmissionRequest
 from seshat.utils.log import get_logger, set_job_id
 
 if TYPE_CHECKING:
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.settings import SeshatConfig
     from seshat.core.models.api_jobs import ApproveRequest, BulkApproveRule, NodeDecision
     from seshat.core.models.nodes import KBNode, KBRelationship
     from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from langchain_core.embeddings import Embeddings
     from sqlalchemy.ext.asyncio import AsyncEngine
 
-    from seshat.config.settings import VectorIndexConfig, VectorStoreConfig
+    from seshat.core.config.settings import VectorIndexConfig, VectorStoreConfig
     from seshat.core.models.api_graph import NodeFilter
 
 logger = get_logger(__name__)

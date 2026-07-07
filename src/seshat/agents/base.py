@@ -15,7 +15,7 @@ from seshat.utils.log import get_logger
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
-    from seshat.config.settings import _LLMConfig
+    from seshat.core.config.settings import _LLMConfig
 
 M = TypeVar("M", bound=BaseModel)
 

@@ -4,7 +4,7 @@ from typing import ClassVar
 from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from seshat.config.settings import DEFAULT_EVAL_GATE_PATH, PROJECT_ROOT, ObservabilityConfig
+from seshat.core.config.settings import DEFAULT_EVAL_GATE_PATH, PROJECT_ROOT, ObservabilityConfig
 from seshat.core.models.enums import SearchMode
 
 _DEFAULT_CORPUS_BASE_DIR: Path = PROJECT_ROOT / "data" / "eval" / "corpora"

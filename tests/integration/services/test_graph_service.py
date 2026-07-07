@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seshat.config.settings import KBStoreConfig
+from seshat.core.config.settings import KBStoreConfig
 from seshat.core.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
 from seshat.core.models.enums import (
     ApprovalMethod,

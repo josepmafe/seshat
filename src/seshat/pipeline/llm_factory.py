@@ -12,7 +12,7 @@ from seshat.utils.log import get_logger
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
-    from seshat.config.settings import SeshatConfig, _LLMConfig
+    from seshat.core.config.settings import SeshatConfig, _LLMConfig
 
 
 _PROVIDERS_WITHOUT_API_KEY = frozenset({LLMProvider.BEDROCK_CONVERSE})

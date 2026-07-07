@@ -6,7 +6,7 @@ import pytest
 
 from seshat.agents.grounding import GroundingRetryExhaustedError
 from seshat.agents.identification.base import IdentificationRetryExhaustedError
-from seshat.config.settings import ExtractionConfig, GroundingLLMConfig
+from seshat.core.config.settings import ExtractionConfig, GroundingLLMConfig
 from seshat.core.models.enums import ApprovalMethod, ConceptType, NodeStatus
 from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator, _assemble_kb_hint
 from tests.helpers import make_anchored_concept, make_doc, make_node

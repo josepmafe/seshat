@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from seshat.config.settings import ExtractionConfig, GroundingLLMConfig, IdentificationLLMConfig, SeshatConfig
+from seshat.core.config.settings import ExtractionConfig, GroundingLLMConfig, IdentificationLLMConfig, SeshatConfig
 from seshat.core.models.enums import LLMProvider
 from seshat.pipeline.llm_factory import _build_llm
 

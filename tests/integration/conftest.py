@@ -11,7 +11,7 @@ from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 from seshat.blob_store.s3_store import S3BlobStore
-from seshat.config.settings import BlobStoreConfig
+from seshat.core.config.settings import BlobStoreConfig
 from seshat.repositories.blob_repository import BlobRepository
 
 load_dotenv()
@@ -142,7 +142,7 @@ SKIP_IF_NO_OPENAI_API = pytest.mark.skipif(
 
 @pytest.fixture
 async def vector_store(pg_test_url):
-    from seshat.config.settings import SecretsConfig, SeshatConfig, VectorStoreConfig
+    from seshat.core.config.settings import SecretsConfig, SeshatConfig, VectorStoreConfig
     from seshat.core.models.enums import SecretsProvider
     from seshat.vector_store.factory import _build_embeddings
     from seshat.vector_store.pgvector_store import PGVectorStore

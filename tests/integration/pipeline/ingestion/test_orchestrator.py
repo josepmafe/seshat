@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from seshat.config.settings import TranscriptionConfig
+from seshat.core.config.settings import TranscriptionConfig
 from seshat.core.models.transcript import TranscriptMetadata
 from seshat.pipeline.ingestion.audio_validator import AudioValidationError
 from seshat.pipeline.ingestion.orchestrator import IngestionOrchestrator

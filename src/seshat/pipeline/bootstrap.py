@@ -14,7 +14,7 @@ from seshat.transcription.factory import get_transcriber
 from seshat.vector_store.factory import get_vector_store
 
 if TYPE_CHECKING:
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.settings import SeshatConfig
     from seshat.repositories.blob_repository import BlobRepository
     from seshat.repositories.node_repository import NodeRepository
     from seshat.vector_store.base_store import AbstractVectorStore

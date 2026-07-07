@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from seshat.config.settings import SeshatConfigOverride
+from seshat.core.config.settings import SeshatConfigOverride
 from seshat.core.models.api_graph import NodeFilter
 from seshat.core.models.transcript import TranscriptMetadata
 

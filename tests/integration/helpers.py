@@ -5,7 +5,7 @@ from typing import Any
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 
-from seshat.config.settings import (
+from seshat.core.config.settings import (
     GroundingLLMConfig,
     IdentificationLLMConfig,
     ResolutionLLMConfig,
