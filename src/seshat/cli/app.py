@@ -158,6 +158,21 @@ def _parse_tags(tags: list[str]) -> CorpusTagFilter:
     return result
 
 
+def _assert_reachable(uri: str, *, label: str, timeout: float = 2.0) -> None:
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(uri)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            pass
+    except OSError as exc:
+        typer.echo(f"Cannot reach {label} at {uri} — is the stack up? ({exc})", err=True)
+        raise typer.Exit(code=1) from exc
+
+
 def _bootstrap_eval(harness_type: str) -> tuple[EvalConfig, SeshatConfig, str]:
     """Set up MLflow and configs for an eval or calibration run."""
     load_dotenv()
@@ -170,6 +185,7 @@ def _bootstrap_eval(harness_type: str) -> tuple[EvalConfig, SeshatConfig, str]:
     eval_config = EvalConfig(
         observability=ObservabilityConfig(mlflow_tracking_uri="http://localhost:5000", mlflow_experiment_name=job_id)
     )
+    _assert_reachable(eval_config.observability.mlflow_tracking_uri, label="MLflow")
     setup_mlflow(eval_config.observability)
 
     seshat_config = SeshatConfig()
