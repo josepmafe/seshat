@@ -8,24 +8,24 @@ import mlflow.genai
 import pandas as pd
 from pydantic import BaseModel
 
-from seshat.agents.identification.base import AnchoredConcept, ConceptModel
+from seshat.app.agents.identification.base import AnchoredConcept, ConceptModel
+from seshat.app.platform.observability.latency_tracker import track_eval_latency
+from seshat.app.platform.observability.usage_tracker import track_eval_usage
+from seshat.core.models.enums import ConceptType
+from seshat.core.utils.log import set_task_num
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.gate import upsert_gate
 from seshat.eval.grouping.corpus_loader import load_corpus
 from seshat.eval.grouping.scorers import scorer
 from seshat.eval.mlflow_logging import log_eval_run_metadata
-from seshat.models.enums import ConceptType
-from seshat.observability.latency_tracker import track_eval_latency
-from seshat.observability.usage_tracker import track_eval_usage
-from seshat.utils.log import set_task_num
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from mlflow.genai.evaluation.entities import EvaluationResult
 
-    from seshat.agents.identification.grouping import GroupingAgent
-    from seshat.config.eval_settings import EvalConfig
+    from seshat.app.agents.identification.grouping import GroupingAgent
+    from seshat.core.config.eval_settings import EvalConfig
     from seshat.eval.corpus_tags import CorpusTagFilter
     from seshat.eval.grouping.corpus_loader import GroupingCorpusExample, GroupingCorpusItem
     from seshat.eval.models import GateResult

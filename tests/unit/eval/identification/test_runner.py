@@ -3,9 +3,9 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from seshat.core.models.enums import ConceptType
 from seshat.eval.identification.runner import _aggregate_metrics, _build_dataframe, _first_quote, _slim_node
 from seshat.eval.models import IdentificationCorpusExample
-from seshat.models.enums import ConceptType
 from tests.helpers import make_node
 from tests.unit.eval.helpers import make_eval_result
 from tests.unit.eval.identification.helpers import corpus_node
@@ -184,7 +184,7 @@ def test_first_quote_returns_substring_from_anchor():
 def test_first_quote_uses_first_anchor_when_multiple():
     transcript = "Alpha Beta Gamma Delta"
     # Provide two anchors; only first should be used
-    from seshat.models.quote_anchor import QuoteAnchor
+    from seshat.core.models.quote_anchor import QuoteAnchor
 
     anchors = [
         QuoteAnchor(transcript_file="t.txt", char_start=0, char_end=5),  # "Alpha"

@@ -5,7 +5,7 @@ from collections import defaultdict
 import mlflow.genai
 from mlflow.entities import Feedback
 
-from seshat.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType
 
 
 @mlflow.genai.scorer

@@ -1,6 +1,6 @@
+from seshat.core.models.enums import ConceptType, NodeStatus
 from seshat.eval.identification.matcher import QUOTE_MATCH_THRESHOLD, MatchMethod, match_nodes
 from seshat.eval.models import IdentificationCorpusNode
-from seshat.models.enums import ConceptType, NodeStatus
 from tests.helpers import make_node
 from tests.unit.eval.identification.helpers import corpus_node
 

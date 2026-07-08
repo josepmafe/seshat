@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from seshat.agents.grounding import GroundingAgent
+from seshat.app.agents.grounding import GroundingAgent
+from seshat.app.pipeline.llm_factory import get_grounding_llm
+from seshat.core.utils.log import get_logger
 from seshat.eval.grounding.runner import GroundingEvalRunner
 from seshat.eval.mlflow_logging import log_eval_model
-from seshat.pipeline.llm_factory import get_grounding_llm
-from seshat.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from seshat.config.eval_settings import EvalConfig
-    from seshat.config.settings import SeshatConfig
+    from seshat.core.config.eval_settings import EvalConfig
+    from seshat.core.config.settings import SeshatConfig
     from seshat.eval.corpus_tags import CorpusTagFilter
 
 

@@ -10,9 +10,9 @@ from aiobotocore.session import get_session
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
-from seshat.blob_store.s3_store import S3BlobStore
-from seshat.config.settings import BlobStoreConfig
-from seshat.repositories.blob_repository import BlobRepository
+from seshat.app.repositories.blob_repository import BlobRepository
+from seshat.core.config.settings import BlobStoreConfig
+from seshat.infra.blob_store.s3_store import S3BlobStore
 
 load_dotenv()
 
@@ -142,10 +142,10 @@ SKIP_IF_NO_OPENAI_API = pytest.mark.skipif(
 
 @pytest.fixture
 async def vector_store(pg_test_url):
-    from seshat.config.settings import SecretsConfig, SeshatConfig, VectorStoreConfig
-    from seshat.models.enums import SecretsProvider
-    from seshat.vector_store.factory import _build_embeddings
-    from seshat.vector_store.pgvector_store import PGVectorStore
+    from seshat.core.config.settings import SecretsConfig, SeshatConfig, VectorStoreConfig
+    from seshat.core.models.enums import SecretsProvider
+    from seshat.infra.vector_store.factory import _build_embeddings
+    from seshat.infra.vector_store.pgvector_store import PGVectorStore
 
     seshat_config = SeshatConfig(secrets=SecretsConfig(provider=SecretsProvider.ENV))
     index = seshat_config.vector_index.model_copy(update={"collection": "test_collection"})
@@ -155,12 +155,11 @@ async def vector_store(pg_test_url):
     await store._store.adelete_collection()
 
 
-@pytest.fixture(scope="session")
-def event_loop_policy():
+def pytest_asyncio_loop_factories(config, item):
     # psycopg async requires SelectorEventLoop; Windows defaults to ProactorEventLoop
     if sys.platform == "win32":
-        return asyncio.WindowsSelectorEventLoopPolicy()
-    return asyncio.DefaultEventLoopPolicy()
+        return {"selector": asyncio.WindowsSelectorEventLoopPolicy().new_event_loop}
+    return {"default": asyncio.DefaultEventLoopPolicy().new_event_loop}
 
 
 @pytest.fixture(scope="session")
@@ -200,7 +199,7 @@ async def _init_langchain_tables(database_url: str) -> None:
     from langchain_core.embeddings.fake import DeterministicFakeEmbedding
     from langchain_postgres import PGVector
 
-    from seshat.utils.db import ensure_psycopg_scheme
+    from seshat.core.utils.db import ensure_psycopg_scheme
 
     pg_url = ensure_psycopg_scheme(database_url)
     store = PGVector(

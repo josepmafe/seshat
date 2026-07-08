@@ -6,10 +6,10 @@ from typing import Any
 import mlflow.genai
 from mlflow.entities import Feedback
 
+from seshat.core.models.enums import ConceptType
+from seshat.core.models.nodes import KBNode
 from seshat.eval.identification.matcher import MatchedNode, MatchResult, match_nodes
 from seshat.eval.models import IdentificationCorpusNode
-from seshat.models.enums import ConceptType
-from seshat.models.nodes import KBNode
 
 _FUZZY_FIELDS: dict[ConceptType, list[str]] = {
     ConceptType.ACTION_ITEM: ["assignee", "due"],

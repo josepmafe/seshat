@@ -1,8 +1,8 @@
 import pandas as pd
 
+from seshat.core.models.enums import ConceptType, RelationshipType
 from seshat.eval.models import ResolutionCorpusExample, ResolutionCorpusNode, ResolutionCorpusRelation
 from seshat.eval.resolution.runner import _aggregate_metrics, _build_dataframe, _is_same_type, _slim_node
-from seshat.models.enums import ConceptType, RelationshipType
 from tests.unit.eval.helpers import make_eval_result
 
 

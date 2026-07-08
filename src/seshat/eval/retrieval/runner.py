@@ -9,29 +9,29 @@ import mlflow.genai
 import openai
 import pandas as pd
 
+from seshat.app.platform.observability.usage_tracker import track_eval_usage
+from seshat.core.models.api_graph import NodeFilter
+from seshat.core.models.enums import SearchMode
+from seshat.core.utils.hashing import fingerprint
+from seshat.core.utils.log import get_logger, set_task_num
+from seshat.core.utils.retry import async_retry
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.gate import upsert_gate
 from seshat.eval.mlflow_logging import log_eval_run_metadata
 from seshat.eval.models import RetrievalScoredResult
 from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
 from seshat.eval.retrieval.scorers import TOP_K, scorer
-from seshat.models.api_graph import NodeFilter
-from seshat.models.enums import SearchMode
-from seshat.observability.usage_tracker import track_eval_usage
-from seshat.utils.hashing import fingerprint
-from seshat.utils.log import get_logger, set_task_num
-from seshat.utils.retry import async_retry
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from mlflow.genai.evaluation.entities import EvaluationResult
 
-    from seshat.config.eval_settings import EvalConfig
+    from seshat.core.config.eval_settings import EvalConfig
+    from seshat.core.models.nodes import KBNode
     from seshat.eval.corpus_tags import CorpusTagFilter
     from seshat.eval.models import GateResult, RetrievalCorpusExample, RetrievalCorpusNode
-    from seshat.models.nodes import KBNode
-    from seshat.vector_store.base_store import AbstractVectorStore
+    from seshat.infra.vector_store.base_store import AbstractVectorStore
 
 
 logger = get_logger(__name__)

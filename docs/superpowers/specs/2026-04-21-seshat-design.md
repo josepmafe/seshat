@@ -629,7 +629,7 @@ class NodeMetadata(BaseModel):
     job_id: str                               # UUID4; same namespace for both JOB and INIT ingestion (refs ops.jobs.job_id or ops.init_runs.job_id)
     meeting_date: date | None = None          # None when ingestion_source=INIT
     participants: list[str] | None = None     # best-effort; None when unknown or ingestion_source=INIT
-    ingestion_source: IngestionSource = IngestionSource.JOB
+    ingestion_source: IngestionSource = IngestionSource.PIPELINE
     team: str | None = None
     project: str | None = None
     domain: str | None = None
@@ -1489,27 +1489,40 @@ with the previous SHA tag set in `.env` or the Compose file. KB data and MLflow 
 ## 11. Project Structure
 
 ```
-src/
-  seshat/
-    api/            # FastAPI routers, job lifecycle, Depends
-    pipeline/       # Stages: ingestion, transcription, extraction, rag, writing
-    agents/         # Agent registry, base agent, specialised agents
-    knowledge_store/  # PostgresKBStore
-    vector_store/     # AbstractVectorStore + implementations
-    blob_store/       # S3BlobStore
-    transcription/    # AbstractTranscriber + implementations (AssemblyAI, OpenAI, Deepgram); get_transcriber() factory returns a TrackingTranscriber wrapper
-    document_loader/  # AbstractDocumentLoader + implementations (used by seshat init)
-    config/           # Settings, StrEnums
-    secrets/          # AbstractSecretsResolver + implementations
-    models/           # Shared Pydantic models (KBNode, ExtractionResult, etc.)
-    utils/
-      audio.py        # audio_duration_seconds / audio_duration_seconds_ceil via mutagen
+src/seshat/
+├── core/                        # Pure data and config — no I/O, no AI
+│   ├── models/                  # Pydantic domain models (KBNode, enums, …)
+│   ├── config/                  # Pydantic settings (SeshatConfig, LLMConfig, ExtractionConfig, …)
+│   └── utils/                   # Shared pure utilities (audio, retry, tokens, logging)
+├── infra/                       # External system adapters — I/O only, no business logic
+│   ├── blob_store/              # S3 blob store abstraction (aioboto3)
+│   ├── vector_store/            # pgvector semantic search abstraction
+│   ├── knowledge_store/         # Postgres-backed KB node persistence
+│   ├── ops_store/               # Postgres-backed job/ops ledger
+│   └── secrets/                 # AWS Secrets Manager helpers
+├── app/                         # Runtime application — orchestration, AI, and services
+│   ├── agents/                  # LLM agents
+│   │   ├── identification/      # Extraction agents (grouping, registry)
+│   │   └── resolution/          # Resolution agents (same_type, cross_type)
+│   ├── transcription/           # Transcriber interface and provider implementations
+│   ├── pipeline/                # Orchestration
+│   │   ├── extraction/          # Extraction sub-pipeline (identification, scoring, resolution)
+│   │   └── ingestion/           # Ingestion sub-pipeline (audio/text validation, blob upload)
+│   ├── repositories/            # NodeRepository and ops/blob repository facades
+│   ├── services/                # Domain services (GraphService, JobService, AdminService, …)
+│   └── platform/                # Deployment-layer concerns
+│       ├── api/                 # FastAPI routers, auth, app state, startup
+│       ├── worker/              # Async task queue and job worker
+│       └── observability/       # MLflow tracing, usage tracking, latency metrics
+├── eval/                        # Eval harnesses and calibration meta-scorers (tooling, not runtime)
+└── cli/                         # CLI entry points (seshat eval, seshat init, …)
+
 tests/
-  unit/
-  integration/
-scripts/            # operational scripts (e.g. migrate_kb_schema.py); not part of the application package
-data/               # gitignored — local KB, MLflow artifacts
-  eval_gate.json    # written by seshat eval; read by worker at startup; must be present on the same filesystem as the worker; gitignored
+  unit/          # Fast unit tests — mirrors src/seshat/ hierarchy
+  integration/   # Slow tests requiring Postgres, LocalStack, or LLM APIs
+scripts/         # Operational scripts; not part of the application package
+data/            # Local KB, MLflow artifacts (gitignored)
+eval_gate.json   # Written by seshat eval; read by worker at startup; gitignored
 ```
 
 ---

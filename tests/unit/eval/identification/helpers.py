@@ -1,5 +1,5 @@
+from seshat.core.models.enums import ConceptType
 from seshat.eval.models import IdentificationCorpusNode
-from seshat.models.enums import ConceptType
 
 
 def corpus_node(

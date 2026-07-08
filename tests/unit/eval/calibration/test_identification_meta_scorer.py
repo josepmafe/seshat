@@ -4,10 +4,10 @@ from datetime import date
 
 import pytest
 
+from seshat.core.models.enums import ConceptType
+from seshat.core.models.nodes import ConfidenceBreakdown, IdentificationResult, KBNode, NodeMetadata
 from seshat.eval.calibration.identification_meta_scorer import IdentificationMetaScorer
 from seshat.eval.models import IdentificationCorpusExample, IdentificationCorpusNode
-from seshat.models.enums import ConceptType
-from seshat.models.nodes import ConfidenceBreakdown, IdentificationResult, KBNode, NodeMetadata
 from tests.helpers import make_node
 from tests.unit.eval.identification.helpers import corpus_node
 

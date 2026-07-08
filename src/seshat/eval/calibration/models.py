@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from seshat.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType
 
 
 class TypeMetrics(BaseModel):

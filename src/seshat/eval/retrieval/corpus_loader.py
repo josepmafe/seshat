@@ -6,10 +6,10 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 import yaml
 
+from seshat.core.models.enums import NodeState, NodeStatus
+from seshat.core.models.nodes import KBNode, NodeMetadata
 from seshat.eval.corpus_tags import matches_tags
 from seshat.eval.models import RetrievalCorpusExample, RetrievalCorpusNode
-from seshat.models.enums import NodeState, NodeStatus
-from seshat.models.nodes import KBNode, NodeMetadata
 
 if TYPE_CHECKING:
     from pathlib import Path

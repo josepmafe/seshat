@@ -27,10 +27,10 @@ httpx.Client.__init__ = _httpx_no_verify
 
 import uvicorn  # noqa: E402
 
-from seshat.api.app import create_app  # noqa: E402
+from seshat.app.platform.api.app import create_app  # noqa: E402
 
 if __name__ == "__main__":
-    from seshat.utils.log import configure_logging
+    from seshat.core.utils.log import configure_logging
 
     configure_logging()
 

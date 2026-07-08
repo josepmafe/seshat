@@ -1,0 +1,36 @@
+from collections import defaultdict
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+from seshat.core.models.enums import CallType, JobStatus
+
+
+class UsageRecord(BaseModel):
+    call_type: CallType
+    units: float = Field(description="Number of tokens, seconds, or other units consumed.")
+
+
+class ErrorPayload(BaseModel):
+    stage: str
+    reason: str = Field(description="Human-readable error message.")
+    recoverable: bool = Field(description="Whether the job can be retried without changes.")
+    status: JobStatus
+    usage: dict[str, list[UsageRecord]] = Field(default_factory=lambda: defaultdict[str, list[UsageRecord]](list))
+
+
+class JobResponse(BaseModel):
+    job_id: str
+    status: JobStatus
+    created_at: datetime
+    updated_at: datetime
+    finished_at: datetime | None = None
+    idempotency_key: str | None = Field(
+        default=None, description="Client-supplied idempotency key, echoed from the submission request."
+    )
+    stage_progress: str | None = Field(
+        default=None, description="Human-readable progress string for the current stage."
+    )
+    error: ErrorPayload | None = None
+    mlflow_run_id: str | None = None
+    confidence_threshold: float | None = None

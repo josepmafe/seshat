@@ -9,8 +9,8 @@ import mlflow
 import mlflow.genai
 import mlflow.tracing
 
+from seshat.core.utils.hashing import fingerprint
 from seshat.eval.corpus_tags import CorpusTagFilter, corpus_tag_summary
-from seshat.utils.hashing import fingerprint
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from mlflow.entities.span import LiveSpan
     from mlflow.tracking.fluent import ActiveModel
 
-    from seshat.config.settings import ReflectiveLLMConfig, VectorIndexConfig, _LLMConfig
+    from seshat.core.config.settings import ReflectiveLLMConfig, VectorIndexConfig, _LLMConfig
 
 
 class Fingerprintable(Protocol):

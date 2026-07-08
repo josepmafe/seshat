@@ -4,18 +4,18 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from seshat.app.platform.observability.usage_tracker import track_eval_usage
+from seshat.core.models.enums import SearchMode
+from seshat.core.utils.hashing import fingerprint
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.calibration.models import RetrievalSweepPoint, RetrievalSweepResult
 from seshat.eval.models import RetrievalScoredResult
 from seshat.eval.retrieval.corpus_loader import load_corpus
 from seshat.eval.retrieval.scorers import TOP_K
-from seshat.models.enums import SearchMode
-from seshat.observability.usage_tracker import track_eval_usage
-from seshat.utils.hashing import fingerprint
 
 if TYPE_CHECKING:
-    from seshat.config.eval_settings import EvalConfig
-    from seshat.vector_store.base_store import AbstractVectorStore
+    from seshat.core.config.eval_settings import EvalConfig
+    from seshat.infra.vector_store.base_store import AbstractVectorStore
 
 type _Slug = str
 type _ScoredResult = tuple[_Slug, float]  # (corpus slug, similarity score)

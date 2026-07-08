@@ -5,14 +5,14 @@ from typing import Any
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 
-from seshat.config.settings import (
+from seshat.app.repositories.node_repository import NodeRepository
+from seshat.core.config.settings import (
     GroundingLLMConfig,
     IdentificationLLMConfig,
     ResolutionLLMConfig,
 )
-from seshat.models.enums import LLMProvider, RelationshipType
-from seshat.models.nodes import KBNode, KBRelationship
-from seshat.repositories.node_repository import NodeRepository
+from seshat.core.models.enums import LLMProvider, RelationshipType
+from seshat.core.models.nodes import KBNode, KBRelationship
 from tests.integration.conftest import _BEDROCK_PROFILE, _anthropic_reachable, _azure_available, _bedrock_available
 
 _PROVIDER2CHEAP_MODEL_MAPPING: dict[LLMProvider, str] = {

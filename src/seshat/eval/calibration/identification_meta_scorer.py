@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from seshat.app.platform.observability.usage_tracker import track_eval_usage
+from seshat.core.models.enums import ConceptType
+from seshat.core.models.nodes import IdentificationResult
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.calibration.models import (
     IdentificationSweepPoint,
@@ -14,16 +17,13 @@ from seshat.eval.calibration.models import (
 )
 from seshat.eval.identification.corpus_loader import load_corpus
 from seshat.eval.identification.matcher import match_nodes
-from seshat.models.enums import ConceptType
-from seshat.models.nodes import IdentificationResult
-from seshat.observability.usage_tracker import track_eval_usage
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from seshat.config.eval_settings import EvalConfig
+    from seshat.app.pipeline.extraction.orchestrator import ExtractionOrchestrator
+    from seshat.core.config.eval_settings import EvalConfig
     from seshat.eval.models import IdentificationCorpusExample
-    from seshat.pipeline.extraction.orchestrator import ExtractionOrchestrator
 
 # corpus_id → (pipeline result, corpus example)
 type _Cache = dict[str, tuple[IdentificationResult, IdentificationCorpusExample]]

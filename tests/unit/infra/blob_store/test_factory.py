@@ -1,0 +1,15 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from seshat.infra.blob_store.factory import get_blob_store
+from seshat.infra.blob_store.s3_store import S3BlobStore
+
+if TYPE_CHECKING:
+    from seshat.core.config.settings import SeshatConfig
+
+
+class TestGetBlobStore:
+    def test_returns_s3_blob_store(self, minimal_config: SeshatConfig):
+        store = get_blob_store(minimal_config)
+        assert isinstance(store, S3BlobStore)
