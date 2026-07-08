@@ -155,12 +155,11 @@ async def vector_store(pg_test_url):
     await store._store.adelete_collection()
 
 
-@pytest.fixture(scope="session")
-def event_loop_policy():
+def pytest_asyncio_loop_factories(config, item):
     # psycopg async requires SelectorEventLoop; Windows defaults to ProactorEventLoop
     if sys.platform == "win32":
-        return asyncio.WindowsSelectorEventLoopPolicy()
-    return asyncio.DefaultEventLoopPolicy()
+        return {"selector": asyncio.WindowsSelectorEventLoopPolicy().new_event_loop}
+    return {"default": asyncio.DefaultEventLoopPolicy().new_event_loop}
 
 
 @pytest.fixture(scope="session")
