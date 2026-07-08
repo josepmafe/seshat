@@ -19,6 +19,8 @@ from seshat.core.utils.log import configure_logging, get_logger, set_job_id
 logger = get_logger(__name__)
 
 app = typer.Typer(name="seshat", help="Seshat — meeting knowledge base CLI", no_args_is_help=True)
+eval_app = typer.Typer(help="Eval harnesses, calibration, and tooling", no_args_is_help=True)
+app.add_typer(eval_app, name="eval")
 
 _HARNESS_TYPES = ["grounding", "grouping", "identification", "resolution", "retrieval"]
 _CALIBRATION_TYPES = ["retrieval", "identification"]
@@ -36,7 +38,7 @@ def _patch_httpx_ssl() -> None:
     httpx.Client.__init__ = _no_verify  # type: ignore[method-assign]
 
 
-@app.command("eval")
+@eval_app.command("harness")
 def eval_cmd(
     harness: Annotated[str, typer.Argument(help=f"Harness to run: {' | '.join(_HARNESS_TYPES)}")],
     tags: Annotated[
@@ -72,7 +74,7 @@ def eval_cmd(
     asyncio.run(_run())
 
 
-@app.command("calibrate")
+@eval_app.command("calibrate")
 def calibrate_cmd(
     component: Annotated[str, typer.Argument(help=f"Component to calibrate: {' | '.join(_CALIBRATION_TYPES)}")],
     pc_curve: bool = typer.Option(False, "--pc-curve", help="Plot precision-coverage curve (identification only)"),
@@ -104,6 +106,18 @@ def calibrate_cmd(
             await run(**_kwargs)
 
     asyncio.run(_run())
+
+
+@eval_app.command("mlflow")
+def mlflow_cmd(
+    port: int = typer.Option(5000, "--port", help="Port to serve MLflow UI on"),
+) -> None:
+    """Start the MLflow tracking server."""
+    result = subprocess.run(
+        ["uv", "run", "--no-sync", "mlflow", "server", "--port", str(port)],
+        check=False,
+    )
+    raise typer.Exit(code=result.returncode)
 
 
 @app.command("api")
@@ -185,6 +199,7 @@ def _bootstrap_eval(harness_type: str) -> tuple[EvalConfig, SeshatConfig, str]:
     eval_config = EvalConfig(
         observability=ObservabilityConfig(mlflow_tracking_uri="http://localhost:5000", mlflow_experiment_name=job_id)
     )
+
     _assert_reachable(eval_config.observability.mlflow_tracking_uri, label="MLflow")
     setup_mlflow(eval_config.observability)
 
