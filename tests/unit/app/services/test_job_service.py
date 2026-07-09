@@ -42,7 +42,7 @@ def _make_service(
     extraction._config.auto_mode = False
 
     node_repo = MagicMock()
-    node_repo.write_batch = AsyncMock(return_value=len([n for n in nodes if n.status == NodeStatus.APPROVED]))
+    node_repo.write_batch = AsyncMock(return_value=(len([n for n in nodes if n.status == NodeStatus.APPROVED]), 0))
     node_repo.paginated_query = AsyncMock(return_value=[])
     node_repo.delete_node = AsyncMock()
 

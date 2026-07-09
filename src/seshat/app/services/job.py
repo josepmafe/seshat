@@ -340,18 +340,18 @@ class JobService:
                 await self._blob.put_curated_extraction(row["meeting_date"], job_id, result.model_dump_json().encode())
 
                 await self._ops.update_job_status(job_id, JobStatus.WRITING)
-                written = await self._node_repo.write_batch(result)
+                written_nodes, written_rels = await self._node_repo.write_batch(result)
 
                 mlflow.log_metrics(
                     {
-                        "nodes.written": written,
-                        "relationships.created": len(resol.relationships),
+                        "nodes.written": written_nodes,
+                        "relationships.written": written_rels,
                     }
                 )
                 mlflow.set_tag("phase", "finalized")
 
                 await self._ops.update_job_status(job_id, JobStatus.DONE)
-                logger.info("Job done: %d nodes written", written)
+                logger.info("Job done: %d node(s) and %d relationship(s) written", written_nodes, written_rels)
 
             except Exception as exc:
                 mlflow.set_tag("error", str(exc)[:250])
