@@ -14,3 +14,12 @@ services:
       - AWS_SECRET_ACCESS_KEY=
     command: >
       uv run --no-sync seshat api --reload
+
+  seshat-ui:
+    volumes:
+      - ./src/seshat_ui:/app/src/seshat_ui
+    command: >
+      uv run
+        --no-sync streamlit run src/seshat_ui/app.py
+        --server.port 8501
+        --server.address 0.0.0.0
