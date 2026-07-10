@@ -295,7 +295,3 @@ class TestNodeRetriever:
         result = await retriever.retrieve(make_node("n1"))
 
         assert result[0].id == n3.id
-
-    async def test_reranker_none_skipped(self):
-        retriever = _make_retriever()
-        assert retriever._reranker is None

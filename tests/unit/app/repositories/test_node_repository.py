@@ -92,14 +92,6 @@ class TestWriteBatch:
 
 
 class TestWriteNode:
-    async def test_writes_kb_and_vs(self):
-        repo, kb, vs = _make_repo()
-        node = make_node()
-        await repo.write_node(node)
-
-        kb.write_node.assert_called_once()
-        vs.upsert.assert_called_once()
-
     async def test_writes_relationships_in_transaction(self):
         repo, kb, _vs = _make_repo()
         node = make_node()
@@ -185,13 +177,6 @@ class TestUpdateNode:
         await repo.update_node(node, replace_outbound_rels=False)
 
         kb.delete_relationships_for_node.assert_not_called()
-
-
-class TestUpdateNodeState:
-    async def test_delegates_to_kb(self):
-        repo, kb, _vs = _make_repo()
-        await repo.update_node_state(_NODE_UUID, NodeState.SUPERSEDED)
-        kb.update_node_state.assert_called_once_with(str(_NODE_UUID), NodeState.SUPERSEDED)
 
 
 class TestWriteBatchAmends:

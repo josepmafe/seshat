@@ -96,7 +96,7 @@ class TestPreApproval:
         svc, _, _, _, ops, _ = _make_service()
         ident = await svc._run_pre_approval("job-1", b"data", _make_submission())
 
-        assert ident is not None
+        assert ident.job_id == "job-1"
         assert "job-1" in svc._results
         ops.update_job_status.assert_any_await("job-1", JobStatus.TRANSCRIBING)
         ops.update_job_status.assert_any_await("job-1", JobStatus.IDENTIFYING)

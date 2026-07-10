@@ -15,6 +15,7 @@ from seshat.core.models.enums import (
 )
 from seshat.infra.knowledge_store.pg_store import PostgresKBStore
 from tests.helpers import make_node as _make_node
+from tests.unit.infra.helpers import assert_credentials_not_in_error, assert_invalid_scheme_raises
 
 if TYPE_CHECKING:
     from seshat.core.config.settings import SeshatConfig
@@ -90,14 +91,10 @@ class TestValidateConnectionString:
         assert "+asyncpg" in caplog.text
 
     def test_invalid_scheme_raises(self):
-        with pytest.raises(ValueError, match="Invalid connection string"):
-            PostgresKBStore._validate_connection_string("mysql://user:pass@host/db")
+        assert_invalid_scheme_raises(PostgresKBStore)
 
     def test_error_message_does_not_contain_credentials(self):
-        with pytest.raises(ValueError, match="Invalid connection string") as exc_info:
-            PostgresKBStore._validate_connection_string("mysql://secret:hunter2@host/db")
-        assert "secret" not in str(exc_info.value)
-        assert "hunter2" not in str(exc_info.value)
+        assert_credentials_not_in_error(PostgresKBStore)
 
 
 class TestPaginatedQuery:

@@ -64,11 +64,13 @@ class TestSubmitJob:
         assert resp.status_code == 401
 
     async def test_returns_job_id(self, api_client):
+        state = _make_app_state()
         body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
-        async with api_client(_make_app_state(), make_current_user()) as ac:
+        async with api_client(state, make_current_user()) as ac:
             resp = await ac.post("/jobs", files={"file": ("input.yaml", b"data", "text/plain")}, data={"body": body})
         assert resp.status_code == 202
         assert "job_id" in resp.json()
+        assert state.job_service.submit.call_args.args[3] == "alice"
 
     async def test_idempotency_returns_existing_job(self, api_client):
         state = _make_app_state()
@@ -120,15 +122,6 @@ class TestSubmitJob:
         async with api_client(_make_app_state(), make_current_user(role=UserRole.REVIEWER)) as ac:
             resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": body})
         assert resp.status_code == 403
-
-    async def test_delegates_to_job_service(self, api_client):
-        state = _make_app_state()
-        body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
-        async with api_client(state, make_current_user()) as ac:
-            await ac.post("/jobs", files={"file": ("input.yaml", b"data", "text/plain")}, data={"body": body})
-        state.job_service.submit.assert_called_once()
-        call_args = state.job_service.submit.call_args
-        assert call_args.args[3] == "alice"
 
     async def test_force_requires_admin(self, api_client):
         body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}, "force": True})

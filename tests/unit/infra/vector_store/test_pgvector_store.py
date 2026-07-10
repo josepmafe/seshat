@@ -8,6 +8,7 @@ from langchain_core.documents import Document
 
 from seshat.core.models.api_graph import NodeFilter
 from seshat.infra.vector_store.pgvector_store import PGVectorStore, _rrf
+from tests.unit.infra.helpers import assert_credentials_not_in_error, assert_invalid_scheme_raises
 
 _N1 = "00000000-0000-0000-0000-000000000001"
 _N2 = "00000000-0000-0000-0000-000000000002"
@@ -99,14 +100,10 @@ class TestValidateConnectionString:
         assert caplog.text == ""
 
     def test_invalid_scheme_raises(self):
-        with pytest.raises(ValueError, match="Invalid connection string"):
-            PGVectorStore._validate_connection_string("mysql://user:pass@host/db")
+        assert_invalid_scheme_raises(PGVectorStore)
 
     def test_error_message_does_not_contain_credentials(self):
-        with pytest.raises(ValueError, match="Invalid connection string") as exc_info:
-            PGVectorStore._validate_connection_string("mysql://secret:hunter2@host/db")
-        assert "secret" not in str(exc_info.value)
-        assert "hunter2" not in str(exc_info.value)
+        assert_credentials_not_in_error(PGVectorStore)
 
     def test_psycopg2_qualifier_replaced(self):
         result = PGVectorStore._validate_connection_string("postgresql+psycopg2://user:pass@host/db")
