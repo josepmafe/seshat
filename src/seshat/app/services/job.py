@@ -158,7 +158,7 @@ class JobService:
         else:
             logger.warning("approve called after _run_post_approval already consumed results for job %s", job_id)
 
-        await self._ops.update_job_status(job_id, JobStatus.WRITING)
+        await self._ops.update_job_status(job_id, JobStatus.RESOLVING)
         await self._enqueue(job_id, self._run_post_approval)
 
         return JobActionResponse(status="accepted")
@@ -278,7 +278,7 @@ class JobService:
                     )
 
                 mlflow.set_tag("phase", "identification")
-                await self._ops.update_job_status(job_id, JobStatus.EXTRACTING)
+                await self._ops.update_job_status(job_id, JobStatus.IDENTIFYING)
                 config_override = submission.overrides.extraction if submission.overrides else None
                 identification_result = await self._extraction.run_identification(
                     doc, job_id, user_id=user_id, config_override=config_override
@@ -330,6 +330,7 @@ class JobService:
                 self._results.pop(job_id, None)
 
                 approved = [n for n in result.nodes if n.status == NodeStatus.APPROVED]
+                await self._ops.update_job_status(job_id, JobStatus.RESOLVING)
                 resolution_result = await self._extraction.run_resolution(job_id, approved=approved)
 
                 # update the resolved relationships in the result before writing to the database

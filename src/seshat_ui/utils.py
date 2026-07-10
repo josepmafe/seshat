@@ -16,8 +16,9 @@ _NODE_CACHE_KEY = "_node_cache"
 JOB_STATUS_CHIP: dict[str, str] = {
     "pending": "⏳",
     "transcribing": "🎙️",
-    "extracting": "🔍",
+    "identifying": "🔍",
     "awaiting_review": "👁️",
+    "resolving": "🔗",
     "writing": "✍️",
     "done": "✅",
     "failed": "❌",

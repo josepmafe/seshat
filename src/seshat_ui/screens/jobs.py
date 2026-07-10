@@ -14,13 +14,37 @@ if TYPE_CHECKING:
 
     from seshat_ui.api_client import ApiClient
 
-_IN_PROGRESS_STATUSES = ("pending", "transcribing", "extracting", "writing")
-_STAGES = ["pending", "transcribing", "extracting", "writing", "awaiting_review", "done"]
+_IN_PROGRESS_STATUSES = ("pending", "transcribing", "identifying", "resolving", "writing")
+_STAGES = ["pending", "transcribing", "identifying", "awaiting_review", "resolving", "writing", "done"]
+_STAGE_LABELS = {
+    "pending": "Queued — waiting to start...",
+    "transcribing": "Transcribing audio...",
+    "identifying": "Identifying knowledge nodes...",
+    "awaiting_review": "Awaiting review...",
+    "resolving": "Resolving node relationships...",
+    "writing": "Writing to knowledge base...",
+    "done": "Complete",
+}
+
 _FILE_TYPES = {
     "audio": ["mp3", "wav", "m4a"],
     "text": ["yaml", "json"],
 }
 _ALL_FILE_TYPES = reduce(list.__add__, _FILE_TYPES.values())
+
+_SOURCE_TYPES = ["all", "audio", "text"]
+_JOB_STATUSES = [
+    "all",
+    "pending",
+    "transcribing",
+    "identifying",
+    "awaiting_review",
+    "resolving",
+    "writing",
+    "done",
+    "failed",
+]
+_PAGE_SIZE = 25
 
 
 def render(client: ApiClient, mlflow_ui_base: str = "") -> None:
@@ -112,8 +136,6 @@ def _render_submit(client: ApiClient) -> None:
         submitted = st.form_submit_button("Submit")
 
     if submitted:
-        st.success("Job submitted successfully. You will be redirected to the job status page.")
-
         if not uploaded:
             st.error("Please upload a file.")
             return
@@ -136,7 +158,9 @@ def _render_submit(client: ApiClient) -> None:
         resp = client.submit_job(uploaded.read(), uploaded_filename, body)
 
         if resp.is_success:
-            st.session_state["job_id"] = resp.json()["job_id"]
+            job_id = resp.json()["job_id"]
+            st.success(f"Job {job_id[:8]!r} submitted successfully. You will be redirected to the job status page.")
+            st.session_state["job_id"] = job_id
             st.rerun()
         elif resp.status_code == 409:
             data = resp.json()
@@ -200,11 +224,6 @@ def _render_summary(client: ApiClient, job_id: str, mlflow_ui_base: str = "") ->
     if col2.button("Submit another job"):
         st.session_state.pop("job_id", None)
         st.rerun()
-
-
-_SOURCE_TYPES = ["all", "audio", "text"]
-_JOB_STATUSES = ["all", "pending", "transcribing", "extracting", "awaiting_review", "writing", "done", "failed"]
-_PAGE_SIZE = 25
 
 
 def _render_job_search(client: ApiClient) -> None:
@@ -286,19 +305,19 @@ def _render_progress(client: ApiClient, job_id: str) -> None:
         return
 
     status = job["status"]
+    if status not in _IN_PROGRESS_STATUSES:
+        st.rerun(scope="app")
+        return
+
     st.header(f"Processing — {job_id[:8]}")
 
     idx = _STAGES.index(status) if status in _STAGES else 0
-    st.progress((idx + 1) / len(_STAGES), text=status.upper())
+    label = _STAGE_LABELS.get(status, status.replace("_", " ").title())
+    st.progress((idx + 1) / len(_STAGES), text=label)
 
     elapsed = job.get("elapsed_seconds")
     if elapsed is not None:
         st.caption(f"Elapsed: {elapsed:.1f}s")
-
-    st.info("Waiting for the pipeline to finish…")
-
-    if status not in _IN_PROGRESS_STATUSES:
-        st.rerun(scope="app")
 
 
 @st.fragment
@@ -317,12 +336,8 @@ def _render_review(client: ApiClient, job: dict) -> None:
     pending = [n for n in nodes if n["status"] == "pending_review"]
 
     if not pending:
-        st.info("No nodes pending review — submitting automatically.")
-        resp = client.approve_job(job_id, {"decisions": []})
-        if resp.is_success:
-            st.rerun(scope="app")
-        else:
-            st.error(f"Auto-approve failed: {resp.text}")
+        st.info("No nodes pending review — pipeline will complete automatically.")
+        st.rerun(scope="app")
         return
 
     st.write(f"**{len(pending)} nodes pending review**")
