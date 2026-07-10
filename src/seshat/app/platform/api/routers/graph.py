@@ -81,8 +81,11 @@ async def search_graph(
     node_filter: Annotated[NodeFilter, Depends()],
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
     search_mode: SearchMode = SearchMode.SEMANTIC,
+    score_threshold: Annotated[float | None, Query(ge=0, le=1)] = None,
 ) -> NodeSearchResponse:
-    results = await state.graph_service.search(query=q, limit=limit, node_filter=node_filter, mode=search_mode)
+    results = await state.graph_service.search(
+        query=q, limit=limit, node_filter=node_filter, mode=search_mode, score_threshold=score_threshold
+    )
     return NodeSearchResponse(results=results)
 
 

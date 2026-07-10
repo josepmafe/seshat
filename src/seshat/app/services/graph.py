@@ -70,9 +70,16 @@ class GraphService:
         return await self._repo.query(node_filter)
 
     async def search(
-        self, query: str, limit: int, node_filter: NodeFilter, mode: SearchMode = SearchMode.SEMANTIC
+        self,
+        query: str,
+        limit: int,
+        node_filter: NodeFilter,
+        mode: SearchMode = SearchMode.SEMANTIC,
+        score_threshold: float | None = None,
     ) -> list[NodeSearchResult]:
-        search_results = await self._repo.search(query=query, top_k=limit, node_filter=node_filter, mode=mode)
+        search_results = await self._repo.search(
+            query=query, top_k=limit, node_filter=node_filter, mode=mode, score_threshold=score_threshold
+        )
         scored = mode in (SearchMode.SEMANTIC, SearchMode.KEYWORD)
         results: list[NodeSearchResult] = []
 

@@ -636,6 +636,28 @@ class TestSearch:
         _, kwargs = repo.search.call_args
         assert kwargs["mode"] == SearchMode.KEYWORD
 
+    async def test_score_threshold_forwarded_to_repo(self):
+        svc, repo = _make_service()
+        repo.search = AsyncMock(return_value=[])
+
+        from seshat.core.models.api_graph import NodeFilter
+
+        await svc.search("q", limit=5, node_filter=NodeFilter(), score_threshold=0.75)
+
+        _, kwargs = repo.search.call_args
+        assert kwargs["score_threshold"] == 0.75
+
+    async def test_score_threshold_none_by_default(self):
+        svc, repo = _make_service()
+        repo.search = AsyncMock(return_value=[])
+
+        from seshat.core.models.api_graph import NodeFilter
+
+        await svc.search("q", limit=5, node_filter=NodeFilter())
+
+        _, kwargs = repo.search.call_args
+        assert kwargs["score_threshold"] is None
+
 
 def _make_rel(src_id=_UUID_1, tgt_id=_UUID_2) -> KBRelationship:
     from datetime import UTC, datetime
