@@ -737,3 +737,14 @@ class TestDeleteRelationship:
         await svc.delete_relationship(rel.rel_id)
 
         repo.delete_relationship.assert_called_once_with(rel)
+
+
+class TestTraverseImpactDepthZero:
+    async def test_depth_zero_returns_empty(self):
+        svc, repo = _make_service()
+        repo.get_neighbours = AsyncMock(return_value=[make_node("n2")])
+
+        result = await svc.traverse_impact(_UUID_1, depth=0, rel_types=None, min_confidence=0.0)
+
+        assert result.nodes == []
+        repo.get_neighbours.assert_not_called()

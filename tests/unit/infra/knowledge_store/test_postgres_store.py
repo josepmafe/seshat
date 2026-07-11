@@ -4,8 +4,9 @@ import json
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
+import asyncpg
 import pytest
 
 from seshat.core.models.api_graph import NodeFilter
@@ -13,7 +14,7 @@ from seshat.core.models.enums import (
     ConceptType,
     NodeState,
 )
-from seshat.infra.knowledge_store.pg_store import PostgresKBStore
+from seshat.infra.knowledge_store.pg_store import PostgresKBStore, _pg_should_retry
 from tests.helpers import make_node as _make_node
 from tests.unit.infra.helpers import assert_credentials_not_in_error, assert_invalid_scheme_raises
 
@@ -120,3 +121,59 @@ class TestPaginatedQuery:
 
         assert len(result) == page_size
         assert store.query.call_count == 2
+
+    async def test_non_zero_initial_offset_is_preserved(self, store: PostgresKBStore):
+        """If the caller passes offset=5 in the NodeFilter, the first page query must start at 5."""
+        page = [_make_node(f"n{i}") for i in range(3)]
+        store.query = AsyncMock(return_value=page)
+
+        await store.paginated_query(NodeFilter(limit=10, offset=5))
+
+        first_call_filter: NodeFilter = store.query.call_args_list[0].args[0]
+        assert first_call_filter.offset == 5
+
+
+class TestUpdateNodeStateKeyError:
+    async def test_update_node_state_zero_rows_raises_key_error(self, store: PostgresKBStore):
+        store._pool = MagicMock()
+        store._pool.execute = AsyncMock(return_value="UPDATE 0")
+
+        with pytest.raises(KeyError, match="not found"):
+            await store.update_node_state("missing-id", NodeState.SUPERSEDED)
+
+    async def test_update_node_zero_rows_raises_key_error(self, store: PostgresKBStore):
+        store._pool = MagicMock()
+        store._pool.execute = AsyncMock(return_value="UPDATE 0")
+
+        node = _make_node("n1")
+        with pytest.raises(KeyError, match="not found"):
+            await store.update_node(node)
+
+
+class TestPgShouldRetry:
+    def test_non_postgres_exception_returns_true(self):
+        assert _pg_should_retry(RuntimeError("network")) is True
+
+    def test_retryable_postgres_subtype_returns_true(self):
+        assert _pg_should_retry(asyncpg.TooManyConnectionsError()) is True
+        assert _pg_should_retry(asyncpg.DeadlockDetectedError()) is True
+
+    def test_non_retryable_postgres_subtype_returns_false(self):
+        assert _pg_should_retry(asyncpg.UniqueViolationError()) is False
+        assert _pg_should_retry(asyncpg.ForeignKeyViolationError()) is False
+
+
+class TestCountInboundRelationshipsFilter:
+    async def test_rel_types_filter_is_passed_as_second_param(self, store: PostgresKBStore):
+        """When rel_types is non-empty, the query must receive the list as a second parameter."""
+        pool = MagicMock()
+        fetchrow_result = MagicMock()
+        fetchrow_result.__getitem__ = MagicMock(return_value=3)
+        pool.fetchrow = AsyncMock(return_value=fetchrow_result)
+        store._pool = pool
+
+        await store.count_inbound_relationships("node-id", rel_types=["supersedes"])
+
+        call_args = pool.fetchrow.call_args
+        assert len(call_args.args) >= 3
+        assert call_args.args[2] == ["supersedes"]

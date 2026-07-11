@@ -55,3 +55,21 @@ class TestTextValidator:
     def test_unsupported_extension_raises(self):
         with pytest.raises(TextValidationError, match="Unsupported"):
             TextValidator.parse(b"{}", filename="meeting.txt")
+
+    def test_yml_extension_accepted_as_yaml_alias(self):
+        raw = self._yaml_bytes({"date": "2026-04-21", "content": "We decided."})
+        result = TextValidator.parse(raw, filename="meeting.yml")
+        assert isinstance(result, ParsedTextInput)
+
+    def test_yaml_top_level_list_raises(self):
+        raw = b"- item1\n- item2\n"
+        with pytest.raises(TextValidationError):
+            TextValidator.parse(raw, filename="meeting.yaml")
+
+    def test_malformed_json_raises_text_validation_error_not_json_decode_error(self):
+        raw = b"{invalid json"
+        with pytest.raises(TextValidationError):
+            TextValidator.parse(raw, filename="meeting.json")
+        with pytest.raises(TextValidationError) as exc_info:
+            TextValidator.parse(raw, filename="meeting.json")
+        assert not isinstance(exc_info.value, json.JSONDecodeError)

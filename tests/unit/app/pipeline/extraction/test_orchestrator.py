@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
@@ -6,12 +7,27 @@ import pytest
 
 from seshat.app.agents.grounding import GroundingRetryExhaustedError
 from seshat.app.agents.identification.base import IdentificationRetryExhaustedError
-from seshat.app.pipeline.extraction.orchestrator import ExtractionOrchestrator, _assemble_kb_hint
+from seshat.app.pipeline.extraction.orchestrator import ExtractionOrchestrator, _assemble_kb_hint, _deduplicate
+from seshat.app.pipeline.extraction.pending_node import _PendingNode
 from seshat.core.config.settings import ExtractionConfig, GroundingLLMConfig
 from seshat.core.models.enums import ApprovalMethod, ConceptType, NodeStatus
+from seshat.core.utils.tokens import count_tokens
+from seshat.infra.blob_store.s3_store import BlobNotFoundError
 from tests.helpers import make_anchored_concept, make_doc, make_node
 
 TRANSCRIPT = "we will use PostgreSQL for the main database"
+
+
+def _make_pending_node(title: str, heuristics: float, description: str = "desc") -> _PendingNode:
+    return _PendingNode(
+        concept_type=ConceptType.DECISION,
+        title=title,
+        description=description,
+        quote_anchors=[],
+        concept_fields={},
+        job_id="job-1",
+        heuristics=heuristics,
+    )
 
 
 def _make_concept(title: str, description: str = "A decision.", quote: str | None = None):
@@ -464,3 +480,73 @@ class TestAssembleKbHint:
         node = node.model_copy(update={"metadata": node.metadata.model_copy(update={"meeting_date": None})})
         result = _assemble_kb_hint([node], max_hint_tokens=1000)
         assert "unknown" in result
+
+    def test_first_node_exactly_at_token_cap_is_included_second_breaks(self):
+        node1 = make_node("n1", title="A")
+        snippet1 = f"{node1.title} (date {node1.metadata.meeting_date.isoformat()}): {node1.description[:80]}"
+        cost1 = count_tokens(snippet1)
+
+        node2 = make_node("n2", title="B")
+
+        result = _assemble_kb_hint([node1, node2], max_hint_tokens=cost1)
+
+        lines = [line for line in result.splitlines() if line.strip()]
+        assert len(lines) == 1
+        assert node1.title in result
+        assert node2.title not in result
+
+
+class TestDeduplication:
+    def test_higher_score_incoming_replaces_existing(self, caplog):
+        existing = _make_pending_node("Use PostgreSQL", heuristics=0.5, description="short")
+        incoming = _make_pending_node("Use PostgreSQL", heuristics=0.9, description="short")
+
+        with caplog.at_level(logging.WARNING, logger="seshat.app.pipeline.extraction.orchestrator"):
+            result = _deduplicate([existing, incoming])
+
+        assert len(result) == 1
+        assert result[0].heuristics == 0.9
+        assert any("replacing" in r.message.lower() for r in caplog.records)
+
+    def test_lower_score_incoming_is_discarded(self, caplog):
+        existing = _make_pending_node("Use PostgreSQL", heuristics=0.9)
+        incoming = _make_pending_node("Use PostgreSQL", heuristics=0.5)
+
+        with caplog.at_level(logging.WARNING, logger="seshat.app.pipeline.extraction.orchestrator"):
+            result = _deduplicate([existing, incoming])
+
+        assert len(result) == 1
+        assert result[0].heuristics == 0.9
+
+    def test_equal_score_longer_description_wins(self):
+        short = _make_pending_node("Use PostgreSQL", heuristics=0.8, description="short")
+        long = _make_pending_node("Use PostgreSQL", heuristics=0.8, description="much longer description here")
+
+        result = _deduplicate([short, long])
+
+        assert len(result) == 1
+        assert result[0].description == "much longer description here"
+
+
+class TestRunIdentificationBlobNotFound:
+    async def test_blob_returns_none_raises_blob_not_found_error(self):
+        orchestrator = _make_orchestrator()
+        orchestrator._blob.get_raw_transcript = AsyncMock(return_value=None)
+
+        with pytest.raises(BlobNotFoundError):
+            await orchestrator.run_identification(make_doc(), job_id="job-1")
+
+
+class TestRunResolutionNoLLMCallWhenNoTargets:
+    async def test_approved_nodes_but_retriever_returns_empty_skips_resolve_all(self):
+        approved = make_node("n1", status=NodeStatus.APPROVED)
+        orchestrator = _make_orchestrator(kb_approved_nodes=[approved])
+        orchestrator._retriever.retrieve = AsyncMock(return_value=[])
+
+        result = await orchestrator.run_resolution(job_id="job-1")
+
+        orchestrator._resolution_registry.resolve_all.assert_called_once()
+        call_args = orchestrator._resolution_registry.resolve_all.call_args
+        per_source_targets = call_args.args[1]
+        assert all(len(targets) == 0 for targets in per_source_targets.values())
+        assert result.relationships == []
