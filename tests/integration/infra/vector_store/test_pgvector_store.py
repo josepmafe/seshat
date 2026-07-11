@@ -169,3 +169,61 @@ class TestHybridSearch:
         results = await hybrid_store.search(shared_text, top_k=5, mode=SearchMode.HYBRID)
 
         assert results[0].node_id == _TEST_NODE_UUID
+
+
+class TestScoreThreshold:
+    pytestmark = _EMBEDDING_MARKS
+
+    async def test_low_threshold_includes_relevant_result(self, vector_store: PGVectorStore):
+        await vector_store.upsert(
+            _TEST_NODE_ID,
+            "Use PostgreSQL for transactional data",
+            {"node_type": "decision", "confidence": 0.9},
+        )
+        results = await vector_store.search("PostgreSQL transactional", top_k=5, score_threshold=0.0)
+        assert any(r.node_id == _TEST_NODE_UUID for r in results)
+
+    async def test_high_threshold_excludes_irrelevant_result(self, vector_store: PGVectorStore):
+        await vector_store.upsert(
+            _TEST_NODE_ID,
+            "Use PostgreSQL for transactional data",
+            {"node_type": "decision", "confidence": 0.9},
+        )
+        results = await vector_store.search("PostgreSQL transactional", top_k=5, score_threshold=0.999)
+        # A threshold of 0.999 is near-impossible to satisfy for real embeddings
+        assert not any(r.node_id == _TEST_NODE_UUID for r in results)
+
+
+@pytest.fixture
+async def fresh_keyword_store(pg_test_url):
+    store = await _make_store_with_extractor(pg_test_url, "test_pagination")
+    yield store
+    await store._store.adelete_collection()
+
+
+class TestPagination:
+    async def test_top_k_limits_results(self, fresh_keyword_store: PGVectorStore):
+        ids = [f"00000000-0000-0000-0000-{i:012d}" for i in range(1, 6)]
+        for node_id in ids:
+            await fresh_keyword_store.upsert(
+                node_id,
+                f"Decision about {_DISTINCTIVE_TERM} strategy {node_id}",
+                {"node_type": "decision", "confidence": 0.9},
+            )
+
+        results = await fresh_keyword_store.search(_DISTINCTIVE_TERM, top_k=3, mode=SearchMode.KEYWORD)
+
+        assert len(results) == 3
+
+
+@pytest.fixture
+async def empty_keyword_store(pg_test_url):
+    store = await _make_store_with_extractor(pg_test_url, "test_empty_collection")
+    yield store
+    await store._store.adelete_collection()
+
+
+class TestEmptyCollection:
+    async def test_search_on_fresh_store_returns_empty_not_error(self, empty_keyword_store: PGVectorStore):
+        results = await empty_keyword_store.search("anything", top_k=5, mode=SearchMode.KEYWORD)
+        assert results == []

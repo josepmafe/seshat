@@ -8,13 +8,15 @@ import pytest
 from seshat.app.repositories.node_repository import NodeRepository
 from seshat.app.services.graph import GraphService, NodeNotFoundError, NodePreconditionError
 from seshat.core.config.settings import KBStoreConfig
-from seshat.core.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
+from seshat.core.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeFilter, NodeOverride, RelationshipInput
 from seshat.core.models.enums import (
     ApprovalMethod,
     ConceptType,
     GraphDirection,
     IngestionSource,
+    NodeState,
     RelationshipType,
+    SearchMode,
 )
 from seshat.core.models.nodes import NodeMetadata
 from seshat.infra.knowledge_store.pg_store import PostgresKBStore
@@ -235,8 +237,6 @@ class TestDeleteIntegration:
 
     async def test_delete_superseding_node_reverts_target_to_current(self, svc, kb_store):
         """Deleting the only superseding node must revert the target back to CURRENT."""
-        from seshat.core.models.enums import NodeState
-
         target = make_node("revert-target")
         await kb_store.write_node(target)
 
@@ -258,3 +258,113 @@ class TestDeleteIntegration:
         fetched_after = await kb_store.get_node(str(target.id))
         assert fetched_after is not None
         assert fetched_after.state == NodeState.CURRENT
+
+
+class TestGraphServiceSearch:
+    async def test_keyword_search_returns_matching_node(self, svc, kb_store):
+        node_a = await svc.create(
+            _create_payload(title="Zymurgy brewing process", description="We use zymurgy"),
+            user_id="alice",
+        )
+        await svc.create(
+            _create_payload(title="Unrelated caching decision", description="Use Redis"),
+            user_id="alice",
+        )
+
+        results = await svc.search(
+            query="zymurgy",
+            limit=5,
+            node_filter=NodeFilter(),
+            mode=SearchMode.KEYWORD,
+        )
+
+        result_ids = [r.detail.node.id for r in results]
+        assert node_a.id in result_ids
+        assert all(r.score is not None for r in results)
+
+    async def test_keyword_search_no_match_returns_empty(self, svc):
+        await svc.create(
+            _create_payload(title="PostgreSQL decision", description="Use PostgreSQL"),
+            user_id="alice",
+        )
+
+        results = await svc.search(
+            query="xylophone quasar",
+            limit=5,
+            node_filter=NodeFilter(),
+            mode=SearchMode.KEYWORD,
+        )
+
+        assert results == []
+
+
+class TestGraphServiceTraverseImpact:
+    async def test_supersedes_chain_depth_two(self, svc, kb_store):
+        """A→SUPERSEDES→B→SUPERSEDES→C; traverse_impact(A, depth=2) must return B and C."""
+        node_a = await svc.create(_create_payload(title="A"), user_id="alice")
+        node_b = await svc.create(
+            _create_payload(
+                title="B",
+                relationships=[RelationshipInput(target_id=str(node_a.id), rel_type=RelationshipType.SUPERSEDES)],
+            ),
+            user_id="alice",
+        )
+        node_c = await svc.create(
+            _create_payload(
+                title="C",
+                relationships=[RelationshipInput(target_id=str(node_b.id), rel_type=RelationshipType.SUPERSEDES)],
+            ),
+            user_id="alice",
+        )
+
+        await kb_store.update_node_state(str(node_a.id), NodeState.SUPERSEDED)
+        await kb_store.update_node_state(str(node_b.id), NodeState.SUPERSEDED)
+
+        impact = await svc.traverse_impact(
+            node_id=node_c.id,
+            depth=2,
+            rel_types=None,
+            min_confidence=0.0,
+            direction=GraphDirection.OUTBOUND,
+        )
+
+        impact_node_ids = {n.node.id for n in impact.nodes}
+        assert node_a.id in impact_node_ids
+        assert node_b.id in impact_node_ids
+
+        depth_by_id = {n.node.id: n.traversal_depth for n in impact.nodes}
+        assert depth_by_id[node_b.id] == 1
+        assert depth_by_id[node_a.id] == 2
+
+    async def test_depth_one_does_not_include_two_hop_node(self, svc, kb_store):
+        """traverse_impact with depth=1 must not include nodes two hops away."""
+        node_a = await svc.create(_create_payload(title="A-d1"), user_id="alice")
+        node_b = await svc.create(
+            _create_payload(
+                title="B-d1",
+                relationships=[RelationshipInput(target_id=str(node_a.id), rel_type=RelationshipType.SUPERSEDES)],
+            ),
+            user_id="alice",
+        )
+        node_c = await svc.create(
+            _create_payload(
+                title="C-d1",
+                relationships=[RelationshipInput(target_id=str(node_b.id), rel_type=RelationshipType.SUPERSEDES)],
+            ),
+            user_id="alice",
+        )
+
+        await kb_store.update_node_state(str(node_a.id), NodeState.SUPERSEDED)
+        await kb_store.update_node_state(str(node_b.id), NodeState.SUPERSEDED)
+
+        impact = await svc.traverse_impact(
+            node_id=node_c.id,
+            depth=1,
+            rel_types=None,
+            min_confidence=0.0,
+            direction=GraphDirection.OUTBOUND,
+        )
+
+        impact_node_ids = {n.node.id for n in impact.nodes}
+        assert node_b.id in impact_node_ids
+        assert node_a.id not in impact_node_ids
