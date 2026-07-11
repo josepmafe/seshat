@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-from seshat.app.platform.api.state import AppState
 from seshat.app.services.job import (
     JobNotFoundError,
     JobStateError,
@@ -16,10 +15,10 @@ from seshat.core.models.api_responses import JobActionResponse, JobSubmitRespons
 from seshat.core.models.enums import JobStatus, UserRole
 from seshat.core.models.nodes import ExtractionResult
 from tests.helpers import make_node
-from tests.unit.app.platform.api.conftest import make_current_user
+from tests.unit.app.platform.api.conftest import make_app_state, make_current_user
 
 
-def _make_app_state(**overrides) -> AppState:
+def _make_app_state(**overrides):
     job_service = MagicMock()
     job_service.submit = AsyncMock(return_value=JobSubmitResponse(job_id="job-1"))
     job_service.get = AsyncMock(return_value=None)
@@ -33,16 +32,7 @@ def _make_app_state(**overrides) -> AppState:
     config.api.max_jobs_per_user_per_hour = 10
     config.api.max_concurrent_jobs = 5
 
-    state = AppState(
-        config=config,
-        admin_service=MagicMock(),
-        health_service=MagicMock(),
-        graph_service=MagicMock(),
-        job_service=job_service,
-    )
-    for k, v in overrides.items():
-        object.__setattr__(state, k, v)
-    return state
+    return make_app_state(config=config, job_service=job_service, **overrides)
 
 
 def _make_job_response(status: str = "pending") -> dict[str, Any]:

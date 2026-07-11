@@ -7,7 +7,7 @@ from seshat.infra.blob_store.s3_store import S3BlobStore
 from tests.integration.conftest import LOCALSTACK_REGION, LOCALSTACK_TEST_BUCKET
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 async def blob_store(localstack_s3_url):
     """Override shared blob_store fixture — S3BlobStore directly for low-level store tests."""
     config = BlobStoreConfig(

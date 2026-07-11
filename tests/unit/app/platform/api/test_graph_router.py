@@ -4,7 +4,6 @@ import typing
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
-from seshat.app.platform.api.state import AppState
 from seshat.app.services.graph import (
     NodeNotFoundError,
     NodePreconditionError,
@@ -16,7 +15,7 @@ from seshat.core.models.api_responses import ImpactNode, ImpactResponse, NodeDet
 from seshat.core.models.enums import ApprovalMethod, GraphDirection, RelationshipType, SearchMode, UserRole
 from tests.helpers import make_node
 from tests.integration.helpers import make_relationship
-from tests.unit.app.platform.api.conftest import make_current_user
+from tests.unit.app.platform.api.conftest import make_app_state, make_current_user
 
 _NODE_ID = UUID("00000000-0000-0000-0000-000000000001")
 _NODE_PATH = str(_NODE_ID)
@@ -25,7 +24,7 @@ _REL_ID = UUID("00000000-0000-0000-0000-000000000099")
 _REL_PATH = str(_REL_ID)
 
 
-def _make_app_state() -> AppState:
+def _make_app_state():
     graph_service = MagicMock()
     graph_service.query = AsyncMock(return_value=[])
     graph_service.search = AsyncMock(return_value=[])
@@ -44,14 +43,7 @@ def _make_app_state() -> AppState:
     graph_service.list_relationships = AsyncMock(return_value=[])
     graph_service.create_relationship = AsyncMock()
     graph_service.delete_relationship = AsyncMock()
-
-    return AppState(
-        config=MagicMock(),
-        admin_service=MagicMock(),
-        health_service=MagicMock(),
-        graph_service=graph_service,
-        job_service=MagicMock(),
-    )
+    return make_app_state(graph_service=graph_service)
 
 
 class TestQueryGraph:

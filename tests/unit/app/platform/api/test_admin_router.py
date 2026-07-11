@@ -4,23 +4,16 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 from seshat.app.platform.api.routers.admin import _get_root_key
-from seshat.app.platform.api.state import AppState
 from seshat.app.services.admin import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError
+from tests.unit.app.platform.api.conftest import make_app_state
 
 
-def _make_app_state() -> AppState:
+def _make_app_state():
     admin_service = MagicMock()
     admin_service.create_api_key = AsyncMock(return_value=("plaintext-key", "alice", "reviewer"))
     admin_service.list_api_keys = AsyncMock(return_value=[])
     admin_service.revoke_api_key = AsyncMock()
-
-    return AppState(
-        config=MagicMock(),
-        admin_service=admin_service,
-        health_service=MagicMock(),
-        graph_service=MagicMock(),
-        job_service=MagicMock(),
-    )
+    return make_app_state(admin_service=admin_service)
 
 
 def _make_key_row(key_id: int = 1, *, revoked: bool = False) -> dict:
