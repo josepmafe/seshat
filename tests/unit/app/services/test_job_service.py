@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
+import asyncpg
 import pytest
 
 from seshat.app.platform.worker.queue import AsyncioTaskQueue
@@ -28,6 +29,7 @@ from tests.helpers import make_node
 
 def _make_service(
     nodes: list | None = None,
+    **ops_overrides,
 ) -> tuple[JobService, MagicMock, MagicMock, MagicMock, MagicMock, MagicMock]:
     nodes = nodes or [make_node()]
 
@@ -75,6 +77,9 @@ def _make_service(
 
     queue = MagicMock()
     queue.enqueue = AsyncMock()
+
+    for attr, value in ops_overrides.items():
+        setattr(ops, attr, value)
 
     svc = JobService(config, ops, blob, node_repo, extraction, ingestion, queue)
     return svc, ingestion, extraction, node_repo, ops, blob
@@ -490,6 +495,30 @@ class TestSubmitContentHash:
 
         svc._ops.create_job.assert_called_once()
         assert response.job_id != "failed-job"
+
+
+class TestSubmitIdempotencyRace:
+    async def test_unique_violation_with_idempotency_key_returns_winning_job(self):
+        svc, *_ = _make_service(
+            create_job=AsyncMock(side_effect=asyncpg.UniqueViolationError()),
+            find_job_by_idempotency_key=AsyncMock(return_value={"job_id": "winner-job", "status": "pending"}),
+        )
+        sub = _make_submission()
+        sub.idempotency_key = "key-abc"
+
+        response = await svc.submit(b"data", "file.txt", sub, "alice")
+
+        assert response.job_id == "winner-job"
+
+    async def test_unique_violation_without_idempotency_key_reraises(self):
+        svc, *_ = _make_service(
+            create_job=AsyncMock(side_effect=asyncpg.UniqueViolationError()),
+        )
+        sub = _make_submission()
+        sub.idempotency_key = None
+
+        with pytest.raises(asyncpg.UniqueViolationError):
+            await svc.submit(b"data", "file.txt", sub, "alice")
 
 
 class TestSubmitRateLimit:

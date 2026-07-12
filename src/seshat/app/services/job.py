@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
+import asyncpg
 import mlflow
 
 from seshat.core.models.api_graph import NodeFilter
@@ -112,17 +113,28 @@ class JobService:
         ext = filename.rsplit(".", 1)[-1]
         raw_key = self._blob.raw_input_key(meeting_date, job_id, ext)
         submission_json = submission.model_dump_json()
-        await self._ops.create_job(
-            job_id,
-            user_id,
-            submission.source_type,
-            submission.idempotency_key,
-            now,
-            meeting_date,
-            submission_json,
-            raw_key,
-            content_hash,
-        )
+        # Two concurrent requests with the same idempotency key can both pass the
+        # check above and race to insert. The loser catches the constraint violation
+        # and re-reads the winner's row. Re-raise for any other violation (e.g. a
+        # duplicate content_hash inserted between our check and our insert).
+        try:
+            await self._ops.create_job(
+                job_id,
+                user_id,
+                submission.source_type,
+                submission.idempotency_key,
+                now,
+                meeting_date,
+                submission_json,
+                raw_key,
+                content_hash,
+            )
+        except asyncpg.UniqueViolationError:
+            if submission.idempotency_key:
+                existing = await self._ops.find_job_by_idempotency_key(submission.idempotency_key)
+                if existing:
+                    return JobSubmitResponse(job_id=existing["job_id"])
+            raise
 
         await self._blob.put_by_key(raw_key, file_bytes)
         await self._enqueue(job_id, self._run_pre_approval, file_bytes, submission, user_id)

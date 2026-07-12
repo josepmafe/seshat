@@ -92,3 +92,18 @@ class TestCheckHttp:
         with patch("seshat.app.services.health.httpx.AsyncClient", return_value=mock_client):
             result = await _check_http("http://example.com/health")
         assert result == HealthStatus.ERROR
+
+    async def test_returns_error_on_5xx_response(self):
+        import httpx
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError("500", request=MagicMock(), response=MagicMock())
+        )
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+        with patch("seshat.app.services.health.httpx.AsyncClient", return_value=mock_client):
+            result = await _check_http("http://example.com/health")
+        assert result == HealthStatus.ERROR

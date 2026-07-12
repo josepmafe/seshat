@@ -249,7 +249,10 @@ class PostgresOpsStore:
 
     async def revoke_api_key(self, key_id: int, now: datetime) -> Literal["ok", "not_found", "already_revoked"]:
         async with self.pool.acquire() as conn, conn.transaction():
-            row = await conn.fetchrow(f"SELECT revoked_at FROM {self._schema}.api_keys WHERE id=$1", key_id)
+            # FOR UPDATE prevents a concurrent revoke from reading NULL revoked_at and also
+            # executing the UPDATE — the second caller waits for this transaction to commit,
+            # then re-reads the non-NULL revoked_at and returns "already_revoked".
+            row = await conn.fetchrow(f"SELECT revoked_at FROM {self._schema}.api_keys WHERE id=$1 FOR UPDATE", key_id)
             if row is None:
                 return "not_found"
 
