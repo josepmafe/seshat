@@ -113,6 +113,16 @@ class TestSubmitJob:
             resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": body})
         assert resp.status_code == 403
 
+    async def test_malformed_body_json_returns_422(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": "not-json"})
+        assert resp.status_code == 422
+
+    async def test_missing_required_fields_in_body_returns_422(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": "{}"})
+        assert resp.status_code == 422
+
     async def test_force_requires_admin(self, api_client):
         body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}, "force": True})
         async with api_client(_make_app_state(), make_current_user(role=UserRole.OPERATOR)) as ac:

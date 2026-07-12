@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
@@ -74,6 +75,20 @@ class TestSparseSearchGuard:
 
         assert result == []
         assert called == []
+
+    @pytest.mark.asyncio
+    async def test_missing_collection_propagates_from_sparse_search(self):
+        store = PGVectorStore.__new__(PGVectorStore)
+        store._keyword_extractor = AsyncMock(return_value="budget approval")
+        store._ts_content_ready = True
+        store._collection_id = None
+        store._get_collection_id = AsyncMock(
+            side_effect=RuntimeError("Collection 'seshat_kb' not found in langchain_pg_collection")
+        )
+        store._ensure_ts_content = AsyncMock()
+
+        with pytest.raises(RuntimeError, match="seshat_kb"):
+            await store._sparse_search("budget approval", top_k=5, node_filter=None, exclude_job_id=None)
 
 
 class TestValidateConnectionString:

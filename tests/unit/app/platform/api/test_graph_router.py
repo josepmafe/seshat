@@ -24,7 +24,7 @@ _REL_ID = UUID("00000000-0000-0000-0000-000000000099")
 _REL_PATH = str(_REL_ID)
 
 
-def _make_app_state():
+def _make_app_state(**service_overrides):
     graph_service = MagicMock()
     graph_service.query = AsyncMock(return_value=[])
     graph_service.search = AsyncMock(return_value=[])
@@ -43,6 +43,8 @@ def _make_app_state():
     graph_service.list_relationships = AsyncMock(return_value=[])
     graph_service.create_relationship = AsyncMock()
     graph_service.delete_relationship = AsyncMock()
+    for attr, value in service_overrides.items():
+        setattr(graph_service, attr, value)
     return make_app_state(graph_service=graph_service)
 
 
@@ -173,6 +175,20 @@ class TestImpactTraversal:
             await ac.get(f"/graph/{_NODE_PATH}/impact?direction=inbound")
         call = state.graph_service.traverse_impact.call_args
         assert call.args[4] == GraphDirection.INBOUND
+
+    async def test_invalid_rel_type_returns_422(self, api_client):
+        state = _make_app_state()
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get(f"/graph/{_NODE_PATH}/impact?rel_types=bogus")
+        assert resp.status_code == 422
+        state.graph_service.traverse_impact.assert_not_called()
+
+    async def test_invalid_token_in_multi_rel_type_returns_422(self, api_client):
+        state = _make_app_state()
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get(f"/graph/{_NODE_PATH}/impact?rel_types=mitigates,bogus")
+        assert resp.status_code == 422
+        state.graph_service.traverse_impact.assert_not_called()
 
 
 class TestGetNodeNeighbours:
@@ -425,6 +441,25 @@ class TestBulkDeleteNodes:
         async with api_client(state, make_current_user(role=UserRole.ADMIN)) as ac:
             resp = await ac.request("DELETE", "/graph/nodes/bulk", json={"node_ids": [_NODE_PATH, _node_id_2]})
         assert resp.json()["failed"][0]["node_id"] == _node_id_2
+
+    async def test_stop_mode_precondition_error_returns_409(self, api_client):
+        state = _make_app_state(bulk_delete=AsyncMock(side_effect=NodePreconditionError("has inbound edges")))
+        async with api_client(state, make_current_user(role=UserRole.ADMIN)) as ac:
+            resp = await ac.request("DELETE", "/graph/nodes/bulk?cascade=false", json={"node_ids": [_NODE_PATH]})
+        assert resp.status_code == 409
+        assert "has inbound edges" in resp.json()["detail"]
+
+
+class TestBulkCreateNodesPreconditionError:
+    async def test_stop_mode_precondition_error_returns_409(self, api_client):
+        state = _make_app_state(bulk_create=AsyncMock(side_effect=NodePreconditionError("write blocked")))
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.post(
+                "/graph/nodes/bulk",
+                json={"nodes": [{"type": "decision", "title": "T", "description": "D"}], "on_error": "stop"},
+            )
+        assert resp.status_code == 409
+        assert "write blocked" in resp.json()["detail"]
 
 
 class TestResolveNodes:
