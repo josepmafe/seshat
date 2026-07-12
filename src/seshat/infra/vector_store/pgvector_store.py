@@ -94,6 +94,7 @@ class PGVectorStore(AbstractVectorStore):
         self._ts_content_ready = True
 
     async def upsert(self, node_id: str, text: str, metadata: dict) -> None:
+        logger.debug("Upserting vector for node_id=%s", node_id)
         doc = Document(page_content=text, metadata={**metadata, "node_id": node_id})
         await self._store.aadd_documents([doc], ids=[node_id])
 
@@ -302,6 +303,7 @@ class PGVectorStore(AbstractVectorStore):
         return result
 
     async def delete(self, node_id: str) -> None:
+        logger.debug("Deleting vector for node_id=%s", node_id)
         await self._store.adelete(ids=[node_id])
 
 
