@@ -28,13 +28,21 @@ async def _get_current_user(
 ) -> CurrentUser:
     if not x_api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="X-API-Key required")
+
     stored_keys = await state.admin_service.get_api_keys()
     try:
         user_id, role = await verify_api_key(x_api_key, stored_keys)
     except AuthenticationError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
-    return CurrentUser(user_id=user_id, role=UserRole(role))
+    # Treat an unrecognised stored role as an auth failure, not a 500 — avoids
+    # leaking whether the key was valid vs the DB row is corrupt.
+    try:
+        role = UserRole(role)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+
+    return CurrentUser(user_id=user_id, role=role)
 
 
 def require_role(minimum: UserRole) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
