@@ -4,7 +4,9 @@ import json
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from langchain_core.messages import HumanMessage
 
 from seshat.app.pipeline.llm_factory import _build_llm
@@ -34,6 +36,11 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Seshat API", version="0.1.0", lifespan=_lifespan)
     app.include_router(v1_router)
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
     return app
 
 

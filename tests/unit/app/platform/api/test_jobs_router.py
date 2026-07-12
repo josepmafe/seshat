@@ -163,6 +163,16 @@ class TestListJobs:
         assert str(call_kwargs["meeting_date_from"]) == "2026-01-01"
         assert str(call_kwargs["meeting_date_to"]) == "2026-06-30"
 
+    async def test_negative_limit_returns_422(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.get("/jobs?limit=-1")
+        assert resp.status_code == 422
+
+    async def test_negative_offset_returns_422(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.get("/jobs?offset=-1")
+        assert resp.status_code == 422
+
 
 class TestGetJob:
     async def test_requires_auth(self, api_client):

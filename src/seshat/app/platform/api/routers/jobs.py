@@ -40,8 +40,8 @@ async def list_jobs(
     source_type: str | None = None,
     meeting_date_from: date | None = None,
     meeting_date_to: date | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    limit: Annotated[int, Query(ge=0)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[JobResponse]:
     return await state.job_service.list_jobs(
         status=job_status,

@@ -60,6 +60,30 @@ class TestCreateApiKey:
         assert body["role"] == "reviewer"
         state.admin_service.create_api_key.assert_called_once()
 
+    async def test_empty_user_id_returns_422(self, app, api_client):
+        app.dependency_overrides[_get_root_key] = lambda: "correct-secret"
+        state = _make_app_state()
+        async with api_client(state) as ac:
+            resp = await ac.post(
+                "/admin/api-keys",
+                json={"user_id": "", "role": "reviewer"},
+                headers={"X-API-Key": "correct-secret"},
+            )
+        assert resp.status_code == 422
+        state.admin_service.create_api_key.assert_not_called()
+
+    async def test_whitespace_user_id_returns_422(self, app, api_client):
+        app.dependency_overrides[_get_root_key] = lambda: "correct-secret"
+        state = _make_app_state()
+        async with api_client(state) as ac:
+            resp = await ac.post(
+                "/admin/api-keys",
+                json={"user_id": "   ", "role": "reviewer"},
+                headers={"X-API-Key": "correct-secret"},
+            )
+        assert resp.status_code == 422
+        state.admin_service.create_api_key.assert_not_called()
+
 
 class TestListApiKeys:
     async def test_returns_keys_with_is_active(self, app, api_client):
