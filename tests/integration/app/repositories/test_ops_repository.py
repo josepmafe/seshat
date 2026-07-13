@@ -22,22 +22,11 @@ pytestmark = [pytest.mark.integration, SKIP_IF_NO_POSTGRES]
 
 @pytest.fixture
 async def repo(pg_test_url: str) -> AsyncGenerator[OpsRepository]:
-    pool = await asyncpg.create_pool(pg_test_url)
     store = PostgresOpsStore(OpsStoreConfig(schema_name="ops"), pg_test_url)
-    store._pool = pool
+    await store.connect()
     yield OpsRepository(store)
-    await pool.execute("TRUNCATE ops.jobs CASCADE")
-    await pool.close()
-
-
-@pytest.fixture
-async def repo_with_api_keys(pg_test_url: str) -> AsyncGenerator[OpsRepository]:
-    pool = await asyncpg.create_pool(pg_test_url)
-    store = PostgresOpsStore(OpsStoreConfig(schema_name="ops"), pg_test_url)
-    store._pool = pool
-    yield OpsRepository(store)
-    await pool.execute("TRUNCATE ops.api_keys CASCADE")
-    await pool.close()
+    await store.pool.execute("TRUNCATE ops.api_keys, ops.jobs CASCADE")
+    await store.close()
 
 
 class TestCreateJob:
@@ -200,45 +189,45 @@ class TestStrandedRecovery:
 
 
 class TestApiKeysCRUD:
-    async def test_create_and_list(self, repo_with_api_keys: OpsRepository):
+    async def test_create_and_list(self, repo: OpsRepository):
         now = datetime.now(UTC)
-        await repo_with_api_keys.create_api_key("hash-abc", "alice", UserRole.REVIEWER, now)
+        await repo.create_api_key("hash-abc", "alice", UserRole.REVIEWER, now)
 
-        rows = await repo_with_api_keys.list_api_keys()
+        rows = await repo.list_api_keys()
 
         assert len(rows) == 1
         assert rows[0]["user_id"] == "alice"
         assert rows[0]["role"] == "reviewer"
         assert rows[0]["revoked_at"] is None
 
-    async def test_get_api_keys_returns_active_only(self, repo_with_api_keys: OpsRepository):
+    async def test_get_api_keys_returns_active_only(self, repo: OpsRepository):
         now = datetime.now(UTC)
-        await repo_with_api_keys.create_api_key("hash-active", "alice", UserRole.REVIEWER, now)
-        await repo_with_api_keys.create_api_key("hash-revoked", "bob", UserRole.VIEWER, now)
+        await repo.create_api_key("hash-active", "alice", UserRole.REVIEWER, now)
+        await repo.create_api_key("hash-revoked", "bob", UserRole.VIEWER, now)
 
-        rows = await repo_with_api_keys.list_api_keys()
+        rows = await repo.list_api_keys()
         revoke_id = next(r["id"] for r in rows if r["user_id"] == "bob")
-        await repo_with_api_keys.revoke_api_key(revoke_id, datetime.now(UTC))
+        await repo.revoke_api_key(revoke_id, datetime.now(UTC))
 
-        active = await repo_with_api_keys.get_api_keys()
+        active = await repo.get_api_keys()
         user_ids = [t[1] for t in active]
         assert "alice" in user_ids
         assert "bob" not in user_ids
 
-    async def test_revoke_ok_then_already_revoked(self, repo_with_api_keys: OpsRepository):
+    async def test_revoke_ok_then_already_revoked(self, repo: OpsRepository):
         now = datetime.now(UTC)
-        await repo_with_api_keys.create_api_key("hash-rev", "charlie", UserRole.OPERATOR, now)
-        rows = await repo_with_api_keys.list_api_keys()
+        await repo.create_api_key("hash-rev", "charlie", UserRole.OPERATOR, now)
+        rows = await repo.list_api_keys()
         key_id = rows[0]["id"]
 
-        await repo_with_api_keys.revoke_api_key(key_id, datetime.now(UTC))
+        await repo.revoke_api_key(key_id, datetime.now(UTC))
 
         with pytest.raises(ApiKeyAlreadyRevokedError):
-            await repo_with_api_keys.revoke_api_key(key_id, datetime.now(UTC))
+            await repo.revoke_api_key(key_id, datetime.now(UTC))
 
-    async def test_revoke_not_found(self, repo_with_api_keys: OpsRepository):
+    async def test_revoke_not_found(self, repo: OpsRepository):
         with pytest.raises(ApiKeyNotFoundError):
-            await repo_with_api_keys.revoke_api_key(99999, datetime.now(UTC))
+            await repo.revoke_api_key(99999, datetime.now(UTC))
 
 
 async def _create_test_job(
@@ -263,15 +252,15 @@ async def _create_test_job(
 
 
 class TestConcurrentRevoke:
-    async def test_concurrent_revoke_exactly_one_ok(self, repo_with_api_keys: OpsRepository):
+    async def test_concurrent_revoke_exactly_one_ok(self, repo: OpsRepository):
         now = datetime.now(UTC)
-        await repo_with_api_keys.create_api_key("hash-concurrent", "dave", UserRole.REVIEWER, now)
-        rows = await repo_with_api_keys.list_api_keys()
+        await repo.create_api_key("hash-concurrent", "dave", UserRole.REVIEWER, now)
+        rows = await repo.list_api_keys()
         key_id = rows[0]["id"]
 
         results = await asyncio.gather(
-            repo_with_api_keys.revoke_api_key(key_id, datetime.now(UTC)),
-            repo_with_api_keys.revoke_api_key(key_id, datetime.now(UTC)),
+            repo.revoke_api_key(key_id, datetime.now(UTC)),
+            repo.revoke_api_key(key_id, datetime.now(UTC)),
             return_exceptions=True,
         )
 

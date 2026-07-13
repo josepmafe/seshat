@@ -4,7 +4,6 @@ import asyncio
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
-import asyncpg
 import mlflow
 import pytest
 import yaml
@@ -36,12 +35,11 @@ _RAW_YAML = yaml.dump(
 
 @pytest.fixture
 async def ops_repo(pg_test_url):
-    pool = await asyncpg.create_pool(pg_test_url)
     store = PostgresOpsStore(OpsStoreConfig(), pg_test_url)
-    store._pool = pool
+    await store.connect()
     yield OpsRepository(store)
-    await pool.execute("TRUNCATE ops.jobs CASCADE")
-    await pool.close()
+    await store.pool.execute("TRUNCATE ops.jobs CASCADE")
+    await store.close()
 
 
 @pytest.fixture
