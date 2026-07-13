@@ -99,8 +99,6 @@ class TestGraphCRUDRoundTrip:
         listed_ids = [n["id"] for n in list_resp.json()["nodes"]]
         assert node_id in listed_ids
 
-        fastapi_app.dependency_overrides.clear()
-
     async def test_nonexistent_id_returns_404(self, fastapi_app, app_state):
         missing_id = "00000000-0000-0000-0000-000000000000"
 
@@ -108,8 +106,6 @@ class TestGraphCRUDRoundTrip:
             resp = await ac.get(f"/graph/{missing_id}")
 
         assert resp.status_code == 404
-
-        fastapi_app.dependency_overrides.clear()
 
     async def test_status_filter_returns_matching_and_excludes_nonmatching(self, fastapi_app, app_state, kb_store):
         async with _client(fastapi_app, app_state, _OPERATOR) as ac:
@@ -145,5 +141,3 @@ class TestGraphCRUDRoundTrip:
             get_resp = await ac.get(f"/graph/{node_id}")
 
         assert get_resp.status_code == 404
-
-        fastapi_app.dependency_overrides.clear()
