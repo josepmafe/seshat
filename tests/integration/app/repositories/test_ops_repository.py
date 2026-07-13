@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import asyncpg
 import pytest
 
-from seshat.app.repositories.ops_repository import ApiKeyAlreadyRevokedError, OpsRepository
+from seshat.app.repositories.ops_repository import ApiKeyAlreadyRevokedError, ApiKeyNotFoundError, OpsRepository
 from seshat.core.config.settings import OpsStoreConfig
 from seshat.core.models.enums import JobStatus, UserRole
 from seshat.infra.ops_store.pg_store import PostgresOpsStore
@@ -237,10 +237,29 @@ class TestApiKeysCRUD:
             await repo_with_api_keys.revoke_api_key(key_id, datetime.now(UTC))
 
     async def test_revoke_not_found(self, repo_with_api_keys: OpsRepository):
-        from seshat.app.repositories.ops_repository import ApiKeyNotFoundError
-
         with pytest.raises(ApiKeyNotFoundError):
             await repo_with_api_keys.revoke_api_key(99999, datetime.now(UTC))
+
+
+async def _create_test_job(
+    repo: OpsRepository,
+    job_id: str,
+    user_id: str = "user-1",
+    source_type: str = "text",
+    idempotency_key: str | None = None,
+    content_hash: str | None = None,
+) -> None:
+    await repo.create_job(
+        job_id,
+        user_id,
+        source_type,
+        idempotency_key,
+        datetime.now(UTC),
+        date(2026, 6, 1),
+        '{"source_type": "text", "metadata": {"meeting_date": "2026-06-01"}}',
+        f"jobs/2026-06-01/{job_id}/raw/input.txt",
+        content_hash,
+    )
 
 
 class TestConcurrentRevoke:
@@ -261,3 +280,89 @@ class TestConcurrentRevoke:
         assert len(successes) == 1
         assert len(errors) == 1
         assert isinstance(errors[0], ApiKeyAlreadyRevokedError)
+
+
+class TestResetFailedJob:
+    async def test_reset_restores_pending_status_and_clears_error(self, repo: OpsRepository):
+        await _create_test_job(repo, "job-reset-1")
+        await repo.fail_job("job-reset-1", "pipeline", "oops", recoverable=True)
+
+        await repo.reset_failed_job("job-reset-1")
+
+        row = await repo.get_job("job-reset-1")
+        assert row is not None
+        assert row["status"] == "pending"
+        assert row["error_payload"] is None
+        assert row["finished_at"] is None
+
+
+class TestFindJobByIdempotencyKey:
+    async def test_finds_existing_job_by_key(self, repo: OpsRepository):
+        await _create_test_job(repo, "job-idem-1", idempotency_key="key-abc")
+
+        result = await repo.find_job_by_idempotency_key("key-abc")
+
+        assert result is not None
+        assert result["job_id"] == "job-idem-1"
+
+    async def test_returns_none_for_unknown_key(self, repo: OpsRepository):
+        result = await repo.find_job_by_idempotency_key("nonexistent-key")
+        assert result is None
+
+
+class TestListJobs:
+    async def test_filter_by_status(self, repo: OpsRepository):
+        await _create_test_job(repo, "job-list-1")
+        await _create_test_job(repo, "job-list-2")
+        await repo.update_job_status("job-list-1", JobStatus.DONE)
+
+        done = await repo.list_jobs(status=JobStatus.DONE)
+        pending = await repo.list_jobs(status=JobStatus.PENDING)
+
+        done_ids = [r["job_id"] for r in done]
+        pending_ids = [r["job_id"] for r in pending]
+        assert "job-list-1" in done_ids
+        assert "job-list-1" not in pending_ids
+        assert "job-list-2" in pending_ids
+
+    async def test_filter_by_source_type(self, repo: OpsRepository):
+        await _create_test_job(repo, "job-list-audio", source_type="audio")
+        await _create_test_job(repo, "job-list-text", source_type="text")
+
+        audio_jobs = await repo.list_jobs(source_type="audio")
+        text_jobs = await repo.list_jobs(source_type="text")
+
+        assert any(r["job_id"] == "job-list-audio" for r in audio_jobs)
+        assert not any(r["job_id"] == "job-list-audio" for r in text_jobs)
+
+
+class TestFinishedAt:
+    async def test_terminal_status_populates_finished_at(self, repo: OpsRepository):
+        await _create_test_job(repo, "job-fin-1")
+        await repo.update_job_status("job-fin-1", JobStatus.DONE)
+
+        row = await repo.get_job("job-fin-1")
+        assert row is not None
+        assert row["finished_at"] is not None
+
+    async def test_non_terminal_status_does_not_set_finished_at(self, repo: OpsRepository):
+        await _create_test_job(repo, "job-fin-2")
+        await repo.update_job_status("job-fin-2", JobStatus.IDENTIFYING)
+
+        row = await repo.get_job("job-fin-2")
+        assert row is not None
+        assert row["finished_at"] is None
+
+
+class TestCountRunningJobs:
+    async def test_counts_running_statuses(self, repo: OpsRepository):
+        await _create_test_job(repo, "job-run-1")
+        await _create_test_job(repo, "job-run-2")
+        await repo.update_job_status("job-run-1", JobStatus.IDENTIFYING)
+        await repo.update_job_status("job-run-2", JobStatus.DONE)
+
+        count = await repo.count_running_jobs()
+
+        assert count >= 1
+        row_done = await repo.get_job("job-run-2")
+        assert row_done["status"] == "done"
