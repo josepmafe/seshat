@@ -2,13 +2,21 @@ from __future__ import annotations
 
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 
 from seshat.app.repositories.node_repository import NodeRepository
 from seshat.app.services.graph import GraphService, NodeNotFoundError, NodePreconditionError
 from seshat.core.config.settings import KBStoreConfig
-from seshat.core.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeFilter, NodeOverride, RelationshipInput
+from seshat.core.models.api_graph import (
+    ManualNodeCreate,
+    ManualNodeUpdate,
+    NodeFilter,
+    NodeOverride,
+    RelationshipInput,
+    SearchResult,
+)
 from seshat.core.models.enums import (
     ApprovalMethod,
     ConceptType,
@@ -42,6 +50,7 @@ def fake_vector_store():
     vs = MagicMock()
     vs.upsert = AsyncMock()
     vs.delete = AsyncMock()
+    vs.search = AsyncMock(return_value=[])
     return vs
 
 
@@ -261,6 +270,20 @@ class TestDeleteIntegration:
 
 
 class TestGraphServiceSearch:
+    @pytest.fixture
+    def fake_vector_store(self):
+        store: dict[str, str] = {}
+        vs = MagicMock()
+        vs.upsert = AsyncMock(side_effect=lambda nid, text, _meta: store.update({nid: text}))
+        vs.delete = AsyncMock()
+
+        async def _search(query, **kwargs):
+            q = query.lower()
+            return [SearchResult(node_id=UUID(nid), score=1.0) for nid, text in store.items() if q in text.lower()]
+
+        vs.search = _search
+        return vs
+
     async def test_keyword_search_returns_matching_node(self, svc, kb_store):
         node_a = await svc.create(
             _create_payload(title="Zymurgy brewing process", description="We use zymurgy"),

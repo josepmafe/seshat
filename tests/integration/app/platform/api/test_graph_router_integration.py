@@ -124,7 +124,7 @@ class TestGraphCRUDRoundTrip:
         assert node_id in listed_ids
 
         async with _client(fastapi_app, app_state, _OPERATOR) as ac:
-            superseded_resp = await ac.get("/graph?status=superseded")
+            superseded_resp = await ac.get("/graph?state=superseded")
 
         assert superseded_resp.status_code == 200
         listed_superseded_ids = [n["id"] for n in superseded_resp.json()["nodes"]]
