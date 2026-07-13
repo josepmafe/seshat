@@ -88,6 +88,11 @@ class PGVectorStore(AbstractVectorStore):
         if self._ts_content_ready:
             return
 
+        # With async_mode=True PGVector skips __post_init__ and lazily calls __apost_init__
+        # on the first operation; trigger it explicitly so EmbeddingStore/CollectionStore
+        # are available on self._store before we build SQL statements against them.
+        await self._store.__apost_init__()
+
         async with self._engine.begin() as conn:
             await conn.execute(_ENSURE_TS_CONTENT)
 
