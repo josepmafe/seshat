@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -23,10 +23,11 @@ from seshat.core.models.enums import (
     GraphDirection,
     IngestionSource,
     NodeState,
+    NodeStatus,
     RelationshipType,
     SearchMode,
 )
-from seshat.core.models.nodes import NodeMetadata
+from seshat.core.models.nodes import ExtractionResult, KBNode, KBRelationship, NodeMetadata
 from seshat.infra.knowledge_store.pg_store import PostgresKBStore
 from tests.helpers import make_node
 from tests.integration.conftest import SKIP_IF_NO_POSTGRES
@@ -380,3 +381,50 @@ class TestGraphServiceTraverseImpact:
         impact_node_ids = {n.node.id for n in impact.nodes}
         assert node_b.id in impact_node_ids
         assert node_a.id not in impact_node_ids
+
+
+class TestWriteBatchStateTransitions:
+    async def test_supersedes_relationship_sets_target_state(self, kb_store, fake_vector_store):
+        node_repo = NodeRepository(kb_store, fake_vector_store)
+
+        existing = KBNode(
+            id=uuid4(),
+            type=ConceptType.DECISION,
+            title="Use MySQL for the database",
+            description="Prior decision to use MySQL.",
+            confidence=0.9,
+            status=NodeStatus.APPROVED,
+            metadata=NodeMetadata(
+                job_id="old-job",
+                meeting_date=date(2026, 1, 1),
+                ingestion_source=IngestionSource.PIPELINE,
+            ),
+        )
+        await node_repo.write_node(existing)
+
+        new_node = KBNode(
+            id=uuid4(),
+            type=ConceptType.DECISION,
+            title="Use PostgreSQL for the database",
+            description="New decision superseding the old one.",
+            confidence=0.9,
+            status=NodeStatus.APPROVED,
+            metadata=NodeMetadata(
+                job_id="new-job",
+                meeting_date=date(2026, 1, 15),
+                ingestion_source=IngestionSource.PIPELINE,
+            ),
+        )
+        rel = KBRelationship(
+            source_id=new_node.id,
+            target_id=existing.id,
+            rel_type=RelationshipType.SUPERSEDES,
+            job_id="new-job",
+            created_at=datetime.now(UTC),
+        )
+        result = ExtractionResult(job_id="new-job", nodes=[new_node], relationships=[rel])
+        await node_repo.write_batch(result)
+
+        updated = await kb_store.get_node(str(existing.id))
+        assert updated is not None
+        assert updated.state == NodeState.SUPERSEDED

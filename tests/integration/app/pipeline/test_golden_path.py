@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import typing
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -30,7 +29,14 @@ from tests.integration.helpers import (
     make_cheap_llm,
 )
 
-pytestmark = [pytest.mark.integration, SKIP_IF_NO_POSTGRES]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.llm,
+    pytest.mark.agents,
+    SKIP_IF_NO_POSTGRES,
+    SKIP_IF_NO_LOCALSTACK,
+    SKIP_IF_NO_LLM_API,
+]
 
 _MEETING_DATE = date(2026, 1, 15)
 _TRANSCRIPT_YAML = yaml.dump(
@@ -88,10 +94,8 @@ def ingestion_orch(blob_store):
 
 
 class TestGoldenPath:
-    pytestmark: typing.ClassVar = [pytest.mark.llm, pytest.mark.agents, SKIP_IF_NO_LOCALSTACK, SKIP_IF_NO_LLM_API]
-
     async def test_text_ingest_and_extract_produces_current_nodes(
-        self, ingestion_orch, extraction_orch, kb_store, fake_vector_store, blob_store
+        self, ingestion_orch, extraction_orch, kb_store, fake_vector_store
     ):
         job_id = "golden-path-job-1"
 
@@ -117,9 +121,7 @@ class TestGoldenPath:
 
         assert fake_vector_store.upsert.call_count >= 1
 
-    async def test_supersedes_relationship_sets_target_state(
-        self, ingestion_orch, extraction_orch, kb_store, fake_vector_store, blob_store
-    ):
+    async def test_supersedes_relationship_sets_target_state(self, kb_store, fake_vector_store):
         node_repo = NodeRepository(kb_store, fake_vector_store)
 
         existing = KBNode(
@@ -163,59 +165,6 @@ class TestGoldenPath:
             relationships=[rel],
         )
         await node_repo.write_batch(extraction_result)
-
-        updated = await kb_store.get_node(str(existing.id))
-        assert updated is not None
-        assert updated.state == NodeState.SUPERSEDED
-
-
-class TestWriteBatchStateTransitions:
-    pytestmark: typing.ClassVar = [pytest.mark.integration, SKIP_IF_NO_POSTGRES]
-
-    async def test_supersedes_relationship_sets_target_state(self, kb_store):
-        fake_vs = MagicMock()
-        fake_vs.upsert = AsyncMock()
-        fake_vs.delete = AsyncMock()
-        fake_vs.search = AsyncMock(return_value=[])
-        node_repo = NodeRepository(kb_store, fake_vs)
-
-        existing = KBNode(
-            id=uuid4(),
-            type=ConceptType.DECISION,
-            title="Use MySQL for the database",
-            description="Prior decision to use MySQL.",
-            confidence=0.9,
-            status=NodeStatus.APPROVED,
-            metadata=NodeMetadata(
-                job_id="old-job",
-                meeting_date=date(2026, 1, 1),
-                ingestion_source=IngestionSource.PIPELINE,
-            ),
-        )
-        await node_repo.write_node(existing)
-
-        new_node = KBNode(
-            id=uuid4(),
-            type=ConceptType.DECISION,
-            title="Use PostgreSQL for the database",
-            description="New decision superseding the old one.",
-            confidence=0.9,
-            status=NodeStatus.APPROVED,
-            metadata=NodeMetadata(
-                job_id="new-job",
-                meeting_date=_MEETING_DATE,
-                ingestion_source=IngestionSource.PIPELINE,
-            ),
-        )
-        rel = KBRelationship(
-            source_id=new_node.id,
-            target_id=existing.id,
-            rel_type=RelationshipType.SUPERSEDES,
-            job_id="new-job",
-            created_at=datetime.now(UTC),
-        )
-        result = ExtractionResult(job_id="new-job", nodes=[new_node], relationships=[rel])
-        await node_repo.write_batch(result)
 
         updated = await kb_store.get_node(str(existing.id))
         assert updated is not None
