@@ -94,7 +94,10 @@ class TestFailJob:
         row = await repo.get_job("job-3")
         assert row is not None
         assert row["status"] == "failed"
-        assert row["error_payload"] is not None
+        payload = json.loads(row["error_payload"])
+        assert payload["stage"] == "pipeline"
+        assert payload["reason"] == "something broke"
+        assert payload["recoverable"] is True
 
 
 class TestContentHashDedup:

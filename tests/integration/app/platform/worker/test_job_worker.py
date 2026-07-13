@@ -123,3 +123,4 @@ class TestJobWorkerE2E:
 
         nodes = await kb_store.query(NodeFilter())
         assert len(nodes) >= 1
+        assert all(n.status == NodeStatus.APPROVED for n in nodes)
