@@ -81,8 +81,11 @@ async def search_graph(
     node_filter: Annotated[NodeFilter, Depends()],
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
     search_mode: SearchMode = SearchMode.SEMANTIC,
+    score_threshold: Annotated[float | None, Query(ge=0, le=1)] = None,
 ) -> NodeSearchResponse:
-    results = await state.graph_service.search(query=q, limit=limit, node_filter=node_filter, mode=search_mode)
+    results = await state.graph_service.search(
+        query=q, limit=limit, node_filter=node_filter, mode=search_mode, score_threshold=score_threshold
+    )
     return NodeSearchResponse(results=results)
 
 
@@ -160,7 +163,14 @@ async def impact_traversal(
     min_confidence: float = 0.0,
     direction: GraphDirection = GraphDirection.OUTBOUND,
 ) -> ImpactResponse:
-    rel_type_filter = [RelationshipType(r.strip()) for r in rel_types.split(",")] if rel_types else None
+    rel_type_filter: list[RelationshipType] | None
+    if rel_types:
+        try:
+            rel_type_filter = [RelationshipType(r.strip()) for r in rel_types.split(",")]
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        rel_type_filter = None
     return await state.graph_service.traverse_impact(node_id, depth, rel_type_filter, min_confidence, direction)
 
 
@@ -181,7 +191,10 @@ async def bulk_create_nodes(
     state: Annotated[AppState, Depends(get_app_state)],
     user: Annotated[CurrentUser, Depends(require_role(UserRole.OPERATOR))],
 ) -> BulkResult:
-    return await state.graph_service.bulk_create(payload, user.user_id)
+    try:
+        return await state.graph_service.bulk_create(payload, user.user_id)
+    except NodePreconditionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @_nodes_router.post(
@@ -293,7 +306,10 @@ async def bulk_delete_nodes(
     _user: Annotated[CurrentUser, Depends(require_role(UserRole.ADMIN))],
     cascade: bool = True,
 ) -> BulkResult:
-    return await state.graph_service.bulk_delete(payload, cascade=cascade)
+    try:
+        return await state.graph_service.bulk_delete(payload, cascade=cascade)
+    except NodePreconditionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @_nodes_router.delete(

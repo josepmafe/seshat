@@ -109,6 +109,9 @@ def _render_search(client: ApiClient) -> None:
 
         with st.expander("Filters", expanded=False):
             filters = _node_filter_widgets("kb_s")
+            threshold = st.number_input(
+                "Similarity threshold", min_value=0.0, max_value=1.0, step=0.05, value=0.0, key="kb_s_threshold"
+            )
 
         submitted = st.form_submit_button("Search", type="primary")
 
@@ -118,7 +121,14 @@ def _render_search(client: ApiClient) -> None:
             st.warning("Enter a search query.")
         else:
             try:
-                results = client.search_graph(query, limit=limit, search_mode=search_mode, **filters)
+                if search_mode == "keyword" and threshold > 0.0:
+                    st.toast("Similarity threshold is not supported for keyword search and was ignored.", icon="⚠️")
+                    effective_threshold = None
+                else:
+                    effective_threshold = threshold if threshold > 0.0 else None
+                results = client.search_graph(
+                    query, limit=limit, search_mode=search_mode, score_threshold=effective_threshold, **filters
+                )
                 st.session_state["kb_s_results"] = results
                 st.session_state.pop("s_selected_node", None)
             except Exception as exc:

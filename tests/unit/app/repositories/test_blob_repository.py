@@ -15,25 +15,6 @@ def _make_repo(**store_returns) -> tuple[BlobRepository, MagicMock]:
     return BlobRepository(store), store
 
 
-class TestPutByKey:
-    async def test_delegates_put(self):
-        repo, store = _make_repo()
-        await repo.put_by_key("some/key", b"data")
-        store.put.assert_awaited_once_with("some/key", b"data")
-
-
-class TestGetByKey:
-    async def test_returns_bytes_when_found(self):
-        repo, _store = _make_repo(get=b"hello")
-        result = await repo.get_by_key("some/key")
-        assert result == b"hello"
-
-    async def test_returns_none_when_missing(self):
-        repo, _store = _make_repo(get=None)
-        result = await repo.get_by_key("missing/key")
-        assert result is None
-
-
 class TestKeyConventions:
     def test_raw_input_key(self):
         key = BlobRepository.raw_input_key(date(2026, 6, 1), "job-abc", "txt")

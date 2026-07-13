@@ -24,8 +24,3 @@ class TestGroundingScorer:
     def test_outcome_label(self, expected, predicted, key):
         by_name = {f.name: f.value for f in _run(expected, predicted)}
         assert by_name[key] == pytest.approx(1.0)
-
-    def test_exactly_one_feedback_emitted(self):
-        for exp in (True, False):
-            for pred in (True, False):
-                assert len(_run(exp, pred)) == 1

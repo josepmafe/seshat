@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 from seshat.app.pipeline.ingestion.audio_validator import AudioValidationError, AudioValidator
@@ -58,3 +60,14 @@ class TestAudioValidator:
 
     def test_duration_check_passes_at_exact_limit(self):
         AudioValidator.check_duration(7200, max_seconds=7200)
+
+    def test_check_size_at_exact_maximum_passes(self):
+        max_bytes = 500 * 1024 * 1024
+        AudioValidator.check_size(max_bytes, max_bytes=max_bytes)
+
+    def test_get_duration_seconds_none_raises(self):
+        with (
+            patch("seshat.app.pipeline.ingestion.audio_validator.audio_duration_seconds", return_value=None),
+            pytest.raises(AudioValidationError, match="Unable to determine audio duration"),
+        ):
+            AudioValidator.get_duration_seconds(b"some bytes")

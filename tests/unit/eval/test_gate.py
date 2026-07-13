@@ -1,6 +1,4 @@
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -44,17 +42,16 @@ def _passing_identification() -> dict[str, float]:
 
 
 class TestGateReadWrite:
-    def test_round_trip(self):
+    def test_round_trip(self, tmp_path):
         result = GateResult(
             run_id="run-123",
             identification_metrics=identification_entries(_passing_identification()),
             resolution_metrics=resolution_entries(_passing_resolution()),
             retrieval_metrics=retrieval_entries({"recall_at_5": 0.75, "precision_at_5": 0.60}),
         )
-        with tempfile.TemporaryDirectory() as tmpdir:
-            gate_path = Path(tmpdir) / "eval_gate.json"
-            write_gate(result, gate_path)
-            loaded = read_gate(gate_path)
+        gate_path = tmp_path / "eval_gate.json"
+        write_gate(result, gate_path)
+        loaded = read_gate(gate_path)
 
         assert loaded.passed is True
         assert loaded.identification_metrics is not None
@@ -64,34 +61,32 @@ class TestGateReadWrite:
         assert loaded.resolution_metrics["action_item.precision"].value == 0.82
         assert loaded.retrieval_metrics["recall_at_5"].value == 0.75
 
-    def test_round_trip_with_none_blocks(self):
+    def test_round_trip_with_none_blocks(self, tmp_path):
         result = GateResult(
             run_id="run-456",
             identification_metrics=identification_entries(_passing_identification()),
         )
-        with tempfile.TemporaryDirectory() as tmpdir:
-            gate_path = Path(tmpdir) / "eval_gate.json"
-            write_gate(result, gate_path)
-            loaded = read_gate(gate_path)
+        gate_path = tmp_path / "eval_gate.json"
+        write_gate(result, gate_path)
+        loaded = read_gate(gate_path)
 
         assert loaded.resolution_metrics is None
         assert loaded.retrieval_metrics is None
 
-    def test_read_gate_raises_on_tampered_file(self):
+    def test_read_gate_raises_on_tampered_file(self, tmp_path):
         result = GateResult(
             run_id="run-789",
             identification_metrics=identification_entries(_passing_identification()),
         )
-        with tempfile.TemporaryDirectory() as tmpdir:
-            gate_path = Path(tmpdir) / "eval_gate.json"
-            write_gate(result, gate_path)
+        gate_path = tmp_path / "eval_gate.json"
+        write_gate(result, gate_path)
 
-            data = json.loads(gate_path.read_text())
-            data["identification_metrics"]["decision.precision"]["value"] = 0.99
-            gate_path.write_text(json.dumps(data))
+        data = json.loads(gate_path.read_text())
+        data["identification_metrics"]["decision.precision"]["value"] = 0.99
+        gate_path.write_text(json.dumps(data))
 
-            with pytest.raises(ValueError, match="modified outside the pipeline"):
-                read_gate(gate_path)
+        with pytest.raises(ValueError, match="modified outside the pipeline"):
+            read_gate(gate_path)
 
 
 class TestGateResultPassed:
@@ -211,37 +206,34 @@ class TestGateResultPassed:
 
 
 class TestUpsertGate:
-    def test_upsert_preserves_existing_blocks(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            gate_path = Path(tmpdir) / "gate.json"
-            write_gate(
-                GateResult(run_id="r1", identification_metrics=identification_entries(_passing_identification())),
-                gate_path,
-            )
-            result = upsert_gate(gate_path, run_id="r2", resolution_metrics=_passing_resolution())
+    def test_upsert_preserves_existing_blocks(self, tmp_path):
+        gate_path = tmp_path / "gate.json"
+        write_gate(
+            GateResult(run_id="r1", identification_metrics=identification_entries(_passing_identification())),
+            gate_path,
+        )
+        result = upsert_gate(gate_path, run_id="r2", resolution_metrics=_passing_resolution())
 
         assert result.identification_metrics is not None
         assert result.resolution_metrics is not None
         assert result.identification_metrics["decision.precision"].value == 0.85
         assert result.resolution_metrics["action_item.precision"].value == 0.82
 
-    def test_upsert_overwrites_existing_block(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            gate_path = Path(tmpdir) / "gate.json"
-            write_gate(
-                GateResult(run_id="r1", identification_metrics=identification_entries(_passing_identification())),
-                gate_path,
-            )
-            new_id = _passing_identification()
-            new_id["decision.precision"] = 0.95
-            result = upsert_gate(gate_path, run_id="r2", identification_metrics=new_id)
+    def test_upsert_overwrites_existing_block(self, tmp_path):
+        gate_path = tmp_path / "gate.json"
+        write_gate(
+            GateResult(run_id="r1", identification_metrics=identification_entries(_passing_identification())),
+            gate_path,
+        )
+        new_id = _passing_identification()
+        new_id["decision.precision"] = 0.95
+        result = upsert_gate(gate_path, run_id="r2", identification_metrics=new_id)
 
         assert result.identification_metrics is not None
         assert result.identification_metrics["decision.precision"].value == 0.95
 
-    def test_upsert_creates_file_if_missing(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            gate_path = Path(tmpdir) / "subdir" / "gate.json"
-            result = upsert_gate(gate_path, run_id="r1", identification_metrics=_passing_identification())
-            assert gate_path.exists()
-            assert result.run_id == "r1"
+    def test_upsert_creates_file_if_missing(self, tmp_path):
+        gate_path = tmp_path / "subdir" / "gate.json"
+        result = upsert_gate(gate_path, run_id="r1", identification_metrics=_passing_identification())
+        assert gate_path.exists()
+        assert result.run_id == "r1"

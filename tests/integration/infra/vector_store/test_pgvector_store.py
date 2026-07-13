@@ -74,12 +74,19 @@ class TestPGVectorStoreSearch:
             "Use PostgreSQL for session storage",
             {"node_type": "decision", "confidence": 0.9},
         )
+        await vector_store.upsert(
+            _NODE_B_ID,
+            "Risk of data loss during migration",
+            {"node_type": "risk", "confidence": 0.8},
+        )
         results = await vector_store.search(
             "PostgreSQL session storage",
             top_k=5,
             node_filter=NodeFilter(node_type=ConceptType.DECISION),
         )
-        assert any(r.node_id == _TEST_NODE_UUID for r in results)
+        result_ids = {r.node_id for r in results}
+        assert _TEST_NODE_UUID in result_ids
+        assert _NODE_B_UUID not in result_ids
 
     async def test_with_node_type_filter_nonmatching(self, vector_store: PGVectorStore):
         await vector_store.upsert(
@@ -169,3 +176,129 @@ class TestHybridSearch:
         results = await hybrid_store.search(shared_text, top_k=5, mode=SearchMode.HYBRID)
 
         assert results[0].node_id == _TEST_NODE_UUID
+
+
+class TestScoreThreshold:
+    pytestmark = _EMBEDDING_MARKS
+
+    async def test_low_threshold_includes_relevant_result(self, vector_store: PGVectorStore):
+        await vector_store.upsert(
+            _TEST_NODE_ID,
+            "Use PostgreSQL for transactional data",
+            {"node_type": "decision", "confidence": 0.9},
+        )
+        results = await vector_store.search("PostgreSQL transactional", top_k=5, score_threshold=0.0)
+        assert any(r.node_id == _TEST_NODE_UUID for r in results)
+
+    async def test_high_threshold_excludes_irrelevant_result(self, vector_store: PGVectorStore):
+        await vector_store.upsert(
+            _TEST_NODE_ID,
+            "Use PostgreSQL for transactional data",
+            {"node_type": "decision", "confidence": 0.9},
+        )
+        results = await vector_store.search("PostgreSQL transactional", top_k=5, score_threshold=0.999)
+        # A threshold of 0.999 is near-impossible to satisfy for real embeddings
+        assert not any(r.node_id == _TEST_NODE_UUID for r in results)
+
+
+@pytest.fixture
+async def fresh_keyword_store(pg_test_url):
+    store = await _make_store_with_extractor(pg_test_url, "test_pagination")
+    yield store
+    await store._store.adelete_collection()
+
+
+class TestPagination:
+    async def test_top_k_limits_results(self, fresh_keyword_store: PGVectorStore):
+        ids = [f"00000000-0000-0000-0000-{i:012d}" for i in range(1, 6)]
+        for node_id in ids:
+            await fresh_keyword_store.upsert(
+                node_id,
+                f"Decision about {_DISTINCTIVE_TERM} strategy {node_id}",
+                {"node_type": "decision", "confidence": 0.9},
+            )
+
+        results = await fresh_keyword_store.search(_DISTINCTIVE_TERM, top_k=3, mode=SearchMode.KEYWORD)
+
+        assert len(results) == 3
+
+
+@pytest.fixture
+async def empty_keyword_store(pg_test_url):
+    store = await _make_store_with_extractor(pg_test_url, "test_empty_collection")
+    yield store
+    await store._store.adelete_collection()
+
+
+class TestEmptyCollection:
+    async def test_search_on_fresh_store_returns_empty_not_error(self, empty_keyword_store: PGVectorStore):
+        results = await empty_keyword_store.search("anything", top_k=5, mode=SearchMode.KEYWORD)
+        assert results == []
+
+
+class TestKeywordSearchFilters:
+    async def test_node_type_filter_applied_in_keyword_mode(self, keyword_store: PGVectorStore):
+        await keyword_store.upsert(
+            _TEST_NODE_ID,
+            f"Decision about {_DISTINCTIVE_TERM}",
+            {"node_type": "decision", "confidence": 0.9, "job_id": "job-1"},
+        )
+        await keyword_store.upsert(
+            _NODE_B_ID,
+            f"Risk about {_DISTINCTIVE_TERM}",
+            {"node_type": "risk", "confidence": 0.8, "job_id": "job-1"},
+        )
+
+        results = await keyword_store.search(
+            _DISTINCTIVE_TERM,
+            top_k=5,
+            mode=SearchMode.KEYWORD,
+            node_filter=NodeFilter(node_type=ConceptType.DECISION),
+        )
+
+        result_ids = {r.node_id for r in results}
+        assert _TEST_NODE_UUID in result_ids
+        assert _NODE_B_UUID not in result_ids
+
+    async def test_exclude_job_id_removes_matching_nodes(self, keyword_store: PGVectorStore):
+        await keyword_store.upsert(
+            _TEST_NODE_ID,
+            f"Decision about {_DISTINCTIVE_TERM}",
+            {"node_type": "decision", "confidence": 0.9, "job_id": "job-exclude"},
+        )
+        await keyword_store.upsert(
+            _NODE_B_ID,
+            f"Another {_DISTINCTIVE_TERM} decision",
+            {"node_type": "decision", "confidence": 0.9, "job_id": "job-keep"},
+        )
+
+        results = await keyword_store.search(
+            _DISTINCTIVE_TERM,
+            top_k=5,
+            mode=SearchMode.KEYWORD,
+            exclude_job_id="job-exclude",
+        )
+
+        result_ids = {r.node_id for r in results}
+        assert _TEST_NODE_UUID not in result_ids
+        assert _NODE_B_UUID in result_ids
+
+
+class TestUpsertOverwrite:
+    async def test_second_upsert_overwrites_first(self, keyword_store: PGVectorStore):
+        await keyword_store.upsert(
+            _TEST_NODE_ID,
+            f"Original text about {_DISTINCTIVE_TERM}",
+            {"node_type": "decision", "confidence": 0.9},
+        )
+        await keyword_store.upsert(
+            _TEST_NODE_ID,
+            "Completely different text about caching",
+            {"node_type": "decision", "confidence": 0.9},
+        )
+
+        results = await keyword_store.search(_DISTINCTIVE_TERM, top_k=5, mode=SearchMode.KEYWORD)
+        assert not any(r.node_id == _TEST_NODE_UUID for r in results)
+
+        results = await keyword_store.search("caching", top_k=5, mode=SearchMode.KEYWORD)
+        assert any(r.node_id == _TEST_NODE_UUID for r in results)

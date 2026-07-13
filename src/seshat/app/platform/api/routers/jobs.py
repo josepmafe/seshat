@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from seshat.app.platform.api.dependencies import CurrentUser, get_app_state, require_role
 from seshat.app.platform.api.state import AppState
@@ -40,8 +41,8 @@ async def list_jobs(
     source_type: str | None = None,
     meeting_date_from: date | None = None,
     meeting_date_to: date | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    limit: Annotated[int, Query(ge=0)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[JobResponse]:
     return await state.job_service.list_jobs(
         status=job_status,
@@ -73,7 +74,12 @@ async def submit_job(
     file: Annotated[UploadFile, ...],
     body: Annotated[str, Form()],
 ) -> JobSubmitResponse | JSONResponse:
-    submission = JobSubmissionRequest.model_validate_json(body)
+    # body is a raw Form string (multipart upload), so FastAPI never sees a typed
+    # model and the global RequestValidationError handler won't fire — validate manually.
+    try:
+        submission = JobSubmissionRequest.model_validate_json(body)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()) from exc
 
     if submission.overrides is not None and not user.role.is_at_least(UserRole.OPERATOR):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Config overrides require operator role")

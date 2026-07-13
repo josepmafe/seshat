@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-from seshat.app.platform.api.state import AppState
 from seshat.app.services.job import (
     JobNotFoundError,
     JobStateError,
@@ -16,10 +15,10 @@ from seshat.core.models.api_responses import JobActionResponse, JobSubmitRespons
 from seshat.core.models.enums import JobStatus, UserRole
 from seshat.core.models.nodes import ExtractionResult
 from tests.helpers import make_node
-from tests.unit.app.platform.api.conftest import make_current_user
+from tests.unit.app.platform.api.conftest import make_app_state, make_current_user
 
 
-def _make_app_state(**overrides) -> AppState:
+def _make_app_state(**overrides):
     job_service = MagicMock()
     job_service.submit = AsyncMock(return_value=JobSubmitResponse(job_id="job-1"))
     job_service.get = AsyncMock(return_value=None)
@@ -33,16 +32,7 @@ def _make_app_state(**overrides) -> AppState:
     config.api.max_jobs_per_user_per_hour = 10
     config.api.max_concurrent_jobs = 5
 
-    state = AppState(
-        config=config,
-        admin_service=MagicMock(),
-        health_service=MagicMock(),
-        graph_service=MagicMock(),
-        job_service=job_service,
-    )
-    for k, v in overrides.items():
-        object.__setattr__(state, k, v)
-    return state
+    return make_app_state(config=config, job_service=job_service, **overrides)
 
 
 def _make_job_response(status: str = "pending") -> dict[str, Any]:
@@ -64,11 +54,13 @@ class TestSubmitJob:
         assert resp.status_code == 401
 
     async def test_returns_job_id(self, api_client):
+        state = _make_app_state()
         body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
-        async with api_client(_make_app_state(), make_current_user()) as ac:
+        async with api_client(state, make_current_user()) as ac:
             resp = await ac.post("/jobs", files={"file": ("input.yaml", b"data", "text/plain")}, data={"body": body})
         assert resp.status_code == 202
         assert "job_id" in resp.json()
+        assert state.job_service.submit.call_args.args[3] == "alice"
 
     async def test_idempotency_returns_existing_job(self, api_client):
         state = _make_app_state()
@@ -121,14 +113,15 @@ class TestSubmitJob:
             resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": body})
         assert resp.status_code == 403
 
-    async def test_delegates_to_job_service(self, api_client):
-        state = _make_app_state()
-        body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}})
-        async with api_client(state, make_current_user()) as ac:
-            await ac.post("/jobs", files={"file": ("input.yaml", b"data", "text/plain")}, data={"body": body})
-        state.job_service.submit.assert_called_once()
-        call_args = state.job_service.submit.call_args
-        assert call_args.args[3] == "alice"
+    async def test_malformed_body_json_returns_422(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": "not-json"})
+        assert resp.status_code == 422
+
+    async def test_missing_required_fields_in_body_returns_422(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.post("/jobs", files={"file": b"data"}, data={"body": "{}"})
+        assert resp.status_code == 422
 
     async def test_force_requires_admin(self, api_client):
         body = json.dumps({"source_type": "text", "metadata": {"meeting_date": "2026-01-15"}, "force": True})
@@ -179,6 +172,16 @@ class TestListJobs:
         call_kwargs = state.job_service.list_jobs.call_args.kwargs
         assert str(call_kwargs["meeting_date_from"]) == "2026-01-01"
         assert str(call_kwargs["meeting_date_to"]) == "2026-06-30"
+
+    async def test_negative_limit_returns_422(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.get("/jobs?limit=-1")
+        assert resp.status_code == 422
+
+    async def test_negative_offset_returns_422(self, api_client):
+        async with api_client(_make_app_state(), make_current_user()) as ac:
+            resp = await ac.get("/jobs?offset=-1")
+        assert resp.status_code == 422
 
 
 class TestGetJob:

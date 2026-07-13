@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, StringConstraints, computed_field
 
 from seshat.core.models.enums import HealthStatus, UserRole
 from seshat.core.models.nodes import KBNode, KBRelationship
@@ -59,7 +60,7 @@ class ApiKeyResponse(BaseModel):
 
 
 class CreateApiKeyRequest(BaseModel):
-    user_id: str
+    user_id: Annotated[str, StringConstraints(min_length=1, strip_whitespace=True)]
     role: UserRole
 
 

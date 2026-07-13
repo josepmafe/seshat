@@ -13,12 +13,16 @@ from dotenv import load_dotenv
 from seshat.app.repositories.blob_repository import BlobRepository
 from seshat.core.config.settings import BlobStoreConfig
 from seshat.infra.blob_store.s3_store import S3BlobStore
+from tests.integration._env import (
+    _anthropic_reachable,
+    _assemblyai_reachable,
+    _openai_reachable,
+)
+from tests.integration.helpers import make_cheap_llm
 
 load_dotenv()
 
 _AUDIO_FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "audio"
-
-_BEDROCK_PROFILE = os.environ.get("AWS_PROFILE") or "ClaudeCode"
 
 _LOCALSTACK_PORT = int(os.environ.get("LOCALSTACK_PORT", 4566))
 LOCALSTACK_REGION = os.environ.get("AWS_DEFAULT_REGION", "eu-west-1")
@@ -44,49 +48,6 @@ def _port_open(host: str, port: int) -> bool:
         return False
 
 
-def _bedrock_available(profile_name: str | None = None) -> bool:
-    try:
-        import boto3
-
-        return boto3.Session(profile_name=profile_name).get_credentials() is not None
-    except Exception:
-        return False
-
-
-def _azure_available() -> bool:
-    return bool(
-        os.environ.get("AZURE_OPENAI_ENDPOINT")
-        and os.environ.get("AZURE_OPENAI_DEPLOYMENT")
-        and os.environ.get("AZURE_OPENAI_API_KEY")
-    )
-
-
-def _openai_reachable(openai_api_key_env_var: str | None = None) -> bool:
-    if _azure_available():
-        return True
-
-    key = os.environ.get(openai_api_key_env_var or "OPENAI_API_KEY")
-    if not key:
-        return False
-
-    import httpx
-
-    try:
-        response = httpx.get(
-            "https://api.openai.com/v1/models",
-            headers={"Authorization": f"Bearer {key}"},
-            timeout=5,
-        )
-        return response.status_code < 400
-    except httpx.RequestError:
-        return False
-
-
-# Anthropic key presence is sufficient — no network probe needed (unlike OpenAI which validates the endpoint).
-def _anthropic_reachable() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY")) or _bedrock_available(profile_name=_BEDROCK_PROFILE)
-
-
 SKIP_IF_NO_LLM_API = pytest.mark.skipif(
     not _anthropic_reachable() and not _openai_reachable(),
     reason=(
@@ -109,25 +70,6 @@ SKIP_IF_NO_EMBEDDINGS_API = pytest.mark.skipif(
     not _openai_reachable(),
     reason="OpenAI API not reachable — OPENAI_API_KEY not set or network issue",
 )
-
-
-def _assemblyai_reachable() -> bool:
-    key = os.environ.get("ASSEMBLYAI_API_KEY")
-    if not key:
-        return False
-
-    import httpx
-
-    try:
-        response = httpx.get(
-            "https://api.assemblyai.com/v2",
-            headers={"Authorization": key},
-            timeout=5,
-        )
-        return response.status_code < 500
-    except httpx.RequestError:
-        return False
-
 
 SKIP_IF_NO_ASSEMBLYAI_API = pytest.mark.skipif(
     not _assemblyai_reachable(),
@@ -160,6 +102,11 @@ def pytest_asyncio_loop_factories(config, item):
     if sys.platform == "win32":
         return {"selector": asyncio.WindowsSelectorEventLoopPolicy().new_event_loop}
     return {"default": asyncio.DefaultEventLoopPolicy().new_event_loop}
+
+
+@pytest.fixture(scope="module")
+def cheap_llm():
+    return make_cheap_llm()
 
 
 @pytest.fixture(scope="session")
@@ -266,7 +213,7 @@ def short_audio_bytes(short_audio_path) -> bytes:
     return short_audio_path.read_bytes()
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 async def blob_store(localstack_s3_url):
     config = BlobStoreConfig(
         bucket=LOCALSTACK_TEST_BUCKET,

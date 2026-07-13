@@ -8,10 +8,9 @@ def test_count_tokens_nonempty_string():
     assert count_tokens("hello world") == 2
 
 
-def test_count_tokens_known_openai_model_returns_positive_int():
-    result = count_tokens("some text", model="gpt-4")
-    assert isinstance(result, int)
-    assert result > 0
+def test_count_tokens_known_openai_model():
+    # cl100k_base (gpt-4) encodes "some text" as ["some", " text"] → 2 tokens
+    assert count_tokens("some text", model="gpt-4") == 2
 
 
 def test_count_tokens_unknown_model_falls_back_without_raising():

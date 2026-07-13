@@ -50,6 +50,9 @@ data/*
 # VS Code
 .vscode/
 
+# Docker local overrides
+docker-compose.override.yml
+
 # Miscellaneous
 development
 docs/*/plans/

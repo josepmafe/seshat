@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from seshat.app.platform.api.app import create_app
 from seshat.app.platform.api.dependencies import CurrentUser, _get_current_user, get_app_state
+from seshat.app.platform.api.state import AppState
 from seshat.core.models.enums import UserRole
 
 if TYPE_CHECKING:
@@ -14,10 +16,20 @@ if TYPE_CHECKING:
 
     from fastapi import FastAPI
 
-    from seshat.app.platform.api.state import AppState
+
+def make_app_state(**overrides) -> AppState:
+    fields = {
+        "config": MagicMock(),
+        "admin_service": MagicMock(),
+        "health_service": MagicMock(),
+        "graph_service": MagicMock(),
+        "job_service": MagicMock(),
+    }
+    fields.update(overrides)
+    return AppState(**fields)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def app() -> FastAPI:
     return create_app()
 

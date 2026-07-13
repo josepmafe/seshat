@@ -118,6 +118,13 @@ class NodeRetriever:
     ) -> None:
         for result in results:
             if len(seen) >= self.node_retrieval_cap or budget.exhausted:
+                logger.debug(
+                    "Skipping neighbour expansion for node id=%s: cap=%d seen=%d budget_exhausted=%s",
+                    result.node_id,
+                    self.node_retrieval_cap,
+                    len(seen),
+                    budget.exhausted,
+                )
                 break
 
             if result.node_id not in seen:
