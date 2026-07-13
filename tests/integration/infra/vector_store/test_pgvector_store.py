@@ -234,3 +234,71 @@ class TestEmptyCollection:
     async def test_search_on_fresh_store_returns_empty_not_error(self, empty_keyword_store: PGVectorStore):
         results = await empty_keyword_store.search("anything", top_k=5, mode=SearchMode.KEYWORD)
         assert results == []
+
+
+class TestKeywordSearchFilters:
+    async def test_node_type_filter_applied_in_keyword_mode(self, keyword_store: PGVectorStore):
+        await keyword_store.upsert(
+            _TEST_NODE_ID,
+            f"Decision about {_DISTINCTIVE_TERM}",
+            {"node_type": "decision", "confidence": 0.9, "job_id": "job-1"},
+        )
+        await keyword_store.upsert(
+            _NODE_B_ID,
+            f"Risk about {_DISTINCTIVE_TERM}",
+            {"node_type": "risk", "confidence": 0.8, "job_id": "job-1"},
+        )
+
+        results = await keyword_store.search(
+            _DISTINCTIVE_TERM,
+            top_k=5,
+            mode=SearchMode.KEYWORD,
+            node_filter=NodeFilter(node_type=ConceptType.DECISION),
+        )
+
+        result_ids = {r.node_id for r in results}
+        assert _TEST_NODE_UUID in result_ids
+        assert _NODE_B_UUID not in result_ids
+
+    async def test_exclude_job_id_removes_matching_nodes(self, keyword_store: PGVectorStore):
+        await keyword_store.upsert(
+            _TEST_NODE_ID,
+            f"Decision about {_DISTINCTIVE_TERM}",
+            {"node_type": "decision", "confidence": 0.9, "job_id": "job-exclude"},
+        )
+        await keyword_store.upsert(
+            _NODE_B_ID,
+            f"Another {_DISTINCTIVE_TERM} decision",
+            {"node_type": "decision", "confidence": 0.9, "job_id": "job-keep"},
+        )
+
+        results = await keyword_store.search(
+            _DISTINCTIVE_TERM,
+            top_k=5,
+            mode=SearchMode.KEYWORD,
+            exclude_job_id="job-exclude",
+        )
+
+        result_ids = {r.node_id for r in results}
+        assert _TEST_NODE_UUID not in result_ids
+        assert _NODE_B_UUID in result_ids
+
+
+class TestUpsertOverwrite:
+    async def test_second_upsert_overwrites_first(self, keyword_store: PGVectorStore):
+        await keyword_store.upsert(
+            _TEST_NODE_ID,
+            f"Original text about {_DISTINCTIVE_TERM}",
+            {"node_type": "decision", "confidence": 0.9},
+        )
+        await keyword_store.upsert(
+            _TEST_NODE_ID,
+            "Completely different text about caching",
+            {"node_type": "decision", "confidence": 0.9},
+        )
+
+        results = await keyword_store.search(_DISTINCTIVE_TERM, top_k=5, mode=SearchMode.KEYWORD)
+        assert not any(r.node_id == _TEST_NODE_UUID for r in results)
+
+        results = await keyword_store.search("caching", top_k=5, mode=SearchMode.KEYWORD)
+        assert any(r.node_id == _TEST_NODE_UUID for r in results)
