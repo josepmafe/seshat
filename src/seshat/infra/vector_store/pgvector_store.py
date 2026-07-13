@@ -17,8 +17,6 @@ from seshat.core.utils.log import get_logger
 from seshat.infra.vector_store.base_store import AbstractVectorStore
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from langchain_core.embeddings import Embeddings
     from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -48,7 +46,6 @@ class PGVectorStore(AbstractVectorStore):
         index: VectorIndexConfig,
         embeddings: Embeddings,
         connection_string: str,
-        keyword_extractor: Callable[[str], Awaitable[str]] | None = None,
     ) -> None:
         self._config = config
         self._index = index
@@ -58,7 +55,6 @@ class PGVectorStore(AbstractVectorStore):
         )
         self._collection_id: str | None = None
         self._ts_content_ready = False
-        self._keyword_extractor = keyword_extractor
 
     @property
     def _engine(self) -> AsyncEngine:
@@ -119,8 +115,8 @@ class PGVectorStore(AbstractVectorStore):
                 return await self._keyword_search(query, top_k, node_filter, exclude_job_id)
             case SearchMode.SEMANTIC:
                 return await self._semantic_search(query, top_k, node_filter, exclude_job_id, score_threshold)
-            case SearchMode.HYBRID:
-                return await self._hybrid_search(query, top_k, node_filter, exclude_job_id, score_threshold)
+            case _:
+                raise ValueError(f"Unsupported search mode for PGVectorStore: {mode!r}")
 
     async def _keyword_search(
         self,
@@ -145,24 +141,6 @@ class PGVectorStore(AbstractVectorStore):
         )
         return [SearchResult(node_id=doc.metadata["node_id"], score=score) for doc, score in results]
 
-    async def _hybrid_search(
-        self,
-        query: str,
-        top_k: int,
-        node_filter: NodeFilter | None,
-        exclude_job_id: str | None,
-        score_threshold: float | None,
-    ) -> list[SearchResult]:
-        dense = await self._similarity_search(query, top_k, node_filter, exclude_job_id, score_threshold)
-        sparse = await self._sparse_search(query, top_k, node_filter, exclude_job_id)
-        logger.debug(
-            "hybrid_search: query=%r dense=%d sparse=%d",
-            query[:60],
-            len(dense),
-            len(sparse),
-        )
-        return _rrf(dense, sparse, top_k=top_k)
-
     async def _sparse_search(
         self,
         query: str,
@@ -173,18 +151,10 @@ class PGVectorStore(AbstractVectorStore):
         if not query.strip():
             return []
 
-        if self._keyword_extractor is None:
-            logger.warning("sparse_search called without a keyword_extractor; returning empty results")
-            return []
-
         await self._ensure_ts_content()
         collection_id = await self._get_collection_id()
 
-        query_keywords = await self._keyword_extractor(query)
-        if not query_keywords.strip():
-            return []
-
-        ts_query_expr = func.to_tsquery("english", " | ".join(re.findall(r"\w+", query_keywords)))
+        ts_query_expr = func.to_tsquery("english", " | ".join(re.findall(r"\w+", query)))
         ts_rank = func.ts_rank_cd(self._ts_content, ts_query_expr)
 
         stmt = (
@@ -328,31 +298,3 @@ class PGVectorStore(AbstractVectorStore):
     async def delete(self, node_id: str) -> None:
         logger.debug("Deleting vector for node_id=%s", node_id)
         await self._store.adelete(ids=[node_id])
-
-
-def _rrf(
-    dense: list[tuple[Document, float]],
-    sparse: list[tuple[str, float]],
-    top_k: int,
-    k: int = 60,
-) -> list[SearchResult]:
-    """Merge dense and sparse ranked lists via Reciprocal Rank Fusion.
-
-    Each result scores 1/(k + rank) per list it appears in; scores are summed, so a
-    node ranked highly in both legs outscores one ranked highly in only one. k=60 is
-    the empirically validated default from the original paper.
-
-    Reference: Cormack, Clarke & Buettcher (2009). "Reciprocal Rank Fusion outperforms
-    Condorcet and individual Rank Learning Methods." SIGIR 2009.
-    https://dl.acm.org/doi/10.1145/1571941.1572114
-    """
-    scores: dict[str, float] = {}
-    for rank, (doc, _score) in enumerate(dense):
-        node_id = doc.metadata["node_id"]
-        scores[node_id] = scores.get(node_id, 0.0) + 1.0 / (k + rank)
-
-    for rank, (node_id, _score) in enumerate(sparse):
-        scores[node_id] = scores.get(node_id, 0.0) + 1.0 / (k + rank)
-
-    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    return [SearchResult(node_id=UUID(node_id), score=score) for node_id, score in ranked[:top_k]]
