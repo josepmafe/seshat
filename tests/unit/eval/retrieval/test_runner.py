@@ -46,6 +46,9 @@ class _CapturingVectorStore(AbstractVectorStore):
         self.captured_queries.append(query)
         return []
 
+    async def update_metadata(self, node_id: str, patch: dict) -> None:
+        pass
+
     async def delete(self, node_id: str) -> None:
         pass
 

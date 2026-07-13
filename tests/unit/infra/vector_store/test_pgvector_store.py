@@ -49,7 +49,6 @@ class TestRrf:
 
 
 class TestSparseSearchGuard:
-    @pytest.mark.asyncio
     async def test_no_extractor_logs_warning_and_returns_empty(self, caplog):
         store = PGVectorStore.__new__(PGVectorStore)
         store._keyword_extractor = None
@@ -60,7 +59,6 @@ class TestSparseSearchGuard:
         assert result == []
         assert "keyword_extractor" in caplog.text
 
-    @pytest.mark.asyncio
     async def test_empty_query_returns_empty_without_hitting_extractor(self):
         called = []
 
@@ -76,7 +74,6 @@ class TestSparseSearchGuard:
         assert result == []
         assert called == []
 
-    @pytest.mark.asyncio
     async def test_missing_collection_propagates_from_sparse_search(self):
         store = PGVectorStore.__new__(PGVectorStore)
         store._keyword_extractor = AsyncMock(return_value="budget approval")
@@ -174,6 +171,38 @@ class TestBuildSemanticFilter:
         nf = NodeFilter()
         result = self._store()._build_semantic_filter(nf)
         assert result == {}
+
+
+class TestUpdateMetadata:
+    async def test_executes_jsonb_merge_update(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        store = PGVectorStore.__new__(PGVectorStore)
+
+        embedding_store = MagicMock()
+        embedding_store.cmetadata = MagicMock()
+        embedding_store.cmetadata.op = MagicMock(return_value=MagicMock(return_value=MagicMock()))
+
+        fake_conn = AsyncMock()
+        fake_conn.__aenter__ = AsyncMock(return_value=fake_conn)
+        fake_conn.__aexit__ = AsyncMock(return_value=None)
+        fake_conn.execute = AsyncMock()
+
+        fake_engine = MagicMock()
+        fake_engine.begin = MagicMock(return_value=fake_conn)
+
+        inner_store = MagicMock()
+        inner_store.EmbeddingStore = embedding_store
+        inner_store._async_engine = fake_engine
+
+        store._store = inner_store
+
+        with patch("sqlalchemy.update") as mock_update:
+            mock_update.return_value.where.return_value.values.return_value = MagicMock()
+            await store.update_metadata("node-123", {"state": "superseded"})
+
+        mock_update.assert_called_once_with(embedding_store)
+        fake_conn.execute.assert_awaited_once()
 
 
 class TestRrfDuplicateHandling:

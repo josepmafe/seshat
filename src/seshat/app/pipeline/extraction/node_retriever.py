@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from seshat.core.models.api_graph import NodeFilter
-from seshat.core.models.enums import GraphDirection
+from seshat.core.models.enums import GraphDirection, NodeState
 from seshat.core.utils.log import get_logger
 from seshat.core.utils.retry import async_retry
 from seshat.core.utils.tokens import count_tokens
@@ -49,9 +49,7 @@ class NodeRetriever:
         node_filter: NodeFilter | None = None,
         exclude_job_id: str | None = None,
     ) -> list[KBNode]:
-        # Vector store only holds approved+current nodes — status/state are enforced
-        # by only upserting on approval and deleting on archival (TODO: implement delete hook).
-        filter_kwargs: dict = {"node_type": node.type}
+        filter_kwargs: dict = {"node_type": node.type, "state": NodeState.CURRENT}
         if node_filter is not None:
             filter_kwargs.update(node_filter.model_dump(exclude_unset=True))
 

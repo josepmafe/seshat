@@ -8,7 +8,7 @@ import sqlalchemy as sa
 from langchain_core.documents import Document
 from langchain_postgres import PGVector
 from sqlalchemy import Float, cast, func, select, text
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 
 from seshat.core.models.api_graph import SearchResult
 from seshat.core.models.enums import SearchMode
@@ -82,13 +82,15 @@ class PGVectorStore(AbstractVectorStore):
 
     @staticmethod
     def get_supported_filter_fields() -> frozenset[str]:
-        return frozenset({"node_type", "min_confidence", "ingestion_source", "meeting_date_from", "meeting_date_to"})
+        return frozenset(
+            {"node_type", "min_confidence", "ingestion_source", "meeting_date_from", "meeting_date_to", "state"}
+        )
 
     async def _ensure_ts_content(self) -> None:
         if self._ts_content_ready:
             return
 
-        # With async_mode=True PGVector skips __post_init__ and lazily calls __apost_init__
+        # With async_mode=True, PGVector skips __post_init__ and lazily calls __apost_init__
         # on the first operation; trigger it explicitly so EmbeddingStore/CollectionStore
         # are available on self._store before we build SQL statements against them.
         await self._store.__apost_init__()
@@ -271,6 +273,8 @@ class PGVectorStore(AbstractVectorStore):
                 stmt = stmt.where(
                     self._store.EmbeddingStore.cmetadata["meeting_date"].as_string() <= str(node_filter.meeting_date_to)
                 )
+        if node_filter is not None and node_filter.state is not None:
+            stmt = stmt.where(self._store.EmbeddingStore.cmetadata["state"].as_string() == node_filter.state)
         if exclude_job_id is not None:
             stmt = stmt.where(self._store.EmbeddingStore.cmetadata["job_id"].as_string() != exclude_job_id)
 
@@ -292,20 +296,34 @@ class PGVectorStore(AbstractVectorStore):
                     sorted(self.get_supported_filter_fields()),
                 )
             if node_filter.node_type:
-                result["node_type"] = node_filter.node_type.value
+                result["node_type"] = node_filter.node_type
             if node_filter.min_confidence is not None:
                 result["confidence"] = {"$gte": node_filter.min_confidence}
             if node_filter.ingestion_source:
-                result["ingestion_source"] = node_filter.ingestion_source.value
+                result["ingestion_source"] = node_filter.ingestion_source
             if node_filter.meeting_date_from is not None:
                 result.setdefault("meeting_date", {})["$gte"] = str(node_filter.meeting_date_from)
             if node_filter.meeting_date_to is not None:
                 result.setdefault("meeting_date", {})["$lte"] = str(node_filter.meeting_date_to)
 
+        if node_filter is not None and node_filter.state is not None:
+            result["state"] = node_filter.state
+
         if exclude_job_id is not None:
             result["job_id"] = {"$ne": exclude_job_id}
 
         return result
+
+    async def update_metadata(self, node_id: str, patch: dict) -> None:
+        # sa.literal with type_=JSONB tells psycopg3 to bind patch as a JSONB object;
+        # passing json.dumps(patch) as a plain string would make || concatenate as an array.
+        stmt = (
+            sa.update(self._store.EmbeddingStore)
+            .where(self._store.EmbeddingStore.cmetadata["node_id"].as_string() == node_id)
+            .values(cmetadata=self._store.EmbeddingStore.cmetadata.op("||")(sa.literal(patch, type_=JSONB)))
+        )
+        async with self._engine.begin() as conn:
+            await conn.execute(stmt)
 
     async def delete(self, node_id: str) -> None:
         logger.debug("Deleting vector for node_id=%s", node_id)

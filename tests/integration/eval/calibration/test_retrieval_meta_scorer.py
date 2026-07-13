@@ -42,6 +42,9 @@ class _StubVectorStore(AbstractVectorStore):
     async def delete(self, node_id: str) -> None:
         self._stored = [nid for nid in self._stored if nid != node_id]
 
+    async def update_metadata(self, node_id: str, patch: dict) -> None:
+        pass
+
 
 @pytest.mark.integration
 @pytest.mark.eval
