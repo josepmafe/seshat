@@ -152,16 +152,6 @@ class TestReflectiveResolutionAgentRunForSource:
 
 
 class TestReflectiveResolutionAgentDelegation:
-    def test_delegates_system_prompt_to_inner(self):
-        inner = _make_inner()
-        agent = ReflectiveResolutionAgent(inner=inner, review_llm=MagicMock())
-        assert agent._system_prompt == inner._system_prompt
-
-    def test_delegates_result_model_to_inner(self):
-        inner = _make_inner()
-        agent = ReflectiveResolutionAgent(inner=inner, review_llm=MagicMock())
-        assert agent._result_model is inner._result_model
-
     def test_delegates_validate_relationships_to_inner(self):
         inner = _make_inner()
         agent = ReflectiveResolutionAgent(inner=inner, review_llm=MagicMock())

@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
+import pytest
+
 from seshat.app.repositories.node_repository import NodeRepository
 from seshat.core.models.enums import NodeState, NodeStatus, RelationshipType
 from seshat.core.models.nodes import ExtractionResult
@@ -92,14 +94,6 @@ class TestWriteBatch:
 
 
 class TestWriteNode:
-    async def test_writes_kb_and_vs(self):
-        repo, kb, vs = _make_repo()
-        node = make_node()
-        await repo.write_node(node)
-
-        kb.write_node.assert_called_once()
-        vs.upsert.assert_called_once()
-
     async def test_writes_relationships_in_transaction(self):
         repo, kb, _vs = _make_repo()
         node = make_node()
@@ -187,13 +181,6 @@ class TestUpdateNode:
         kb.delete_relationships_for_node.assert_not_called()
 
 
-class TestUpdateNodeState:
-    async def test_delegates_to_kb(self):
-        repo, kb, _vs = _make_repo()
-        await repo.update_node_state(_NODE_UUID, NodeState.SUPERSEDED)
-        kb.update_node_state.assert_called_once_with(str(_NODE_UUID), NodeState.SUPERSEDED)
-
-
 class TestWriteBatchAmends:
     async def test_amends_triggers_amended_state(self):
         repo, kb, _vs = _make_repo()
@@ -221,6 +208,39 @@ class TestWriteBatchAmends:
         kb.write_relationship.assert_called_once()
 
 
+class TestVSFailureAfterKBCommit:
+    """Pin the two-phase KB-then-VS ordering: KB commits first, VS failure does not roll it back."""
+
+    async def test_write_node_vs_failure_propagates_after_kb_commit(self):
+        repo, kb, vs = _make_repo()
+        vs.upsert = AsyncMock(side_effect=RuntimeError("vs down"))
+        node = make_node()
+
+        with pytest.raises(RuntimeError):
+            await repo.write_node(node)
+
+        kb.write_node.assert_called_once()
+
+    async def test_update_node_vs_failure_propagates_after_kb_commit(self):
+        repo, kb, vs = _make_repo()
+        vs.upsert = AsyncMock(side_effect=RuntimeError("vs down"))
+        node = make_node()
+
+        with pytest.raises(RuntimeError):
+            await repo.update_node(node)
+
+        kb.update_node.assert_called_once()
+
+    async def test_delete_node_vs_failure_propagates_after_kb_commit(self):
+        repo, kb, vs = _make_repo()
+        vs.delete = AsyncMock(side_effect=RuntimeError("vs down"))
+
+        with pytest.raises(RuntimeError):
+            await repo.delete_node(_NODE_UUID)
+
+        kb.delete_node.assert_called_once()
+
+
 class TestDeleteNodeCascade:
     async def test_non_cascade_passes_flag_to_kb(self):
         repo, kb, _vs = _make_repo()
@@ -236,6 +256,115 @@ class TestDeleteNodeCascade:
         args, kwargs = kb.delete_relationships_for_node.call_args
         passed_cascade = kwargs.get("cascade", args[1] if len(args) > 1 else None)
         assert passed_cascade is True
+
+
+class TestCreateRelationshipManual:
+    async def test_supersedes_updates_target_state_and_creates_rel(self):
+        repo, kb, _vs = _make_repo()
+        kb.create_relationship = AsyncMock()
+        source = make_node("src")
+        target = make_node("tgt")
+        rel = make_relationship(source, target, rel_type=RelationshipType.SUPERSEDES)
+
+        await repo.create_relationship_manual(rel)
+
+        args, kwargs = kb.update_node_state.call_args
+        assert args == (str(target.id), NodeState.SUPERSEDED)
+        assert "conn" in kwargs
+        kb.create_relationship.assert_called_once()
+        _, ckw = kb.create_relationship.call_args
+        assert "conn" in ckw
+
+    async def test_amends_updates_target_state_to_amended(self):
+        repo, kb, _vs = _make_repo()
+        kb.create_relationship = AsyncMock()
+        source = make_node("src")
+        target = make_node("tgt")
+        rel = make_relationship(source, target, rel_type=RelationshipType.AMENDS)
+
+        await repo.create_relationship_manual(rel)
+
+        args, _kwargs = kb.update_node_state.call_args
+        assert args == (str(target.id), NodeState.AMENDED)
+
+    async def test_non_transition_rel_skips_state_update(self):
+        repo, kb, _vs = _make_repo()
+        kb.create_relationship = AsyncMock()
+        source = make_node("src")
+        target = make_node("tgt")
+        rel = make_relationship(source, target, rel_type=RelationshipType.MITIGATES)
+
+        await repo.create_relationship_manual(rel)
+
+        kb.update_node_state.assert_not_called()
+        kb.create_relationship.assert_called_once()
+
+    async def test_update_node_state_key_error_propagates(self):
+        repo, kb, _vs = _make_repo()
+        kb.create_relationship = AsyncMock()
+        kb.update_node_state = AsyncMock(side_effect=KeyError("gone"))
+        source = make_node("src")
+        target = make_node("tgt")
+        rel = make_relationship(source, target, rel_type=RelationshipType.SUPERSEDES)
+
+        with pytest.raises(KeyError):
+            await repo.create_relationship_manual(rel)
+
+
+class TestDeleteRelationship:
+    async def test_supersedes_with_single_source_reverts_target_to_current(self):
+        repo, kb, _vs = _make_repo()
+        kb.delete_relationship = AsyncMock()
+        kb.count_inbound_relationships = AsyncMock(return_value=1)
+        source = make_node("src")
+        target = make_node("tgt")
+        rel = make_relationship(source, target, rel_type=RelationshipType.SUPERSEDES)
+
+        await repo.delete_relationship(rel)
+
+        kb.delete_relationship.assert_called_once()
+        args, kwargs = kb.update_node_state.call_args
+        assert args == (str(target.id), NodeState.CURRENT)
+        assert "conn" in kwargs
+
+    async def test_supersedes_with_multiple_sources_does_not_revert(self):
+        repo, kb, _vs = _make_repo()
+        kb.delete_relationship = AsyncMock()
+        kb.count_inbound_relationships = AsyncMock(return_value=2)
+        source = make_node("src")
+        target = make_node("tgt")
+        rel = make_relationship(source, target, rel_type=RelationshipType.SUPERSEDES)
+
+        await repo.delete_relationship(rel)
+
+        kb.delete_relationship.assert_called_once()
+        kb.update_node_state.assert_not_called()
+
+    async def test_amends_with_single_source_reverts_target(self):
+        repo, kb, _vs = _make_repo()
+        kb.delete_relationship = AsyncMock()
+        kb.count_inbound_relationships = AsyncMock(return_value=1)
+        source = make_node("src")
+        target = make_node("tgt")
+        rel = make_relationship(source, target, rel_type=RelationshipType.AMENDS)
+
+        await repo.delete_relationship(rel)
+
+        args, _kwargs = kb.update_node_state.call_args
+        assert args == (str(target.id), NodeState.CURRENT)
+
+    async def test_non_transition_rel_deletes_without_transaction(self):
+        repo, kb, _vs = _make_repo()
+        kb.delete_relationship = AsyncMock()
+        source = make_node("src")
+        target = make_node("tgt")
+        rel = make_relationship(source, target, rel_type=RelationshipType.MITIGATES)
+
+        await repo.delete_relationship(rel)
+
+        kb.delete_relationship.assert_called_once()
+        kb.count_inbound_relationships.assert_not_called()
+        kb.update_node_state.assert_not_called()
 
 
 class TestWriteNodeRelationshipsTransaction:

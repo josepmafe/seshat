@@ -47,7 +47,8 @@ class HealthService:
 async def _check_http(url: str) -> HealthStatus:
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
-            await client.get(url)
+            response = await client.get(url)
+            response.raise_for_status()
         return HealthStatus.OK
     except httpx.HTTPError:
         return HealthStatus.ERROR

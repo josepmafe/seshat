@@ -85,15 +85,19 @@ class S3BlobStore:
 
     @_S3_ASYNC_RETRY
     async def put(self, key: str, data: bytes) -> None:
+        logger.debug("Uploading object key=%s object_size=%d bytes", key, len(data))
         await self.client.put_object(Bucket=self._bucket, Key=key, Body=data)
 
     @_S3_ASYNC_RETRY
     async def get(self, key: str) -> bytes | None:
         try:
             response = await self.client.get_object(Bucket=self._bucket, Key=key)
-            return await response["Body"].read()
+            data = await response["Body"].read()
+            logger.debug("Fetched object key=%s object_size=%d bytes", key, len(data))
+            return data
         except ClientError as exc:
             if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey"):
+                logger.debug("Object not found key=%s", key)
                 return None
             raise
 
@@ -101,8 +105,10 @@ class S3BlobStore:
     async def exists(self, key: str) -> bool:
         try:
             await self.client.head_object(Bucket=self._bucket, Key=key)
+            logger.debug("Object exists key=%s", key)
             return True
         except ClientError as exc:
             if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey"):
+                logger.debug("Object not found key=%s", key)
                 return False
             raise

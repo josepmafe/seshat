@@ -98,8 +98,18 @@ class ApiClient:
         resp = self._get("/v1/graph", **filters)
         return resp.get("nodes", [])
 
-    def search_graph(self, q: str, limit: int = 10, search_mode: str = "semantic", **filters: Any) -> list[dict]:
-        resp = self._get("/v1/graph/search", q=q, limit=limit, search_mode=search_mode, **filters)
+    def search_graph(
+        self,
+        q: str,
+        limit: int = 10,
+        search_mode: str = "semantic",
+        score_threshold: float | None = None,
+        **filters: Any,
+    ) -> list[dict]:
+        params: dict = {"q": q, "limit": limit, "search_mode": search_mode, **filters}
+        if score_threshold is not None:
+            params["score_threshold"] = score_threshold
+        resp = self._get("/v1/graph/search", **params)
         return resp.get("results", [])
 
     def get_node(self, node_id: str) -> dict:

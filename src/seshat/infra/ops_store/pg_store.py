@@ -63,6 +63,7 @@ class PostgresOpsStore:
         raw_blob_key: str,
         content_hash: str | None = None,
     ) -> None:
+        logger.debug("Creating job_id=%s user_id=%s source_type=%s", job_id, user_id, source_type)
         await self.pool.execute(
             f"INSERT INTO {self._schema}.jobs "
             "(job_id, user_id, status, idempotency_key, source_type, created_at, updated_at, meeting_date, submission, raw_blob_key, content_hash) "  # noqa: E501
@@ -90,6 +91,7 @@ class PostgresOpsStore:
         return self._to_dict(row)
 
     async def find_job_by_content_hash(self, content_hash: str) -> str | None:
+        logger.debug("Looking up job by content_hash=%s", content_hash)
         return await self.pool.fetchval(
             f"SELECT job_id FROM {self._schema}.jobs "
             "WHERE content_hash=$1 AND status='done' ORDER BY created_at DESC LIMIT 1",
@@ -154,6 +156,7 @@ class PostgresOpsStore:
     # -- Jobs: Update ----------------------------------------------------------
 
     async def update_job_status(self, job_id: str, status: JobStatus) -> None:
+        logger.debug("Transitioning job_id=%s to status=%s", job_id, status.value)
         now = datetime.now(UTC)
         await self.pool.execute(
             f"UPDATE {self._schema}.jobs SET status=$1, updated_at=$2, finished_at=$3 WHERE job_id=$4",
@@ -171,6 +174,7 @@ class PostgresOpsStore:
         *,
         recoverable: bool,
     ) -> None:
+        logger.debug("Failing job_id=%s stage=%s recoverable=%s", job_id, stage, recoverable)
         payload = json.dumps(
             {"stage": stage, "status": "failed", "reason": reason, "recoverable": recoverable, "usage": {}}
         )
@@ -191,6 +195,7 @@ class PostgresOpsStore:
         )
 
     async def reset_failed_job(self, job_id: str) -> None:
+        logger.debug("Resetting failed job_id=%s to 'pending' status", job_id)
         await self.pool.execute(
             f"UPDATE {self._schema}.jobs "
             "SET status='pending', error_payload=NULL, finished_at=NULL, updated_at=$1 WHERE job_id=$2",
@@ -244,7 +249,10 @@ class PostgresOpsStore:
 
     async def revoke_api_key(self, key_id: int, now: datetime) -> Literal["ok", "not_found", "already_revoked"]:
         async with self.pool.acquire() as conn, conn.transaction():
-            row = await conn.fetchrow(f"SELECT revoked_at FROM {self._schema}.api_keys WHERE id=$1", key_id)
+            # FOR UPDATE prevents a concurrent revoke from reading NULL revoked_at and also
+            # executing the UPDATE — the second caller waits for this transaction to commit,
+            # then re-reads the non-NULL revoked_at and returns "already_revoked".
+            row = await conn.fetchrow(f"SELECT revoked_at FROM {self._schema}.api_keys WHERE id=$1 FOR UPDATE", key_id)
             if row is None:
                 return "not_found"
 

@@ -89,3 +89,34 @@ async def test_max_attempts_zero_calls_function_once():
 
     assert result == "ok"
     fn.assert_awaited_once()
+
+
+async def test_last_attempt_propagates_even_when_should_retry_true():
+    """On the final attempt the exception is always re-raised, regardless of should_retry."""
+    fn = AsyncMock(side_effect=ValueError("always"))
+    decorated = async_retry(max_attempts=2, base_delay=0, should_retry=lambda _: True)(fn)
+
+    with pytest.raises(ValueError, match="always"):
+        await decorated()
+
+    assert fn.await_count == 2
+
+
+async def test_non_retryable_exception_type_bypasses_should_retry():
+    """TypeError is not in retryable_exceptions — should_retry is never consulted."""
+    should_retry_called = []
+
+    def _should_retry(exc: Exception) -> bool:
+        should_retry_called.append(exc)
+        return True
+
+    fn = AsyncMock(side_effect=[TypeError("type error"), "ok"])
+    decorated = async_retry(
+        max_attempts=3, base_delay=0, retryable_exceptions=(ValueError,), should_retry=_should_retry
+    )(fn)
+
+    with pytest.raises(TypeError):
+        await decorated()
+
+    fn.assert_awaited_once()
+    assert should_retry_called == []

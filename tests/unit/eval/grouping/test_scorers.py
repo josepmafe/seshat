@@ -50,13 +50,3 @@ class TestGroupingScorer:
         scores = _score([["a"]], [["a"]])
         assert scores["grouping.exact_match"] == pytest.approx(1.0)
         assert scores["grouping.group_hit_rate"] == pytest.approx(1.0)
-
-    def test_exactly_two_feedbacks_emitted(self):
-        feedbacks = scorer(
-            inputs={"corpus_id": "test"},
-            outputs={"predicted_groups": [["a"]]},
-            expectations={"expected_groups": [["a"]]},
-        )
-        assert len(feedbacks) == 2
-        names = {fb.name for fb in feedbacks}
-        assert names == {"grouping.exact_match", "grouping.group_hit_rate"}

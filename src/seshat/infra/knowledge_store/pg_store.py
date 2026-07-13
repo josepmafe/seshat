@@ -278,6 +278,12 @@ class PostgresKBStore:
     @_PG_ASYNC_RETRY
     async def create_relationship(self, rel: KBRelationship, *, conn: _Conn | None = None) -> KBRelationship:
         """Insert a relationship; raises asyncpg.UniqueViolationError on duplicate edge."""
+        logger.debug(
+            "Creating relationship source_id=%s target_id=%s rel_type=%s",
+            rel.source_id,
+            rel.target_id,
+            rel.rel_type,
+        )
         executor = conn or self.pool
         await executor.execute(
             f"""
@@ -298,6 +304,7 @@ class PostgresKBStore:
     @_PG_ASYNC_RETRY
     async def delete_relationship(self, rel_id: str, *, conn: _Conn | None = None) -> None:
         """Delete a relationship by surrogate ID."""
+        logger.debug("Deleting relationship rel_id=%s", rel_id)
         executor = conn or self.pool
         await executor.execute(
             f"DELETE FROM {self._schema}.kb_relationships WHERE rel_id = $1",
@@ -307,6 +314,7 @@ class PostgresKBStore:
     @_PG_ASYNC_RETRY
     async def get_outbound_state_transition_targets(self, node_id: str, *, conn: _Conn | None = None) -> list[str]:
         """Return target_ids of outbound SUPERSEDES/AMENDS relationships from node_id."""
+        logger.debug("Fetching outbound state transition targets for node_id=%s", node_id)
         executor = conn or self.pool
         rows = await executor.fetch(
             f"SELECT target_id FROM {self._schema}.kb_relationships WHERE source_id=$1 AND rel_type = ANY($2::text[])",

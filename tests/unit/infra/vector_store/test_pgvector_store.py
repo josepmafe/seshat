@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
@@ -8,6 +9,7 @@ from langchain_core.documents import Document
 
 from seshat.core.models.api_graph import NodeFilter
 from seshat.infra.vector_store.pgvector_store import PGVectorStore, _rrf
+from tests.unit.infra.helpers import assert_credentials_not_in_error, assert_invalid_scheme_raises
 
 _N1 = "00000000-0000-0000-0000-000000000001"
 _N2 = "00000000-0000-0000-0000-000000000002"
@@ -74,6 +76,20 @@ class TestSparseSearchGuard:
         assert result == []
         assert called == []
 
+    @pytest.mark.asyncio
+    async def test_missing_collection_propagates_from_sparse_search(self):
+        store = PGVectorStore.__new__(PGVectorStore)
+        store._keyword_extractor = AsyncMock(return_value="budget approval")
+        store._ts_content_ready = True
+        store._collection_id = None
+        store._get_collection_id = AsyncMock(
+            side_effect=RuntimeError("Collection 'seshat_kb' not found in langchain_pg_collection")
+        )
+        store._ensure_ts_content = AsyncMock()
+
+        with pytest.raises(RuntimeError, match="seshat_kb"):
+            await store._sparse_search("budget approval", top_k=5, node_filter=None, exclude_job_id=None)
+
 
 class TestValidateConnectionString:
     def test_psycopg_qualifier_accepted_unchanged(self):
@@ -99,14 +115,10 @@ class TestValidateConnectionString:
         assert caplog.text == ""
 
     def test_invalid_scheme_raises(self):
-        with pytest.raises(ValueError, match="Invalid connection string"):
-            PGVectorStore._validate_connection_string("mysql://user:pass@host/db")
+        assert_invalid_scheme_raises(PGVectorStore)
 
     def test_error_message_does_not_contain_credentials(self):
-        with pytest.raises(ValueError, match="Invalid connection string") as exc_info:
-            PGVectorStore._validate_connection_string("mysql://secret:hunter2@host/db")
-        assert "secret" not in str(exc_info.value)
-        assert "hunter2" not in str(exc_info.value)
+        assert_credentials_not_in_error(PGVectorStore)
 
     def test_psycopg2_qualifier_replaced(self):
         result = PGVectorStore._validate_connection_string("postgresql+psycopg2://user:pass@host/db")

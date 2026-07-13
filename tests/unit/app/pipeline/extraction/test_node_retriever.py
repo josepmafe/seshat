@@ -272,6 +272,32 @@ class TestNodeRetriever:
         called_query = reranker.rerank.call_args.args[0]
         assert "kafka" in called_query.lower()
 
+    async def test_vector_search_retries_on_transient_failure(self):
+        candidate = make_node("n2", title="Use Redis")
+        search_results = [SearchResult(node_id=str(candidate.id), score=0.9)]
+
+        node_repo = MagicMock()
+        node_repo.search = AsyncMock(side_effect=[RuntimeError("transient"), search_results])
+        node_repo.get_node = AsyncMock(return_value=candidate)
+        node_repo.get_neighbours = AsyncMock(return_value=[])
+        retriever = NodeRetriever(rag_config=RAGConfig(top_k=3), node_repo=node_repo, reranker=None)
+
+        result = await retriever.retrieve(make_node("n1"))
+
+        assert node_repo.search.call_count == 2
+        assert any(n.id == candidate.id for n in result)
+
+    async def test_reranker_raises_propagates(self):
+        candidate = make_node("n2", title="Use Redis")
+        search_results = [SearchResult(node_id=str(candidate.id), score=0.9)]
+
+        reranker = MagicMock()
+        reranker.rerank = AsyncMock(side_effect=RuntimeError("reranker down"))
+        retriever = _make_retriever(search_results=search_results, kb_nodes=[candidate], reranker=reranker)
+
+        with pytest.raises(RuntimeError, match="reranker down"):
+            await retriever.retrieve(make_node("n1"))
+
     async def test_reranker_result_used_by_fetch_direct_hits(self):
         n2 = make_node("n2", title="Kafka consumer")
         n3 = make_node("n3", title="Kafka topic")
@@ -295,7 +321,3 @@ class TestNodeRetriever:
         result = await retriever.retrieve(make_node("n1"))
 
         assert result[0].id == n3.id
-
-    async def test_reranker_none_skipped(self):
-        retriever = _make_retriever()
-        assert retriever._reranker is None

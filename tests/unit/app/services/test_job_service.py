@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
+import asyncpg
 import pytest
 
 from seshat.app.platform.worker.queue import AsyncioTaskQueue
@@ -19,7 +21,7 @@ from seshat.app.services.job import (
     _apply_bulk_rule,
     _apply_decisions,
 )
-from seshat.core.models.api_jobs import BulkApproveRule, KBNodeEdit, NodeDecision
+from seshat.core.models.api_jobs import ApproveRequest, BulkApproveRule, KBNodeEdit, NodeDecision
 from seshat.core.models.enums import ApprovalMethod, JobStatus, NodeStatus
 from seshat.core.models.nodes import ExtractionResult, IdentificationResult, ResolutionResult
 from tests.helpers import make_node
@@ -27,6 +29,7 @@ from tests.helpers import make_node
 
 def _make_service(
     nodes: list | None = None,
+    **ops_overrides,
 ) -> tuple[JobService, MagicMock, MagicMock, MagicMock, MagicMock, MagicMock]:
     nodes = nodes or [make_node()]
 
@@ -75,6 +78,9 @@ def _make_service(
     queue = MagicMock()
     queue.enqueue = AsyncMock()
 
+    for attr, value in ops_overrides.items():
+        setattr(ops, attr, value)
+
     svc = JobService(config, ops, blob, node_repo, extraction, ingestion, queue)
     return svc, ingestion, extraction, node_repo, ops, blob
 
@@ -96,7 +102,7 @@ class TestPreApproval:
         svc, _, _, _, ops, _ = _make_service()
         ident = await svc._run_pre_approval("job-1", b"data", _make_submission())
 
-        assert ident is not None
+        assert ident.job_id == "job-1"
         assert "job-1" in svc._results
         ops.update_job_status.assert_any_await("job-1", JobStatus.TRANSCRIBING)
         ops.update_job_status.assert_any_await("job-1", JobStatus.IDENTIFYING)
@@ -491,6 +497,30 @@ class TestSubmitContentHash:
         assert response.job_id != "failed-job"
 
 
+class TestSubmitIdempotencyRace:
+    async def test_unique_violation_with_idempotency_key_returns_winning_job(self):
+        svc, *_ = _make_service(
+            create_job=AsyncMock(side_effect=asyncpg.UniqueViolationError()),
+            find_job_by_idempotency_key=AsyncMock(return_value={"job_id": "winner-job", "status": "pending"}),
+        )
+        sub = _make_submission()
+        sub.idempotency_key = "key-abc"
+
+        response = await svc.submit(b"data", "file.txt", sub, "alice")
+
+        assert response.job_id == "winner-job"
+
+    async def test_unique_violation_without_idempotency_key_reraises(self):
+        svc, *_ = _make_service(
+            create_job=AsyncMock(side_effect=asyncpg.UniqueViolationError()),
+        )
+        sub = _make_submission()
+        sub.idempotency_key = None
+
+        with pytest.raises(asyncpg.UniqueViolationError):
+            await svc.submit(b"data", "file.txt", sub, "alice")
+
+
 class TestSubmitRateLimit:
     async def test_per_user_cap_raises(self):
         svc, *_ = _make_service()
@@ -659,3 +689,79 @@ class TestGetTranscriptExcerpt:
 
         with pytest.raises(ValueError, match="char_start"):
             await svc.get_transcript_excerpt("job-1", 10, 5)
+
+
+class TestPostApprovalJobNotFound:
+    async def test_get_job_returns_none_calls_fail_job_non_recoverable(self):
+        svc, *_, ops, _ = _make_service()
+        ops.get_job = AsyncMock(return_value=None)
+
+        await svc._run_post_approval("job-1")
+
+        ops.fail_job.assert_called_once()
+        call_args = ops.fail_job.call_args
+        assert call_args.kwargs.get("recoverable") is False or call_args.args[-1] is False
+
+
+class TestLoadExtractionResult:
+    async def test_in_memory_miss_falls_back_to_blob(self):
+        svc, *_, blob = _make_service()
+        node = make_node()
+        extraction = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
+        blob.get_curated_extraction = AsyncMock(return_value=extraction.model_dump_json().encode())
+
+        row = {"meeting_date": date(2026, 1, 1)}
+        result = await svc._load_extraction_result("job-1", row)
+
+        assert result is not None
+        assert result.job_id == "job-1"
+        assert len(result.nodes) == 1
+        blob.get_curated_extraction.assert_called_once()
+
+    async def test_in_memory_hit_does_not_call_blob(self):
+        svc, *_, blob = _make_service()
+        extraction = ExtractionResult(job_id="job-1", nodes=[], relationships=[])
+        svc._results["job-1"] = extraction
+
+        row = {"meeting_date": date(2026, 1, 1)}
+        result = await svc._load_extraction_result("job-1", row)
+
+        assert result is extraction
+        blob.get_curated_extraction.assert_not_called()
+
+
+class TestStoreResult:
+    async def test_get_job_returns_none_skips_blob_write_logs_warning(self, caplog):
+        svc, *_, ops, blob = _make_service()
+        ops.get_job = AsyncMock(return_value=None)
+        ident = IdentificationResult(job_id="job-1", nodes=[], confidence_breakdowns={})
+
+        with caplog.at_level(logging.WARNING, logger="seshat.app.services.job"):
+            await svc._store_result("job-1", ident, [])
+
+        blob.put_curated_extraction.assert_not_called()
+        assert any("meeting_date" in r.message for r in caplog.records)
+
+    async def test_get_job_with_date_writes_blob(self):
+        svc, *_, ops, blob = _make_service()
+        ops.get_job = AsyncMock(return_value={"meeting_date": date(2026, 1, 1)})
+        ident = IdentificationResult(job_id="job-1", nodes=[], confidence_breakdowns={})
+        await svc._store_result("job-1", ident, [])
+
+        blob.put_curated_extraction.assert_called_once()
+
+
+class TestApproveResultAlreadyPopped:
+    async def test_approve_after_results_popped_logs_warning_and_proceeds(self, caplog):
+        svc, *_, ops, _ = _make_service()
+        node = make_node(status=NodeStatus.PENDING_REVIEW)
+        ops.get_job = AsyncMock(return_value={"status": JobStatus.AWAITING_REVIEW, "meeting_date": date(2026, 1, 1)})
+        extraction = ExtractionResult(job_id="job-1", nodes=[node], relationships=[])
+        blob_encoded = extraction.model_dump_json().encode()
+        svc._blob.get_curated_extraction = AsyncMock(return_value=blob_encoded)
+
+        approve_req = ApproveRequest(decisions=[NodeDecision(node_id=str(node.id), action="approve")])
+        with caplog.at_level(logging.WARNING, logger="seshat.app.services.job"):
+            await svc.approve("job-1", approve_req, "alice")
+
+        assert any("already consumed" in r.message or "post_approval" in r.message for r in caplog.records)

@@ -24,9 +24,16 @@ async def _require_root_key(
     x_api_key: Annotated[str | None, Header()] = None,
 ) -> None:
     if not x_api_key:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="X-API-Key required")
-    if not secrets.compare_digest(x_api_key, root_key):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid root key")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="X-API-Key header required")
+
+    # compare_digest raises TypeError for non-ASCII strings (Starlette decodes headers as latin-1)
+    try:
+        match = secrets.compare_digest(x_api_key, root_key)
+    except TypeError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="X-API-Key contains non-ASCII characters")
+
+    if not match:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="X-API-Key does not match the root key")
 
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(_require_root_key)])

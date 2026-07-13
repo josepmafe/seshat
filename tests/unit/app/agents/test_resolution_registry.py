@@ -26,10 +26,13 @@ def _make_resolution_registry() -> ResolutionRegistry:
 
 
 class TestSameTypeResolutionRegistry:
-    def test_get_returns_agent_for_known_type(self):
+    def test_get_returns_distinct_agent_per_type(self):
         registry = _make_same_type_registry()
-        for ct in (ConceptType.DECISION, ConceptType.RISK, ConceptType.ACTION_ITEM, ConceptType.OPEN_QUESTION):
-            assert registry.get(ct) is not None
+        agents = [
+            registry.get(ct)
+            for ct in (ConceptType.DECISION, ConceptType.RISK, ConceptType.ACTION_ITEM, ConceptType.OPEN_QUESTION)
+        ]
+        assert len({type(a) for a in agents}) == 4
 
     def test_get_raises_for_unknown_type(self):
         registry = _make_same_type_registry()
@@ -87,7 +90,7 @@ class TestCrossTypeResolutionRegistry:
     def test_get_returns_agent_for_known_pair(self):
         registry = _make_cross_type_registry()
         agent = registry.get(ConceptType.DECISION, ConceptType.RISK)
-        assert agent is not None
+        assert agent._system_prompt
 
     def test_get_raises_for_unknown_pair(self):
         registry = _make_cross_type_registry()

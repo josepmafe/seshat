@@ -88,12 +88,18 @@ class PGVectorStore(AbstractVectorStore):
         if self._ts_content_ready:
             return
 
+        # With async_mode=True PGVector skips __post_init__ and lazily calls __apost_init__
+        # on the first operation; trigger it explicitly so EmbeddingStore/CollectionStore
+        # are available on self._store before we build SQL statements against them.
+        await self._store.__apost_init__()
+
         async with self._engine.begin() as conn:
             await conn.execute(_ENSURE_TS_CONTENT)
 
         self._ts_content_ready = True
 
     async def upsert(self, node_id: str, text: str, metadata: dict) -> None:
+        logger.debug("Upserting vector for node_id=%s", node_id)
         doc = Document(page_content=text, metadata={**metadata, "node_id": node_id})
         await self._store.aadd_documents([doc], ids=[node_id])
 
@@ -302,6 +308,7 @@ class PGVectorStore(AbstractVectorStore):
         return result
 
     async def delete(self, node_id: str) -> None:
+        logger.debug("Deleting vector for node_id=%s", node_id)
         await self._store.adelete(ids=[node_id])
 
 

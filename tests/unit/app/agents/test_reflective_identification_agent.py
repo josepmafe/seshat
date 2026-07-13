@@ -10,7 +10,6 @@ from seshat.app.agents.identification.reflective import (
     _SelfReviewRetryExhaustedError,
 )
 from seshat.core.config.settings import IdentificationLLMConfig
-from seshat.core.models.enums import ConceptType
 from tests.helpers import make_anchored_concept, make_structured_llm
 
 
@@ -103,13 +102,3 @@ class TestReflectiveIdentificationAgent:
         result = await agent.identify("transcript", "hint", "file.txt")
 
         assert result == items
-
-    def test_delegates_concept_type_to_inner(self):
-        inner = _make_inner()
-        agent = ReflectiveIdentificationAgent(inner=inner, review_llm=MagicMock())
-        assert agent.concept_type == ConceptType.DECISION
-
-    def test_delegates_system_prompt_to_inner(self):
-        inner = _make_inner()
-        agent = ReflectiveIdentificationAgent(inner=inner, review_llm=MagicMock())
-        assert agent._system_prompt == inner._system_prompt

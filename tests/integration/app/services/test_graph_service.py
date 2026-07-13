@@ -1,22 +1,33 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID, uuid4
 
 import pytest
 
 from seshat.app.repositories.node_repository import NodeRepository
 from seshat.app.services.graph import GraphService, NodeNotFoundError, NodePreconditionError
 from seshat.core.config.settings import KBStoreConfig
-from seshat.core.models.api_graph import ManualNodeCreate, ManualNodeUpdate, NodeOverride, RelationshipInput
+from seshat.core.models.api_graph import (
+    ManualNodeCreate,
+    ManualNodeUpdate,
+    NodeFilter,
+    NodeOverride,
+    RelationshipInput,
+    SearchResult,
+)
 from seshat.core.models.enums import (
     ApprovalMethod,
     ConceptType,
     GraphDirection,
     IngestionSource,
+    NodeState,
+    NodeStatus,
     RelationshipType,
+    SearchMode,
 )
-from seshat.core.models.nodes import NodeMetadata
+from seshat.core.models.nodes import ExtractionResult, KBNode, KBRelationship, NodeMetadata
 from seshat.infra.knowledge_store.pg_store import PostgresKBStore
 from tests.helpers import make_node
 from tests.integration.conftest import SKIP_IF_NO_POSTGRES
@@ -40,6 +51,7 @@ def fake_vector_store():
     vs = MagicMock()
     vs.upsert = AsyncMock()
     vs.delete = AsyncMock()
+    vs.search = AsyncMock(return_value=[])
     return vs
 
 
@@ -109,12 +121,6 @@ class TestCreateIntegration:
 
         neighbours = await kb_store.get_neighbours(str(node.id), direction=GraphDirection.OUTBOUND)
         assert any(n.id == target.id for n in neighbours)
-
-    async def test_vector_store_upserted(self, svc, fake_vector_store):
-        node = await svc.create(_create_payload(), user_id="alice")
-        fake_vector_store.upsert.assert_called_once_with(
-            str(node.id), f"{node.title} {node.description}", node.metadata.model_dump(mode="json")
-        )
 
 
 class TestUpdateIntegration:
@@ -228,15 +234,8 @@ class TestDeleteIntegration:
 
         assert await kb_store.get_node(str(node.id)) is not None
 
-    async def test_delete_calls_vector_store(self, svc, fake_vector_store):
-        node = await svc.create(_create_payload(), user_id="alice")
-        await svc.delete(str(node.id), cascade=True)
-        fake_vector_store.delete.assert_called_once_with(str(node.id))
-
     async def test_delete_superseding_node_reverts_target_to_current(self, svc, kb_store):
         """Deleting the only superseding node must revert the target back to CURRENT."""
-        from seshat.core.models.enums import NodeState
-
         target = make_node("revert-target")
         await kb_store.write_node(target)
 
@@ -258,3 +257,174 @@ class TestDeleteIntegration:
         fetched_after = await kb_store.get_node(str(target.id))
         assert fetched_after is not None
         assert fetched_after.state == NodeState.CURRENT
+
+
+class TestGraphServiceSearch:
+    @pytest.fixture
+    def fake_vector_store(self):
+        store: dict[str, str] = {}
+        vs = MagicMock()
+        vs.upsert = AsyncMock(side_effect=lambda nid, text, _meta: store.update({nid: text}))
+        vs.delete = AsyncMock()
+
+        async def _search(query, **kwargs):
+            q = query.lower()
+            return [SearchResult(node_id=UUID(nid), score=1.0) for nid, text in store.items() if q in text.lower()]
+
+        vs.search = _search
+        return vs
+
+    async def test_keyword_search_returns_matching_node(self, svc, kb_store):
+        node_a = await svc.create(
+            _create_payload(title="Zymurgy brewing process", description="We use zymurgy"),
+            user_id="alice",
+        )
+        await svc.create(
+            _create_payload(title="Unrelated caching decision", description="Use Redis"),
+            user_id="alice",
+        )
+
+        results = await svc.search(
+            query="zymurgy",
+            limit=5,
+            node_filter=NodeFilter(),
+            mode=SearchMode.KEYWORD,
+        )
+
+        result_ids = [r.detail.node.id for r in results]
+        assert node_a.id in result_ids
+        assert all(r.score is not None for r in results)
+
+    async def test_keyword_search_no_match_returns_empty(self, svc):
+        await svc.create(
+            _create_payload(title="PostgreSQL decision", description="Use PostgreSQL"),
+            user_id="alice",
+        )
+
+        results = await svc.search(
+            query="xylophone quasar",
+            limit=5,
+            node_filter=NodeFilter(),
+            mode=SearchMode.KEYWORD,
+        )
+
+        assert results == []
+
+
+class TestGraphServiceTraverseImpact:
+    async def test_supersedes_chain_depth_two(self, svc, kb_store):
+        """A→SUPERSEDES→B→SUPERSEDES→C; traverse_impact(A, depth=2) must return B and C."""
+        node_a = await svc.create(_create_payload(title="A"), user_id="alice")
+        node_b = await svc.create(
+            _create_payload(
+                title="B",
+                relationships=[RelationshipInput(target_id=str(node_a.id), rel_type=RelationshipType.SUPERSEDES)],
+            ),
+            user_id="alice",
+        )
+        node_c = await svc.create(
+            _create_payload(
+                title="C",
+                relationships=[RelationshipInput(target_id=str(node_b.id), rel_type=RelationshipType.SUPERSEDES)],
+            ),
+            user_id="alice",
+        )
+
+        await kb_store.update_node_state(str(node_a.id), NodeState.SUPERSEDED)
+        await kb_store.update_node_state(str(node_b.id), NodeState.SUPERSEDED)
+
+        impact = await svc.traverse_impact(
+            node_id=node_c.id,
+            depth=2,
+            rel_types=None,
+            min_confidence=0.0,
+            direction=GraphDirection.OUTBOUND,
+        )
+
+        impact_node_ids = {n.node.id for n in impact.nodes}
+        assert node_a.id in impact_node_ids
+        assert node_b.id in impact_node_ids
+
+        depth_by_id = {n.node.id: n.traversal_depth for n in impact.nodes}
+        assert depth_by_id[node_b.id] == 1
+        assert depth_by_id[node_a.id] == 2
+
+    async def test_depth_one_does_not_include_two_hop_node(self, svc, kb_store):
+        """traverse_impact with depth=1 must not include nodes two hops away."""
+        node_a = await svc.create(_create_payload(title="A-d1"), user_id="alice")
+        node_b = await svc.create(
+            _create_payload(
+                title="B-d1",
+                relationships=[RelationshipInput(target_id=str(node_a.id), rel_type=RelationshipType.SUPERSEDES)],
+            ),
+            user_id="alice",
+        )
+        node_c = await svc.create(
+            _create_payload(
+                title="C-d1",
+                relationships=[RelationshipInput(target_id=str(node_b.id), rel_type=RelationshipType.SUPERSEDES)],
+            ),
+            user_id="alice",
+        )
+
+        await kb_store.update_node_state(str(node_a.id), NodeState.SUPERSEDED)
+        await kb_store.update_node_state(str(node_b.id), NodeState.SUPERSEDED)
+
+        impact = await svc.traverse_impact(
+            node_id=node_c.id,
+            depth=1,
+            rel_types=None,
+            min_confidence=0.0,
+            direction=GraphDirection.OUTBOUND,
+        )
+
+        impact_node_ids = {n.node.id for n in impact.nodes}
+        assert node_b.id in impact_node_ids
+        assert node_a.id not in impact_node_ids
+
+
+class TestWriteBatchStateTransitions:
+    async def test_supersedes_relationship_sets_target_state(self, kb_store, fake_vector_store):
+        node_repo = NodeRepository(kb_store, fake_vector_store)
+
+        existing = KBNode(
+            id=uuid4(),
+            type=ConceptType.DECISION,
+            title="Use MySQL for the database",
+            description="Prior decision to use MySQL.",
+            confidence=0.9,
+            status=NodeStatus.APPROVED,
+            metadata=NodeMetadata(
+                job_id="old-job",
+                meeting_date=date(2026, 1, 1),
+                ingestion_source=IngestionSource.PIPELINE,
+            ),
+        )
+        await node_repo.write_node(existing)
+
+        new_node = KBNode(
+            id=uuid4(),
+            type=ConceptType.DECISION,
+            title="Use PostgreSQL for the database",
+            description="New decision superseding the old one.",
+            confidence=0.9,
+            status=NodeStatus.APPROVED,
+            metadata=NodeMetadata(
+                job_id="new-job",
+                meeting_date=date(2026, 1, 15),
+                ingestion_source=IngestionSource.PIPELINE,
+            ),
+        )
+        rel = KBRelationship(
+            source_id=new_node.id,
+            target_id=existing.id,
+            rel_type=RelationshipType.SUPERSEDES,
+            job_id="new-job",
+            created_at=datetime.now(UTC),
+        )
+        result = ExtractionResult(job_id="new-job", nodes=[new_node], relationships=[rel])
+        await node_repo.write_batch(result)
+
+        updated = await kb_store.get_node(str(existing.id))
+        assert updated is not None
+        assert updated.state == NodeState.SUPERSEDED

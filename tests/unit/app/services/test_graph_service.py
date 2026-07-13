@@ -4,6 +4,7 @@ import logging
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
+import asyncpg
 import pytest
 
 from seshat.app.services.graph import (
@@ -301,10 +302,6 @@ class TestBulkCreate:
         assert "db down" in result.failed[0].error
 
 
-_UUID_1 = UUID("00000000-0000-0000-0000-000000000001")
-_UUID_2 = UUID("00000000-0000-0000-0000-000000000002")
-
-
 class TestBulkDelete:
     async def test_returns_succeeded_ids(self):
         svc, _ = _make_service()
@@ -513,6 +510,22 @@ class TestResolveByIds:
 
         repo.write_relationship.assert_called_once_with(rel)
 
+    async def test_unique_violation_on_second_write_propagates_uncaught(self):
+        node = make_node()
+        rel_a = make_relationship(node, make_node("tgt_a"))
+        rel_b = make_relationship(node, make_node("tgt_b"))
+        svc, repo = _make_service(node=node)
+        svc._extraction_orch.run_resolution = AsyncMock(
+            return_value=ResolutionResult(job_id="x", relationships=[rel_a, rel_b])
+        )
+        repo.write_relationship = AsyncMock(side_effect=[None, asyncpg.UniqueViolationError()])
+
+        with pytest.raises(asyncpg.UniqueViolationError):
+            await svc.resolve_by_ids([node.id])
+
+        assert repo.write_relationship.call_count == 2
+        repo.write_relationship.assert_any_call(rel_a)
+
 
 class TestGetNodeDetailNeighbourFiltering:
     async def test_superseded_source_node_excludes_all_neighbours(self):
@@ -636,6 +649,28 @@ class TestSearch:
         _, kwargs = repo.search.call_args
         assert kwargs["mode"] == SearchMode.KEYWORD
 
+    async def test_score_threshold_forwarded_to_repo(self):
+        svc, repo = _make_service()
+        repo.search = AsyncMock(return_value=[])
+
+        from seshat.core.models.api_graph import NodeFilter
+
+        await svc.search("q", limit=5, node_filter=NodeFilter(), score_threshold=0.75)
+
+        _, kwargs = repo.search.call_args
+        assert kwargs["score_threshold"] == 0.75
+
+    async def test_score_threshold_none_by_default(self):
+        svc, repo = _make_service()
+        repo.search = AsyncMock(return_value=[])
+
+        from seshat.core.models.api_graph import NodeFilter
+
+        await svc.search("q", limit=5, node_filter=NodeFilter())
+
+        _, kwargs = repo.search.call_args
+        assert kwargs["score_threshold"] is None
+
 
 def _make_rel(src_id=_UUID_1, tgt_id=_UUID_2) -> KBRelationship:
     from datetime import UTC, datetime
@@ -715,3 +750,14 @@ class TestDeleteRelationship:
         await svc.delete_relationship(rel.rel_id)
 
         repo.delete_relationship.assert_called_once_with(rel)
+
+
+class TestTraverseImpactDepthZero:
+    async def test_depth_zero_returns_empty(self):
+        svc, repo = _make_service()
+        repo.get_neighbours = AsyncMock(return_value=[make_node("n2")])
+
+        result = await svc.traverse_impact(_UUID_1, depth=0, rel_types=None, min_confidence=0.0)
+
+        assert result.nodes == []
+        repo.get_neighbours.assert_not_called()
