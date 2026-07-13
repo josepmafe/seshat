@@ -74,12 +74,19 @@ class TestPGVectorStoreSearch:
             "Use PostgreSQL for session storage",
             {"node_type": "decision", "confidence": 0.9},
         )
+        await vector_store.upsert(
+            _NODE_B_ID,
+            "Risk of data loss during migration",
+            {"node_type": "risk", "confidence": 0.8},
+        )
         results = await vector_store.search(
             "PostgreSQL session storage",
             top_k=5,
             node_filter=NodeFilter(node_type=ConceptType.DECISION),
         )
-        assert any(r.node_id == _TEST_NODE_UUID for r in results)
+        result_ids = {r.node_id for r in results}
+        assert _TEST_NODE_UUID in result_ids
+        assert _NODE_B_UUID not in result_ids
 
     async def test_with_node_type_filter_nonmatching(self, vector_store: PGVectorStore):
         await vector_store.upsert(

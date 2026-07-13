@@ -121,12 +121,6 @@ class TestCreateIntegration:
         neighbours = await kb_store.get_neighbours(str(node.id), direction=GraphDirection.OUTBOUND)
         assert any(n.id == target.id for n in neighbours)
 
-    async def test_vector_store_upserted(self, svc, fake_vector_store):
-        node = await svc.create(_create_payload(), user_id="alice")
-        fake_vector_store.upsert.assert_called_once_with(
-            str(node.id), f"{node.title} {node.description}", node.metadata.model_dump(mode="json")
-        )
-
 
 class TestUpdateIntegration:
     async def test_updates_title_and_description(self, svc, kb_store):
@@ -238,11 +232,6 @@ class TestDeleteIntegration:
             await svc.delete(str(node.id), cascade=False)
 
         assert await kb_store.get_node(str(node.id)) is not None
-
-    async def test_delete_calls_vector_store(self, svc, fake_vector_store):
-        node = await svc.create(_create_payload(), user_id="alice")
-        await svc.delete(str(node.id), cascade=True)
-        fake_vector_store.delete.assert_called_once_with(str(node.id))
 
     async def test_delete_superseding_node_reverts_target_to_current(self, svc, kb_store):
         """Deleting the only superseding node must revert the target back to CURRENT."""

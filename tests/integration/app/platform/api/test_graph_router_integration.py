@@ -11,8 +11,9 @@ from seshat.app.platform.api.state import AppState
 from seshat.app.repositories.node_repository import NodeRepository
 from seshat.app.services.graph import GraphService
 from seshat.core.config.settings import KBStoreConfig
-from seshat.core.models.enums import UserRole
+from seshat.core.models.enums import NodeStatus, UserRole
 from seshat.infra.knowledge_store.pg_store import PostgresKBStore
+from tests.helpers import make_node
 from tests.integration.conftest import SKIP_IF_NO_POSTGRES
 
 pytestmark = [pytest.mark.integration, SKIP_IF_NO_POSTGRES]
@@ -110,27 +111,24 @@ class TestGraphCRUDRoundTrip:
 
         fastapi_app.dependency_overrides.clear()
 
-    async def test_status_filter_exercises_sql_enum_coercion(self, fastapi_app, app_state):
+    async def test_status_filter_returns_matching_and_excludes_nonmatching(self, fastapi_app, app_state, kb_store):
         async with _client(fastapi_app, app_state, _OPERATOR) as ac:
-            create_resp = await ac.post("/graph/nodes", json=_CREATE_PAYLOAD)
+            approved_resp = await ac.post("/graph/nodes", json=_CREATE_PAYLOAD)
 
-        node_id = create_resp.json()["id"]
+        approved_id = approved_resp.json()["id"]
 
-        async with _client(fastapi_app, app_state, _OPERATOR) as ac:
-            approved_resp = await ac.get("/graph?status=approved")
-
-        assert approved_resp.status_code == 200
-        listed_ids = [n["id"] for n in approved_resp.json()["nodes"]]
-        assert node_id in listed_ids
+        # Seed a PENDING_REVIEW node directly into the KB store (the API always creates APPROVED)
+        pending = make_node("pending-node", status=NodeStatus.PENDING_REVIEW)
+        await kb_store.write_node(pending)
+        pending_id = str(pending.id)
 
         async with _client(fastapi_app, app_state, _OPERATOR) as ac:
-            superseded_resp = await ac.get("/graph?state=superseded")
+            resp = await ac.get("/graph?status=approved")
 
-        assert superseded_resp.status_code == 200
-        listed_superseded_ids = [n["id"] for n in superseded_resp.json()["nodes"]]
-        assert node_id not in listed_superseded_ids
-
-        fastapi_app.dependency_overrides.clear()
+        assert resp.status_code == 200
+        listed_ids = [n["id"] for n in resp.json()["nodes"]]
+        assert approved_id in listed_ids
+        assert pending_id not in listed_ids
 
     async def test_delete_then_get_returns_404(self, fastapi_app, app_state):
         async with _client(fastapi_app, app_state, _OPERATOR) as ac:
