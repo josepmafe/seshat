@@ -16,7 +16,9 @@ from seshat.infra.blob_store.s3_store import S3BlobStore
 from tests.integration._env import (
     _anthropic_reachable,
     _assemblyai_reachable,
+    _cohere_reachable,
     _openai_reachable,
+    _voyage_reachable,
 )
 from tests.integration.helpers import make_cheap_llm
 
@@ -54,6 +56,16 @@ SKIP_IF_NO_LLM_API = pytest.mark.skipif(
         "No LLM API available — set ANTHROPIC_API_KEY, OPENAI_API_KEY, "
         "AZURE_OPENAI_* vars, or configure AWS credentials for Bedrock"
     ),
+)
+
+SKIP_IF_NO_COHERE_API = pytest.mark.skipif(
+    not _cohere_reachable(),
+    reason="No Cohere API key — set COHERE_API_KEY",
+)
+
+SKIP_IF_NO_VOYAGE_API = pytest.mark.skipif(
+    not _voyage_reachable(),
+    reason="No Voyage API key — set VOYAGE_API_KEY",
 )
 
 SKIP_IF_NO_POSTGRES = pytest.mark.skipif(
