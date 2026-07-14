@@ -56,7 +56,10 @@ class NodeRetriever:
         logger.debug("Retrieving targets for node id=%s type=%s", node.id, node.type.value)
 
         results = await self._search_engine.search(
-            query, node_filter=NodeFilter(**filter_kwargs), exclude_job_id=exclude_job_id
+            query,
+            node_filter=NodeFilter(**filter_kwargs),
+            exclude_job_id=exclude_job_id,
+            score_threshold=self._config.min_similarity_score,
         )
         logger.info("Search returned %d raw results for node id=%s", len(results), node.id)
 

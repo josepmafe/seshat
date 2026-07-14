@@ -23,10 +23,6 @@ if TYPE_CHECKING:
     from seshat.infra.vector_store.base_store import AbstractVectorStore
 
 
-def build_vector_store(seshat_config: SeshatConfig) -> AbstractVectorStore:
-    return get_vector_store(seshat_config)
-
-
 def build_extraction_orchestrator(
     config: SeshatConfig,
     node_repo: NodeRepository,
@@ -53,7 +49,7 @@ def build_extraction_orchestrator(
     )
 
     vector_store = get_vector_store(config)
-    search_engine = _get_search_engine(config, vector_store)
+    search_engine = get_search_engine(config, vector_store)
     reranker = _get_reranker(config)
     node_retriever = NodeRetriever(
         rag_config=config.rag,
@@ -83,7 +79,7 @@ def build_ingestion_orchestrator(config: SeshatConfig, blob_repo: BlobRepository
     return IngestionOrchestrator(transcriber, blob_repo, config.transcription)
 
 
-def _get_search_engine(config: SeshatConfig, vector_store: AbstractVectorStore) -> SearchEngine:
+def get_search_engine(config: SeshatConfig, vector_store: AbstractVectorStore) -> SearchEngine:
     keyword_llm = _build_llm(config.rag.keyword_extraction_llm, config) if config.rag.keyword_extraction_llm else None
     multi_query_llm = _build_llm(config.rag.multi_query.llm, config) if config.rag.multi_query else None
     return SearchEngine(

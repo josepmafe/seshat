@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from seshat.app.agents.base import RetryExhaustedError, _BaseAgent
 from seshat.core.models.api_graph import SearchResult
 from seshat.core.models.enums import SearchMode
-from seshat.core.utils.hashing import fingerprint as _hash
+from seshat.core.utils.hashing import fingerprint
 from seshat.core.utils.log import get_logger
 
 if TYPE_CHECKING:
@@ -130,46 +130,46 @@ class SearchEngine:
         *,
         node_filter: Any | None = None,
         exclude_job_id: str | None = None,
+        top_k: int | None = None,
+        score_threshold: float | None = None,
     ) -> list[SearchResult]:
         logger.debug("search: mode=%s query=%r", self.search_mode.value, query[:60])
         common_search_kwargs = {
-            "query": query,
-            "top_k": self._rag_config.top_k,
             "node_filter": node_filter,
             "exclude_job_id": exclude_job_id,
+            "top_k": top_k if top_k is not None else self._rag_config.top_k,
         }
 
         match self.search_mode:
             case SearchMode.SEMANTIC:
-                results = await self._semantic_search(**common_search_kwargs)
+                results = await self._semantic_search(query, score_threshold=score_threshold, **common_search_kwargs)
             case SearchMode.KEYWORD:
-                results = await self._keyword_search(**common_search_kwargs)
+                results = await self._keyword_search(query, **common_search_kwargs)
             case SearchMode.HYBRID:
-                results = await self._hybrid_search(**common_search_kwargs)
+                results = await self._hybrid_search(query, score_threshold=score_threshold, **common_search_kwargs)
             case _:
                 raise ValueError(f"Unsupported search mode: {self.search_mode.value!r}")
 
         logger.debug("search: returned %d results", len(results))
         return results
 
-    async def _semantic_search(self, query: str, **kwargs) -> list[SearchResult]:
-        search_kwargs = {**kwargs, "score_threshold": self._rag_config.min_similarity_score}
-
+    async def _semantic_search(self, query: str, **kwargs: Any) -> list[SearchResult]:
         variants = await self._generate_variants(query)
         if not variants:
-            return await self._vs.search_dense(query, **search_kwargs)
+            return await self._vs.search_dense(query, **kwargs)
 
         queries = [query, *variants]
-        result_lists = await asyncio.gather(*[self._vs.search_dense(q, **search_kwargs) for q in queries])
+        result_lists = await asyncio.gather(*[self._vs.search_dense(q, **kwargs) for q in queries])
         return _rrf(result_lists, [])
 
-    async def _keyword_search(self, query: str, **kwargs) -> list[SearchResult]:
+    async def _keyword_search(self, query: str, **kwargs: Any) -> list[SearchResult]:
         keywords = await self._extract_keywords(query)
         return await self._vs.search_sparse(query=(keywords or query), **kwargs)
 
-    async def _hybrid_search(self, query: str, **kwargs) -> list[SearchResult]:
+    async def _hybrid_search(self, query: str, **kwargs: Any) -> list[SearchResult]:
+        score_threshold = kwargs.pop("score_threshold", None)
         semantic, keyword = await asyncio.gather(
-            self._semantic_search(query, **kwargs),
+            self._semantic_search(query, score_threshold=score_threshold, **kwargs),
             self._keyword_search(query, **kwargs),
         )
         return _rrf([semantic], [keyword])
@@ -209,7 +209,7 @@ class SearchEngine:
                 else "none"
             ),
         ]
-        return _hash(":".join(parts))
+        return fingerprint(":".join(parts))
 
     def prompt_texts(self) -> dict[str, str]:
         """Returns the active prompt strings keyed by role; used by MLflow to log the prompts alongside run params."""
