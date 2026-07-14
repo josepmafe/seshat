@@ -26,14 +26,24 @@ class _StubVectorStore(AbstractVectorStore):
     async def upsert(self, node_id: str, text: str, metadata: dict) -> None:
         self._stored.append(node_id)
 
-    async def search(
+    async def search_dense(
         self,
         query: str,
         top_k: int,
         node_filter: NodeFilter | None = None,
         exclude_job_id: str | None = None,
         score_threshold: float | None = None,
-        mode: object = None,
+    ) -> list[SearchResult]:
+        results = [SearchResult(node_id=nid, score=0.8) for nid in self._stored[:top_k]]
+        self._stored.clear()
+        return results
+
+    async def search_sparse(
+        self,
+        query: str,
+        top_k: int,
+        node_filter: NodeFilter | None = None,
+        exclude_job_id: str | None = None,
     ) -> list[SearchResult]:
         results = [SearchResult(node_id=nid, score=0.8) for nid in self._stored[:top_k]]
         self._stored.clear()

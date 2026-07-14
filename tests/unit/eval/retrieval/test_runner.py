@@ -33,14 +33,24 @@ class _CapturingVectorStore(AbstractVectorStore):
     async def upsert(self, node_id: str, text: str, metadata: dict) -> None:
         pass
 
-    async def search(
+    async def search_dense(
         self,
         query: str,
         top_k: int,
         node_filter: NodeFilter | None = None,
         exclude_job_id: str | None = None,
         score_threshold: float | None = None,
-        mode: object = None,
+    ) -> list[SearchResult]:
+        self.captured_filters.append(node_filter)
+        self.captured_queries.append(query)
+        return []
+
+    async def search_sparse(
+        self,
+        query: str,
+        top_k: int,
+        node_filter: NodeFilter | None = None,
+        exclude_job_id: str | None = None,
     ) -> list[SearchResult]:
         self.captured_filters.append(node_filter)
         self.captured_queries.append(query)

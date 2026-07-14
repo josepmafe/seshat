@@ -11,7 +11,6 @@ from sqlalchemy import Float, cast, func, select, text
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 
 from seshat.core.models.api_graph import SearchResult
-from seshat.core.models.enums import SearchMode
 from seshat.core.utils.db import ensure_psycopg_scheme
 from seshat.core.utils.log import get_logger
 from seshat.infra.vector_store.base_store import AbstractVectorStore
@@ -101,45 +100,28 @@ class PGVectorStore(AbstractVectorStore):
         doc = Document(page_content=text, metadata={**metadata, "node_id": node_id})
         await self._store.aadd_documents([doc], ids=[node_id])
 
-    async def search(
+    async def search_dense(
         self,
         query: str,
         top_k: int,
         node_filter: NodeFilter | None = None,
         exclude_job_id: str | None = None,
         score_threshold: float | None = None,
-        mode: SearchMode = SearchMode.SEMANTIC,
-    ) -> list[SearchResult]:
-        match mode:
-            case SearchMode.KEYWORD:
-                return await self._keyword_search(query, top_k, node_filter, exclude_job_id)
-            case SearchMode.SEMANTIC:
-                return await self._semantic_search(query, top_k, node_filter, exclude_job_id, score_threshold)
-            case _:
-                raise ValueError(f"Unsupported search mode for PGVectorStore: {mode!r}")
-
-    async def _keyword_search(
-        self,
-        query: str,
-        top_k: int,
-        node_filter: NodeFilter | None,
-        exclude_job_id: str | None,
-    ) -> list[SearchResult]:
-        sparse = await self._sparse_search(query, top_k=top_k, node_filter=node_filter, exclude_job_id=exclude_job_id)
-        return [SearchResult(node_id=UUID(node_id), score=score) for node_id, score in sparse]
-
-    async def _semantic_search(
-        self,
-        query: str,
-        top_k: int,
-        node_filter: NodeFilter | None,
-        exclude_job_id: str | None,
-        score_threshold: float | None,
     ) -> list[SearchResult]:
         results = await self._similarity_search(
             query, top_k=top_k, node_filter=node_filter, exclude_job_id=exclude_job_id, score_threshold=score_threshold
         )
         return [SearchResult(node_id=doc.metadata["node_id"], score=score) for doc, score in results]
+
+    async def search_sparse(
+        self,
+        query: str,
+        top_k: int,
+        node_filter: NodeFilter | None = None,
+        exclude_job_id: str | None = None,
+    ) -> list[SearchResult]:
+        sparse = await self._sparse_search(query, top_k=top_k, node_filter=node_filter, exclude_job_id=exclude_job_id)
+        return [SearchResult(node_id=UUID(node_id), score=score) for node_id, score in sparse]
 
     async def _sparse_search(
         self,
