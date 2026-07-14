@@ -6,10 +6,14 @@ from typing import TYPE_CHECKING
 import cohere
 import voyageai
 
+from seshat.app.platform.observability.usage_tracker import get_run_tracker
 from seshat.core.models.enums import RerankerProvider
 from seshat.core.utils.log import get_logger
 
 if TYPE_CHECKING:
+    from cohere import V2RerankResponse
+    from voyageai.object import RerankingObject
+
     from seshat.core.config.settings import RerankerConfig
     from seshat.core.models.nodes import KBNode
 
@@ -47,7 +51,22 @@ class CohereReranker(AbstractReranker):
             documents=docs,
             top_n=len(docs),
         )
+
+        await self._record_reranker_cost(response)
         return [nodes[item.index] for item in response.results]
+
+    async def _record_reranker_cost(self, response: V2RerankResponse) -> None:  # type: ignore
+        if response.meta and response.meta.tokens:
+            input_tokens = response.meta.tokens.input_tokens
+        else:
+            logger.warning("Cohere reranker response missing token usage info; cannot record reranker cost")
+            return
+
+        callback = get_run_tracker()
+        if callback is None:
+            logger.warning("No active token budget tracker found in context; reranker tokens will not be tracked")
+            return
+        await callback.tracker.add(reranker_input_tokens=input_tokens)  # type: ignore
 
 
 class VoyageReranker(AbstractReranker):
@@ -64,7 +83,16 @@ class VoyageReranker(AbstractReranker):
             model=self._config.model,
             top_k=len(docs),
         )
+
+        await self._record_reranker_cost(response)
         return [nodes[item.index] for item in response.results]
+
+    async def _record_reranker_cost(self, response: RerankingObject) -> None:
+        callback = get_run_tracker()
+        if callback is None:
+            logger.warning("No active token budget tracker found in context; reranker tokens will not be tracked")
+            return
+        await callback.tracker.add(reranker_input_tokens=response.total_tokens)
 
 
 def reranker_factory(config: RerankerConfig, api_key: str) -> AbstractReranker:
