@@ -9,6 +9,8 @@ from tests.integration.conftest import SKIP_IF_NO_EMBEDDINGS_API, SKIP_IF_NO_POS
 from tests.integration.helpers import make_relationship, seed_node
 
 pytestmark = [
+    # module loop required: kb_store fixture is module-scoped and asyncpg pools are loop-bound
+    pytest.mark.asyncio(loop_scope="module"),
     pytest.mark.integration,
     pytest.mark.llm,
     pytest.mark.embedding,

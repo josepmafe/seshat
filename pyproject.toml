@@ -150,6 +150,8 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 addopts = '--cov=src/seshat --cov-report=term-missing -m "not llm"'
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
 markers = [
     "integration: requires external services (Postgres, LocalStack, MLflow, LLM APIs, etc.)",
     "llm: requires a live LLM API key (any provider); subset of integration",
