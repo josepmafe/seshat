@@ -65,6 +65,11 @@ class _BaseIdentificationAgent(_BaseAgent, Generic[M]):
         super().__init__(llm=llm, config=config)
         self._config = config
         self._grouped_identification_types = grouped_identification_types
+        # Caching the system prompt only pays off when the same prompt is reused across successive
+        # calls within a job. Plain identification fans out one concurrent call per concept type,
+        # each with a distinct prompt, so there is no reuse to amortise; the reflective wrapper,
+        # which reissues the prompt in its validation pass, flips this on for its inner agent.
+        self._cache_system_prompt = False
 
     @property
     @abstractmethod
@@ -118,12 +123,16 @@ class _BaseIdentificationAgent(_BaseAgent, Generic[M]):
 
         # Transcript is intentionally not cached: the concept-type agents run in parallel, so all
         # calls are concurrent and would all miss the cache — paying the write premium with no hits.
-        return [
-            SystemMessage(
+        # The system prompt is cached only when _cache_system_prompt is set (reflective mode); see
+        # the note in __init__.
+        if self._cache_system_prompt:
+            system_message = SystemMessage(
                 content=[{"type": "text", "text": self._system_prompt, "cache_control": {"type": "ephemeral"}}]
-            ),
-            HumanMessage(content=content),
-        ]
+            )
+        else:
+            system_message = SystemMessage(content=self._system_prompt)
+
+        return [system_message, HumanMessage(content=content)]
 
     async def _group_identification(self, items: list[AnchoredConcept[M]]) -> list[ConceptGroup[M]]:
         from seshat.app.agents.identification.grouping import GroupingAgent
