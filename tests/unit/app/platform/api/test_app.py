@@ -10,6 +10,7 @@ from seshat.app.platform.api.app import (
     _emit_config_warnings,
     _ping_embedding_providers,
     _ping_external_model_providers,
+    _ping_reranking_providers,
     _ping_transcription_providers,
 )
 
@@ -129,3 +130,28 @@ class TestPingTranscriptionProviders:
             mock_get.return_value.ping = AsyncMock(side_effect=RuntimeError("boom"))
             result = await _ping_transcription_providers(config)
         assert result == ["assemblyai"]
+
+
+class TestPingRerankingProviders:
+    async def test_no_reranker_configured_returns_empty_list(self):
+        config = MagicMock()
+        config.rag.reranker = None
+        with patch("seshat.app.platform.api.app._get_reranker", return_value=None):
+            result = await _ping_reranking_providers(config)
+        assert result == []
+
+    async def test_reachable_returns_empty_list(self):
+        config = MagicMock()
+        config.rag.reranker.provider = "cohere"
+        with patch("seshat.app.platform.api.app._get_reranker") as mock_get_reranker:
+            mock_get_reranker.return_value.ping = AsyncMock()
+            result = await _ping_reranking_providers(config)
+        assert result == []
+
+    async def test_unreachable_returns_provider_name(self):
+        config = MagicMock()
+        config.rag.reranker.provider = "cohere"
+        with patch("seshat.app.platform.api.app._get_reranker") as mock_get_reranker:
+            mock_get_reranker.return_value.ping = AsyncMock(side_effect=RuntimeError("boom"))
+            result = await _ping_reranking_providers(config)
+        assert result == ["cohere"]

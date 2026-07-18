@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from langchain_core.messages import HumanMessage
 
+from seshat.app.pipeline.bootstrap import _get_reranker
 from seshat.app.pipeline.llm_factory import _build_llm
 from seshat.app.platform.api.routers import admin, graph, health, identity, jobs
 from seshat.app.platform.api.state import build_app_state
@@ -92,7 +93,6 @@ async def _ping_external_model_providers(config: SeshatConfig) -> None:
         logger.warning("`skip_external_provider_ping=True`: external model provider ping check bypassed")
         return
 
-    # TODO: add embedding and transcription pings
     faulty_providers: dict[str, list[str]] = {
         "chat": await _ping_llm_providers(config),
         "embedding": await _ping_embedding_providers(config),
@@ -180,4 +180,23 @@ async def _ping_transcription_providers(config: SeshatConfig) -> list[str]:
 
 
 async def _ping_reranking_providers(config: SeshatConfig) -> list[str]:
-    return []  # TODO: implement reranking provider ping
+    reranker = _get_reranker(config)
+    if reranker is None:
+        return []
+
+    reranker_cfg = config.rag.reranker
+    assert reranker_cfg is not None
+
+    try:
+        await reranker.ping()
+        logger.debug("Reranking provider reachable: provider=%s", reranker_cfg.provider)
+    except Exception as exc:
+        logger.warning(
+            "Reranking provider unreachable at startup: provider=%s — %s: %s",
+            reranker_cfg.provider,
+            type(exc).__name__,
+            exc,
+        )
+        return [reranker_cfg.provider]
+
+    return []
