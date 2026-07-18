@@ -6,12 +6,9 @@ from uuid import UUID
 
 import pytest
 
-from seshat.app.pipeline.extraction.search_engine import (
-    SearchEngine,
-    _Keywords,
-    _QueryVariants,
-    _rrf,
-)
+from seshat.app.agents.keyword_extraction import _Keywords
+from seshat.app.agents.multi_query import _QueryVariants
+from seshat.app.pipeline.extraction.search_engine import SearchEngine, _rrf
 from seshat.core.config.settings import MultiQueryConfig, RAGConfig, _LLMConfig
 from seshat.core.models.api_graph import NodeFilter, SearchResult
 from seshat.core.models.enums import LLMProvider, SearchMode
