@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path  # noqa: TC003
+from typing import TYPE_CHECKING
 
 from seshat.core.models.enums import ConceptType
 from seshat.eval.models import GateResult, MetricEntry
@@ -17,6 +18,9 @@ from seshat.eval.thresholds import (
     RETRIEVAL_MRR_AT_5,
     RETRIEVAL_RECALL_AT_5,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def write_gate(result: GateResult, gate_path: Path) -> None:
@@ -80,7 +84,7 @@ def upsert_gate(
 
 
 def identification_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:
-    def passes(key: str, value: float) -> bool:
+    def identification_gate_judge(key: str, value: float) -> bool | None:
         ctype_str, metric = key.rsplit(".", maxsplit=1)
         ctype = ConceptType(ctype_str)
         match metric:
@@ -90,14 +94,14 @@ def identification_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:
                 return value >= IDENTIFICATION_RECALL[ctype]
             case "spurious_rate":
                 return value <= IDENTIFICATION_SPURIOUS_RATE[ctype]
-            case _:  # non-blocking metrics; just logged, not gated on
-                return True
+            case _:  # non-gated metric; logged for observability, not checked
+                return None
 
-    return {k: MetricEntry(value=round(v, 3), passed=passes(k, v)) for k, v in metrics.items()}
+    return _harness_entries(metrics, identification_gate_judge)
 
 
 def resolution_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:
-    def passes(key: str, value: float) -> bool:
+    def resolution_gate_judge(key: str, value: float) -> bool | None:
         ctype_str, metric = key.rsplit(".", maxsplit=1)
         ctype = ConceptType(ctype_str)
         match metric:
@@ -105,40 +109,52 @@ def resolution_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:
                 return value >= RESOLUTION_PRECISION[ctype]
             case "recall":
                 return value >= RESOLUTION_RECALL[ctype]
-            case _:  # non-blocking metrics; just logged, not gated on
-                return True
+            case _:  # non-gated metric; logged for observability, not checked
+                return None
 
-    return {k: MetricEntry(value=round(v, 3), passed=passes(k, v)) for k, v in metrics.items()}
+    return _harness_entries(metrics, resolution_gate_judge)
 
 
 def retrieval_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:
-    def passes(key: str, value: float) -> bool:
+    def retrieval_gate_judge(key: str, value: float) -> bool | None:
         match key:
             case "recall_at_5":
                 return value >= RETRIEVAL_RECALL_AT_5
             case "mrr_at_5":
                 return value >= RETRIEVAL_MRR_AT_5
             case _:
-                return True
+                return None
 
-    return {k: MetricEntry(value=round(v, 3), passed=passes(k, v)) for k, v in metrics.items()}
+    return _harness_entries(metrics, retrieval_gate_judge)
 
 
 def grounding_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:
-    def passes(key: str, value: float) -> bool:
+    def grounding_gate_judge(key: str, value: float) -> bool | None:
         match key:
             case "precision":
                 return value >= GROUNDING_PRECISION
             case "recall":
                 return value >= GROUNDING_RECALL
-            case _:  # non-blocking metrics; just logged, not gated on
-                return True
+            case _:  # non-gated metric; logged for observability, not checked
+                return None
 
-    return {k: MetricEntry(value=round(v, 3), passed=passes(k, v)) for k, v in metrics.items()}
+    return _harness_entries(metrics, grounding_gate_judge)
 
 
 def grouping_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:
-    def passes(key: str, value: float) -> bool:
-        return value >= GROUPING_GROUP_HIT_RATE if key == "group_hit_rate" else True
+    def grouping_gate_judge(key: str, value: float) -> bool | None:
+        return value >= GROUPING_GROUP_HIT_RATE if key == "group_hit_rate" else None
 
-    return {k: MetricEntry(value=round(v, 3), passed=passes(k, v)) for k, v in metrics.items()}
+    return _harness_entries(metrics, grouping_gate_judge)
+
+
+def _harness_entries(
+    metrics: dict[str, float], gate_judge: Callable[[str, float], bool | None]
+) -> dict[str, MetricEntry]:
+    """Build a MetricEntry map from a `gate_judge` fn returning True/False for gated metrics, None for non-gated."""
+    result: dict[str, MetricEntry] = {}
+    for k, v in metrics.items():
+        verdict = gate_judge(k, v)
+        result[k] = MetricEntry(value=round(v, 3), gated=verdict is not None, passed=verdict)
+
+    return result
