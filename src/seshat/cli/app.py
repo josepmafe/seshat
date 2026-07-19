@@ -209,12 +209,11 @@ def _bootstrap_eval(harness_type: str) -> tuple[EvalConfig, SeshatConfig, str]:
     run_name = f"seshat-eval-{harness_type}-{datetime.now(tz=UTC).isoformat(timespec='minutes')}"
 
     set_job_id(job_id)
-    eval_config = EvalConfig(
-        observability=ObservabilityConfig(mlflow_tracking_uri="http://localhost:5000", mlflow_experiment_name=job_id)
-    )
+    eval_config = EvalConfig()
+    observability = ObservabilityConfig(mlflow_tracking_uri="http://localhost:5000", mlflow_experiment_name=job_id)
 
-    _assert_reachable(eval_config.observability.mlflow_tracking_uri, label="MLflow")
-    setup_mlflow(eval_config.observability)
+    _assert_reachable(observability.mlflow_tracking_uri, label="MLflow")
+    setup_mlflow(observability)
 
     seshat_config = SeshatConfig()
     configure_logging(seshat_config.logging)

@@ -29,7 +29,7 @@ def _make_runner(vector_store, eval_config) -> RetrievalEvalRunner:
 
 class TestRetrievalEvalRunner:
     async def test_run_produces_gate_result_with_retrieval_metrics(self, vector_store, tmp_path):
-        config = make_eval_config(tmp_path, "seshat-retrieval-eval-test")
+        config = make_eval_config(tmp_path)
         runner = _make_runner(vector_store, config)
         result = await runner.run()
 
