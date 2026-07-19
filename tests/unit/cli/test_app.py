@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 from typer.testing import CliRunner
 
+from seshat.cli import _eval_support as support
 from seshat.cli.app import app
 from seshat.core.config.eval_settings import EvalConfig
 
@@ -204,7 +205,7 @@ class TestBoundMlflowRetries:
         for var in ("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "MLFLOW_HTTP_REQUEST_TIMEOUT"):
             monkeypatch.delenv(var, raising=False)
 
-        cli_app._bound_mlflow_retries()
+        support.bound_mlflow_retries()
 
         assert int(os.environ["MLFLOW_HTTP_REQUEST_MAX_RETRIES"]) <= 2
         assert float(os.environ["MLFLOW_HTTP_REQUEST_TIMEOUT"]) <= 30
@@ -214,7 +215,7 @@ class TestBoundMlflowRetries:
 
         monkeypatch.delenv("MLFLOW_ASYNC_TRACE_LOGGING_RETRY_TIMEOUT", raising=False)
 
-        cli_app._bound_mlflow_retries()
+        support.bound_mlflow_retries()
 
         assert float(os.environ["MLFLOW_ASYNC_TRACE_LOGGING_RETRY_TIMEOUT"]) <= 60
 
@@ -223,7 +224,7 @@ class TestBoundMlflowRetries:
 
         monkeypatch.setenv("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "9")
 
-        cli_app._bound_mlflow_retries()
+        support.bound_mlflow_retries()
 
         assert os.environ["MLFLOW_HTTP_REQUEST_MAX_RETRIES"] == "9"
 
@@ -241,10 +242,10 @@ class TestEnsureUtf8Streams:
             def reconfigure(self, **kwargs: object) -> None:
                 calls.append(kwargs)
 
-        monkeypatch.setattr(cli_app.sys, "stdout", _Stream())
-        monkeypatch.setattr(cli_app.sys, "stderr", _Stream())
+        monkeypatch.setattr(support.sys, "stdout", _Stream())
+        monkeypatch.setattr(support.sys, "stderr", _Stream())
 
-        cli_app._ensure_utf8_streams()
+        support.ensure_utf8_streams()
 
         assert len(calls) == 2
         for kw in calls:
@@ -253,10 +254,10 @@ class TestEnsureUtf8Streams:
 
     def test_tolerates_streams_without_reconfigure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # older / wrapped streams may lack reconfigure — must not raise
-        monkeypatch.setattr(cli_app.sys, "stdout", object())
-        monkeypatch.setattr(cli_app.sys, "stderr", object())
+        monkeypatch.setattr(support.sys, "stdout", object())
+        monkeypatch.setattr(support.sys, "stderr", object())
 
-        cli_app._ensure_utf8_streams()  # no exception
+        support.ensure_utf8_streams()  # no exception
 
 
 class TestBootstrapResetsTraceProcessors:
@@ -270,13 +271,13 @@ class TestBootstrapResetsTraceProcessors:
         from unittest.mock import MagicMock
 
         reset = MagicMock()
-        monkeypatch.setattr(cli_app, "configure_trace_processors", reset)
-        monkeypatch.setattr(cli_app, "load_dotenv", lambda: None)
-        monkeypatch.setattr(cli_app, "_patch_httpx_ssl", lambda: None)
-        monkeypatch.setattr(cli_app, "_assert_reachable", lambda *a, **k: None)
-        monkeypatch.setattr(cli_app, "setup_mlflow", lambda *a, **k: "exp-1")
-        monkeypatch.setattr(cli_app, "configure_logging", lambda *a, **k: None)
+        monkeypatch.setattr(support, "configure_trace_processors", reset)
+        monkeypatch.setattr(support, "load_dotenv", lambda: None)
+        monkeypatch.setattr(support, "_patch_httpx_ssl", lambda: None)
+        monkeypatch.setattr(support, "_assert_reachable", lambda *a, **k: None)
+        monkeypatch.setattr(support, "setup_mlflow", lambda *a, **k: "exp-1")
+        monkeypatch.setattr(support, "configure_logging", lambda *a, **k: None)
 
-        cli_app._bootstrap_eval("identification")
+        support.bootstrap_eval("identification")
 
         reset.assert_called_once_with()
