@@ -53,13 +53,68 @@ def _patch_httpx_ssl() -> None:
 
 @eval_app.command("harness")
 def eval_cmd(
-    harness: Annotated[str, typer.Argument(help=f"Harness to run: {' | '.join(_HARNESS_TYPES)}")],
+    harness: Annotated[
+        str | None,
+        typer.Argument(help=f"Harness to run: {' | '.join(_HARNESS_TYPES)}. Omit with --all to run all enabled."),
+    ] = None,
     tags: Annotated[
         list[str] | None,
         typer.Option("--tag", help="Filter corpus by tag in `key=value` format. Repeatable."),
     ] = None,
+    clear_cache: Annotated[
+        bool,
+        typer.Option("--clear-cache", help="Clear the prediction cache of each harness that runs, before running."),
+    ] = False,
+    run_all: Annotated[
+        bool,
+        typer.Option("--all", help="Run every harness whose EVAL__RUN_<harness> flag is enabled."),
+    ] = False,
 ) -> None:
-    """Run an evaluation harness against the labelled corpus."""
+    """Run one evaluation harness, or every enabled harness with --all."""
+    if harness is not None and run_all:
+        typer.echo("Pass either a harness name or --all, not both.", err=True)
+        raise typer.Exit(code=1)
+
+    # Single named harness: the simple case — run it, and let any failure propagate (fail-hard).
+    if harness is not None:
+        if clear_cache:
+            _clear_cache(harness)
+
+        _run_single_harness(harness, tags)
+        return
+
+    if not run_all:
+        typer.echo("Provide a harness name or --all.", err=True)
+        raise typer.Exit(code=1)
+
+    harnesses = EvalConfig().enabled_harnesses
+    if not harnesses:
+        typer.echo("No harnesses enabled: every EVAL__RUN_<harness> flag is false.", err=True)
+        raise typer.Exit(code=1)
+
+    # A single harness failing (transient provider error, a bad fixture) should not throw away
+    # the spend on the others — run them all, collect failures, and report at the end.
+    failed: list[str] = []
+    for h in harnesses:
+        if clear_cache:
+            _clear_cache(h)
+
+        try:
+            _run_single_harness(h, tags)
+        except Exception as exc:  # report and continue across the suite
+            logger.exception("Harness %r failed", h)
+            typer.echo(f"Harness '{h}' failed: {exc}", err=True)
+            failed.append(h)
+
+    if failed:
+        typer.echo(f"\n{len(failed)}/{len(harnesses)} harness(es) failed: {', '.join(failed)}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"\nAll {len(harnesses)} harnesses completed: {', '.join(harnesses)}")
+
+
+def _run_single_harness(harness: str, tags: list[str] | None) -> None:
+    """Bootstrap MLflow and run a single named harness against the labelled corpus."""
     import mlflow
 
     async def _run() -> None:
@@ -87,15 +142,37 @@ def eval_cmd(
     _run_async(_run())
 
 
+@eval_app.command("clear-cache")
+def clear_cache_cmd(
+    harness: Annotated[
+        str | None,
+        typer.Argument(help=f"Harness cache to clear: {' | '.join(_HARNESS_TYPES)}. Omit to clear all."),
+    ] = None,
+) -> None:
+    """Clear cached eval predictions for one harness, or all harnesses when none is given."""
+    if harness is None:
+        for h in _HARNESS_TYPES:
+            _clear_cache(h)
+    else:
+        _clear_cache(harness)
+
+
 @eval_app.command("calibrate")
 def calibrate_cmd(
     component: Annotated[str, typer.Argument(help=f"Component to calibrate: {' | '.join(_CALIBRATION_TYPES)}")],
     pc_curve: bool = typer.Option(False, "--pc-curve", help="Plot precision-coverage curve (identification only)"),
     p_target: float = typer.Option(0.95, "--p-target", help="Precision target for threshold sweep"),
     ignore_grounding: bool = typer.Option(False, "--ignore-grounding", help="Ignore grounding signal in calibration"),
+    clear_cache: Annotated[
+        bool,
+        typer.Option("--clear-cache", help="Clear this component's prediction cache before calibrating."),
+    ] = False,
 ) -> None:
     """Calibrate eval thresholds and weights for the given component."""
     import mlflow
+
+    if clear_cache:
+        _clear_cache(component)
 
     async def _run() -> None:
         eval_config, seshat_config, run_name = _bootstrap_eval(f"{component}-calibration")
@@ -171,6 +248,19 @@ def migrate_cmd(
         check=False,
     )
     raise typer.Exit(code=result.returncode)
+
+
+def _clear_cache(harness: str) -> None:
+    """Clear the prediction cache directory for a single harness."""
+    from seshat.eval.cache import clear_cache_dir
+
+    if harness not in _HARNESS_TYPES:
+        typer.echo(f"Unknown harness '{harness}'. Choose from: {', '.join(_HARNESS_TYPES)}", err=True)
+        raise typer.Exit(code=1)
+
+    cache_dir = EvalConfig.cache_dir_for(harness)
+    clear_cache_dir(cache_dir)
+    typer.echo(f"Cleared eval cache for '{harness}': {cache_dir}")
 
 
 def _parse_tags(tags: list[str]) -> CorpusTagFilter:

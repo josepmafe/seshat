@@ -84,6 +84,27 @@ class EvalConfig(BaseSettings):
     # a hidden folder in the project root for caching intermediate results during eval runs; not intended for manual use
     _cache_dir: ClassVar[Path] = PROJECT_ROOT / ".seshat" / "eval_cache"
 
+    @classmethod
+    def cache_dir_for(cls, harness: str) -> Path:
+        """Return the cache directory for a harness name, without constructing an instance."""
+        subdir = getattr(cls, f"_{harness}_subdir", None)
+        if subdir is None:
+            raise ValueError(f"unknown harness: {harness!r}")
+
+        return cls._cache_dir / subdir
+
+    @property
+    def enabled_harnesses(self) -> list[str]:
+        """Harness names whose run_<harness> flag is enabled, in canonical order."""
+        flags = [
+            (self.run_identification, "identification"),
+            (self.run_resolution, "resolution"),
+            (self.run_retrieval, "retrieval"),
+            (self.run_grounding, "grounding"),
+            (self.run_grouping, "grouping"),
+        ]
+        return [name for enabled, name in flags if enabled]
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def identification_corpus_dir(self) -> Path:
