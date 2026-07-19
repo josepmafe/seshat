@@ -129,6 +129,16 @@ class GateResult(BaseModel):
 
         return True
 
+    def harness_passed(self, harness: str) -> bool:
+        """Whether this harness's own metric block passed, independent of the other blocks.
+
+        Unlike `passed` (the AND of every present block), this isolates a single harness —
+        so a green harness reads as green even when another block drags the overall gate down.
+        An absent (never-run) block is not a pass.
+        """
+        block: dict[str, MetricEntry] | None = getattr(self, f"{harness}_metrics")
+        return block is not None and all(entry.passed for entry in block.values())
+
     def model_post_init(self, __context: object) -> None:
         if not self.timestamp:
             self.timestamp = datetime.now(UTC).isoformat()

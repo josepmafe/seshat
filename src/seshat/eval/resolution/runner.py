@@ -91,6 +91,7 @@ class ResolutionEvalRunner:
             run_id=run_id,
             harness="resolution",
             gate_passed=gate.passed,
+            harness_passed=gate.harness_passed("resolution"),
             corpus_dir=self._config.resolution_corpus_dir,
             corpus_examples=examples,
             breakdown_artifact=_build_breakdown(eval_result, examples, result_cache, self._slug_maps),

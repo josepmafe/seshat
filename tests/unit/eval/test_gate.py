@@ -205,6 +205,36 @@ class TestGateResultPassed:
         assert gate_result.passed is True
 
 
+class TestGateResultHarnessPassed:
+    def test_passing_block_is_true(self):
+        gate_result = GateResult(run_id="r", identification_metrics=identification_entries(_passing_identification()))
+        assert gate_result.harness_passed("identification") is True
+
+    def test_failing_block_is_false(self):
+        m = _passing_identification()
+        m["decision.precision"] = 0.10
+        gate_result = GateResult(run_id="r", identification_metrics=identification_entries(m))
+        assert gate_result.harness_passed("identification") is False
+
+    def test_absent_block_is_false(self):
+        gate_result = GateResult(run_id="r", identification_metrics=identification_entries(_passing_identification()))
+        assert gate_result.harness_passed("resolution") is False
+
+    def test_harness_can_pass_while_overall_gate_fails(self):
+        # identification passes on its own even though a failing resolution block
+        # drags the overall gate to False — this is the whole point of the per-harness metric.
+        m = _passing_resolution()
+        m["action_item.precision"] = 0.10
+        gate_result = GateResult(
+            run_id="r",
+            identification_metrics=identification_entries(_passing_identification()),
+            resolution_metrics=resolution_entries(m),
+        )
+        assert gate_result.passed is False
+        assert gate_result.harness_passed("identification") is True
+        assert gate_result.harness_passed("resolution") is False
+
+
 class TestUpsertGate:
     def test_upsert_preserves_existing_blocks(self, tmp_path):
         gate_path = tmp_path / "gate.json"
