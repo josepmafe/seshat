@@ -4,10 +4,8 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel
-
-from seshat.app.agents.base import RetryExhaustedError, _BaseAgent
+from seshat.app.agents.keyword_extraction import KeywordAgent
+from seshat.app.agents.multi_query import MultiQueryAgent
 from seshat.core.models.api_graph import SearchResult
 from seshat.core.models.enums import SearchMode
 from seshat.core.utils.hashing import fingerprint
@@ -22,83 +20,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _Keywords(BaseModel):
-    keywords: list[str]
-
-
-class _QueryVariants(BaseModel):
-    variants: list[str]
-
-
-_KEYWORD_EXTRACTION_PROMPT = """\
-You are extracting search keywords for a knowledge base of meeting notes.
-The KB contains four node types: decisions, risks, action items, and open questions.
-
-Given a query node, extract the most discriminating search terms — words that would \
-uniquely identify semantically related nodes in the KB. Prioritise:
-- Proper nouns and named tools/systems (e.g. "Flyway", "PagerDuty", "Terraform")
-- Domain-specific technical terms (e.g. "schema drift", "rollback", "SLO breach")
-- The specific subject or object of the relationship (what was decided/risked/asked)
-
-Avoid:
-- Generic words that appear in most nodes ("service", "team", "issue", "change")
-- Node-type words ("decision", "risk", "action item", "question")
-- Stop words and filler
-
-Return 3-6 keywords or short phrases as a JSON object with a "keywords" array.
-"""
-
-_MULTI_QUERY_PROMPT_TEMPLATE = """\
-You are generating alternative search queries for a knowledge base lookup.
-Given an input query, produce {{num_variants}} alternative phrasings that capture \
-the same intent from different angles (e.g. more abstract, more specific, \
-using synonyms, or from a different perspective).
-
-Return exactly {{num_variants}} queries as a JSON object with a "variants" array.
-"""
-
-
-class _KeywordExtractionFailed(RetryExhaustedError): ...
-
-
-class _MultiQueryFailed(RetryExhaustedError): ...
-
-
-class _KeywordAgent(_BaseAgent):
-    @property
-    def _system_prompt(self) -> str:
-        return _KEYWORD_EXTRACTION_PROMPT
-
-    async def extract(self, query: str) -> str:
-        messages = [SystemMessage(_KEYWORD_EXTRACTION_PROMPT), HumanMessage(query)]
-        result: _Keywords = await self._retryable_structured_ainvoke(
-            messages,
-            _Keywords,
-            raise_on_exhaustion=_KeywordExtractionFailed("keyword extraction exhausted retries"),
-        )
-        keywords = " ".join(result.keywords)
-        logger.debug("keyword extraction: %r -> %r", query[:60], keywords[:60])
-        return keywords
-
-
-class _MultiQueryAgent(_BaseAgent):
-    @property
-    def _system_prompt(self) -> str:
-        return _MULTI_QUERY_PROMPT_TEMPLATE
-
-    async def generate(self, query: str, num_variants: int) -> list[str]:
-        prompt = _MULTI_QUERY_PROMPT_TEMPLATE.replace("{{num_variants}}", str(num_variants))
-        messages = [SystemMessage(prompt), HumanMessage(query)]
-        result: _QueryVariants = await self._retryable_structured_ainvoke(
-            messages,
-            _QueryVariants,
-            raise_on_exhaustion=_MultiQueryFailed("multi-query exhausted retries"),
-        )
-        variants = result.variants[:num_variants]
-        logger.debug("multi-query: generated %d variants for %r", len(variants), query[:60])
-        return variants
-
-
 class SearchEngine:
     def __init__(
         self,
@@ -110,12 +31,12 @@ class SearchEngine:
         self._rag_config = rag_config
         self._vs = vector_store
         self._keyword_agent = (
-            _KeywordAgent(keyword_llm, rag_config.keyword_extraction_llm)
+            KeywordAgent(keyword_llm, rag_config.keyword_extraction_llm)
             if keyword_llm is not None and rag_config.keyword_extraction_llm is not None
             else None
         )
         self._multi_query_agent = (
-            _MultiQueryAgent(multi_query_llm, rag_config.multi_query.llm)
+            MultiQueryAgent(multi_query_llm, rag_config.multi_query.llm, rag_config.multi_query.num_variants)
             if multi_query_llm is not None and rag_config.multi_query.llm is not None
             else None
         )
@@ -184,10 +105,9 @@ class SearchEngine:
         return query
 
     async def _generate_variants(self, query: str) -> list[str]:
-        multi_cfg = self._rag_config.multi_query
-        if multi_cfg is not None and self._multi_query_agent is not None:
+        if self._multi_query_agent is not None:
             try:
-                return await self._multi_query_agent.generate(query, multi_cfg.num_variants)
+                return await self._multi_query_agent.generate(query)
             except Exception:
                 logger.warning("multi-query generation LLM call failed; using original query only")
                 return []
@@ -196,15 +116,11 @@ class SearchEngine:
     def fingerprint(self) -> str:
         """Stable hash over the retrieval config; used by eval to bust the result cache on any change."""
         parts = [
-            self._rag_config.search_mode.value,
-            self._rag_config.keyword_extraction_llm.model if self._rag_config.keyword_extraction_llm else "none",
+            self._rag_config.search_mode,
+            self._keyword_agent.fingerprint() if self._keyword_agent else "none",
+            self._multi_query_agent.fingerprint() if self._multi_query_agent else "none",
             (
-                f"{self._rag_config.multi_query.llm.model}:n{self._rag_config.multi_query.num_variants}"
-                if self._rag_config.multi_query.llm
-                else "none"
-            ),
-            (
-                f"{self._rag_config.reranker.provider.value}:{self._rag_config.reranker.model}"
+                f"{self._rag_config.reranker.provider}:{self._rag_config.reranker.model}"
                 if self._rag_config.reranker
                 else "none"
             ),
@@ -215,9 +131,9 @@ class SearchEngine:
         """Returns the active prompt strings keyed by role; used by MLflow to log the prompts alongside run params."""
         texts: dict[str, str] = {}
         if self._keyword_agent is not None:
-            texts["keyword_extraction"] = _KEYWORD_EXTRACTION_PROMPT
+            texts["keyword_extraction"] = self._keyword_agent.prompt_texts()["system"]
         if self._multi_query_agent is not None:
-            texts["multi_query"] = _MULTI_QUERY_PROMPT_TEMPLATE
+            texts["multi_query"] = self._multi_query_agent.prompt_texts()["system"]
         return texts
 
 

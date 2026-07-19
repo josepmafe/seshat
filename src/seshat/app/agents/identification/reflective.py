@@ -93,6 +93,9 @@ class ReflectiveIdentificationAgent(_BaseIdentificationAgent[M]):
         )
         self._inner = inner  # type: ignore[assignment]
         self._review_llm = review_llm
+        # The extraction call (inner) and the validation call (below) reuse the same system prompt
+        # sequentially, so caching it now yields a read on the validation pass.
+        self._inner._cache_system_prompt = True
 
     @property
     def name(self) -> str:

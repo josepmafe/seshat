@@ -1,6 +1,6 @@
 # `seshat/agents`
 
-LLM agents that power Seshat's meeting-transcript processing pipeline. There are three agent families plus a supporting grounding agent.
+LLM agents that power Seshat's meeting-transcript processing pipeline. There are three agent families plus single-purpose supporting agents (grounding, keyword extraction, multi-query generation).
 
 ## Folder structure
 
@@ -33,7 +33,9 @@ agents/
 │       ├── open_question.py    # OpenQuestionCrossTypeResolutionAgent (→ Decision, ActionItem)
 │       ├── risk.py             # RiskCrossTypeResolutionAgent (→ Decision, OpenQuestion, ActionItem)
 │       └── registry.py         # CrossTypeResolutionRegistry
-└── grounding.py                # GroundingAgent (quote ↔ claim grounding check)
+├── grounding.py                # GroundingAgent (quote ↔ claim grounding check)
+├── keyword_extraction.py       # KeywordAgent (sparse-search keyword extraction for SearchEngine)
+└── multi_query.py              # MultiQueryAgent (query-variant generation for SearchEngine)
 ```
 
 ## `_BaseAgent` and retry contract
@@ -51,7 +53,9 @@ RetryExhaustedError                         (seshat.app.agents.base)
 ├── IdentificationRetryExhaustedError       (seshat.app.agents.identification.base)
 ├── GroupingRetryExhaustedError             (seshat.app.agents.identification.grouping)
 ├── ResolutionRetryExhaustedError           (seshat.app.agents.resolution.base)
-└── GroundingRetryExhaustedError            (seshat.app.agents.grounding)
+├── GroundingRetryExhaustedError            (seshat.app.agents.grounding)
+├── KeywordExtractionRetryExhaustedError    (seshat.app.agents.keyword_extraction)
+└── MultiQueryRetryExhaustedError           (seshat.app.agents.multi_query)
 ```
 
 ## Identification agents
@@ -139,6 +143,15 @@ Definitions appear before guard rails so the LLM grounds its understanding of ea
 ### Known limitations
 
 The `GroundingAgent` performs a **grounding check** only: does the supporting quote substantiate the node's claim? It does not check **type correctness** (is this node actually a Decision, or a preference?) or **structural correctness** (does it satisfy the extraction rules in the identification agent's system prompt?). A node can pass grounding with a high confidence score and still be a misclassification. This structural compliance gap is addressed in reflective mode by `ReflectiveIdentificationAgent`.
+
+## Query transformation agents
+
+`KeywordAgent` (`keyword_extraction.py`) and `MultiQueryAgent` (`multi_query.py`) are also independent of the identification/resolution families. Both are consumed exclusively by `SearchEngine` (`app/pipeline/extraction/search_engine.py`) to transform a query string before it hits the vector store — they participate in resolution indirectly, by improving the candidate set `NodeRetriever` hands to the resolution agents.
+
+- `KeywordAgent.extract(query)` — extracts discriminating search terms from a query node for sparse (`KEYWORD` / `HYBRID` mode) search.
+- `MultiQueryAgent.generate(query)` — generates alternative phrasings of a query for `SEMANTIC` / `HYBRID` mode fan-out search, fused via Reciprocal Rank Fusion. `num_variants` is fixed at construction time so it is baked into `fingerprint()`.
+
+Both agents fail soft: `SearchEngine` catches any exception (including retry exhaustion) and falls back to the original query rather than failing the search.
 
 ## Concept taxonomy and relationship ontology
 
