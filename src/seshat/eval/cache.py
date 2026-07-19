@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-
 M = TypeVar("M", bound=BaseModel)
 
 
@@ -55,11 +54,11 @@ async def read_or_run(
     if cache_fp.exists():  # noqa: ASYNC240
         coro.close()
         logger.debug("Cache hit in %r call: using result from %s", coro.__name__, cache_fp)
-        return model_cls.model_validate_json(cache_fp.read_text()), cache_fp, True  # noqa: ASYNC240
+        return model_cls.model_validate_json(cache_fp.read_text(encoding="utf-8")), cache_fp, True  # noqa: ASYNC240
 
     logger.debug("Cache miss in %r call: running coroutine and caching result to %s", coro.__name__, cache_fp)
     result = await coro
-    cache_fp.write_text(result.model_dump_json())  # noqa: ASYNC240
+    cache_fp.write_text(result.model_dump_json(), encoding="utf-8")  # noqa: ASYNC240
     return result, cache_fp, False
 
 

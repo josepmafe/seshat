@@ -164,5 +164,5 @@ def make_input_redactor(
 def _log_breakdown_artifact(breakdown: dict, run_id: str) -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         breakdown_path = Path(tmp_dir) / "breakdown.json"
-        breakdown_path.write_text(json.dumps(breakdown, indent=2))
+        breakdown_path.write_text(json.dumps(breakdown, indent=2), encoding="utf-8")
         mlflow.log_artifact(str(breakdown_path), artifact_path="eval", run_id=run_id)

@@ -21,11 +21,11 @@ from seshat.eval.thresholds import (
 
 def write_gate(result: GateResult, gate_path: Path) -> None:
     gate_path.parent.mkdir(parents=True, exist_ok=True)
-    gate_path.write_text(result.model_dump_json(indent=2))
+    gate_path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
 
 
 def read_gate(gate_path: Path) -> GateResult:
-    raw = gate_path.read_text()
+    raw = gate_path.read_text(encoding="utf-8")
     # Capture the stored hash before parsing: model_post_init recomputes validation_hash
     # on construction, so comparing result.validation_hash to itself would always pass.
     stored_hash = json.loads(raw).get("validation_hash", "")

@@ -10,8 +10,9 @@ logger = logging.getLogger(__name__)
 def setup_mlflow(config: ObservabilityConfig, *, disable_autolog: bool = False) -> str:
     """Configure MLflow tracking, enable LangChain autolog, and resolve experiment ID.
 
-    Returns the experiment ID. Called once at process startup.
-    Pass disable_autolog=True for eval entrypoints where mlflow.genai.evaluate manages its own runs.
+    Returns the experiment ID. Called once at process startup. Autolog is kept on for eval
+    too, so the agent LLM-call traces are captured in the MLflow UI; ``disable_autolog`` is
+    retained as an escape hatch but no caller currently sets it.
     """
     mlflow.set_tracking_uri(config.mlflow_tracking_uri)
     mlflow.langchain.autolog(disable=disable_autolog)  # type: ignore[attr-defined]

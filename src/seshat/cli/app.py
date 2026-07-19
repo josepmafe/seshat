@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import selectors
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from seshat.app.platform.observability.mlflow_setup import setup_mlflow
 from seshat.core.config.eval_settings import EvalConfig
 from seshat.core.config.settings import GroundingLLMConfig, ObservabilityConfig, SeshatConfig
 from seshat.core.utils.log import configure_logging, get_logger, set_job_id
+from seshat.eval.mlflow_logging import configure_trace_processors
 
 logger = get_logger(__name__)
 
@@ -290,6 +292,35 @@ def _assert_reachable(uri: str, *, label: str, timeout: float = 2.0) -> None:
         raise typer.Exit(code=1) from exc
 
 
+def _ensure_utf8_streams() -> None:
+    """Make stdout/stderr tolerate non-ASCII so a stray char cannot crash the CLI.
+
+    MLflow logs a runner emoji at end_run; on a cp1252 Windows console that raised
+    UnicodeEncodeError at shutdown. Reconfiguring to utf-8 with backslashreplace degrades
+    an unencodable char instead of crashing. No-op on streams lacking reconfigure().
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
+def _bound_mlflow_retries() -> None:
+    """Cap MLflow's retry/timeout budgets so a slow tracking server fails fast.
+
+    LangChain autolog is intentionally on during eval (agent traces show in the MLflow UI),
+    so a large cold harness queues many trace exports. MLflow has TWO independent paths that
+    must both be bounded:
+      * sync API calls — MLFLOW_HTTP_REQUEST_MAX_RETRIES (default 7) / _TIMEOUT (default 120)
+      * async trace export — MLFLOW_ASYNC_TRACE_LOGGING_RETRY_TIMEOUT (default 500), drained
+        at process exit; this is what backed up after a cold 138-call harness and hung ~15min.
+    Bounding only the HTTP path is insufficient. setdefault leaves explicit user overrides intact.
+    """
+    os.environ.setdefault("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "1")
+    os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "15")
+    os.environ.setdefault("MLFLOW_ASYNC_TRACE_LOGGING_RETRY_TIMEOUT", "20")
+
+
 def _bootstrap_eval(harness_type: str) -> tuple[EvalConfig, SeshatConfig, str]:
     """Set up MLflow and configs for an eval or calibration run."""
     load_dotenv()
@@ -299,11 +330,17 @@ def _bootstrap_eval(harness_type: str) -> tuple[EvalConfig, SeshatConfig, str]:
     run_name = f"seshat-eval-{harness_type}-{datetime.now(tz=UTC).isoformat(timespec='minutes')}"
 
     set_job_id(job_id)
+    _ensure_utf8_streams()
+    _bound_mlflow_retries()
     eval_config = EvalConfig()
     observability = ObservabilityConfig(mlflow_tracking_uri="http://localhost:5000", mlflow_experiment_name=job_id)
 
     _assert_reachable(observability.mlflow_tracking_uri, label="MLflow")
     setup_mlflow(observability)
+
+    # Clear any span processor a prior harness registered globally (e.g. identification's
+    # node slimmer) so it cannot fire on this harness's differently-shaped prediction spans.
+    configure_trace_processors()
 
     seshat_config = SeshatConfig()
     configure_logging(seshat_config.logging)

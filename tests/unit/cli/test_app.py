@@ -188,3 +188,95 @@ class TestCalibrateClearCacheFlag:
         assert list((cache_root / "retrieval").glob("*.json")) == []
         assert list((cache_root / "grouping").glob("*.json")) != []
         assert ran
+
+
+class TestBoundMlflowRetries:
+    """A slow/unresponsive MLflow server must fail fast, not retry for ~15 minutes.
+
+    Both the sync HTTP path and the async trace-export path have to be bounded: the
+    autolog trace backlog from a large cold harness drains through the async path, which
+    defaults to a 500s retry timeout.
+    """
+
+    def test_sets_conservative_http_retry_budget(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import os
+
+        for var in ("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "MLFLOW_HTTP_REQUEST_TIMEOUT"):
+            monkeypatch.delenv(var, raising=False)
+
+        cli_app._bound_mlflow_retries()
+
+        assert int(os.environ["MLFLOW_HTTP_REQUEST_MAX_RETRIES"]) <= 2
+        assert float(os.environ["MLFLOW_HTTP_REQUEST_TIMEOUT"]) <= 30
+
+    def test_bounds_async_trace_logging_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import os
+
+        monkeypatch.delenv("MLFLOW_ASYNC_TRACE_LOGGING_RETRY_TIMEOUT", raising=False)
+
+        cli_app._bound_mlflow_retries()
+
+        assert float(os.environ["MLFLOW_ASYNC_TRACE_LOGGING_RETRY_TIMEOUT"]) <= 60
+
+    def test_does_not_override_an_explicit_user_setting(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import os
+
+        monkeypatch.setenv("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "9")
+
+        cli_app._bound_mlflow_retries()
+
+        assert os.environ["MLFLOW_HTTP_REQUEST_MAX_RETRIES"] == "9"
+
+
+class TestEnsureUtf8Streams:
+    """MLflow logs a runner emoji at end_run; a cp1252 Windows console raised
+    UnicodeEncodeError. Reconfiguring streams to utf-8 with backslashreplace degrades an
+    unencodable char instead of crashing the CLI at shutdown.
+    """
+
+    def test_reconfigures_stdout_and_stderr_to_utf8(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls = []
+
+        class _Stream:
+            def reconfigure(self, **kwargs: object) -> None:
+                calls.append(kwargs)
+
+        monkeypatch.setattr(cli_app.sys, "stdout", _Stream())
+        monkeypatch.setattr(cli_app.sys, "stderr", _Stream())
+
+        cli_app._ensure_utf8_streams()
+
+        assert len(calls) == 2
+        for kw in calls:
+            assert kw["encoding"] == "utf-8"
+            assert kw["errors"] == "backslashreplace"
+
+    def test_tolerates_streams_without_reconfigure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # older / wrapped streams may lack reconfigure — must not raise
+        monkeypatch.setattr(cli_app.sys, "stdout", object())
+        monkeypatch.setattr(cli_app.sys, "stderr", object())
+
+        cli_app._ensure_utf8_streams()  # no exception
+
+
+class TestBootstrapResetsTraceProcessors:
+    """In --all, identification registers a global span processor that assumes its own
+    node shape; without a reset it leaks onto later harnesses' prediction spans (grounding
+    lacks a 'type' key -> hundreds of processor warnings). _bootstrap_eval must clear
+    processors once per harness, before predictions.
+    """
+
+    def test_bootstrap_clears_trace_processors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import MagicMock
+
+        reset = MagicMock()
+        monkeypatch.setattr(cli_app, "configure_trace_processors", reset)
+        monkeypatch.setattr(cli_app, "load_dotenv", lambda: None)
+        monkeypatch.setattr(cli_app, "_patch_httpx_ssl", lambda: None)
+        monkeypatch.setattr(cli_app, "_assert_reachable", lambda *a, **k: None)
+        monkeypatch.setattr(cli_app, "setup_mlflow", lambda *a, **k: "exp-1")
+        monkeypatch.setattr(cli_app, "configure_logging", lambda *a, **k: None)
+
+        cli_app._bootstrap_eval("identification")
+
+        reset.assert_called_once_with()
