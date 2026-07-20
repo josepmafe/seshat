@@ -1,24 +1,22 @@
 # Eval Corpus
 
-Ground-truth fixtures for the evaluation pipelines. Each pipeline has its own sub-directory under `corpus/` and `test_corpus/`.
+Ground-truth fixtures for the evaluation pipelines. Each pipeline has its own sub-directory under `corpora/` and `test_corpora/`.
 
 ```
 data/eval/
-├── corpus/                  # Production corpus used by the eval gate
+├── corpora/                 # Production corpus used by the eval gate
 │   ├── identification/      # Identification eval
 │   ├── resolution/          # Resolution eval
 │   ├── retrieval/           # Retrieval eval
 │   ├── grouping/            # Grouping agent eval
-│   └── verification/        # Verification agent eval
-└── test_corpus/             # Minimal fixtures used by fast integration tests (not the gate)
+│   └── grounding/           # Grounding agent eval
+└── test_corpora/            # Minimal fixtures used by fast integration tests (not the gate)
     ├── identification/
     ├── resolution/
     ├── retrieval/
     ├── grouping/
-    └── verification/
+    └── grounding/
 ```
-
-`identification_v1/` is a pre-2026-05-30 snapshot kept for reference; it is excluded from all gate and eval runs.
 
 ---
 
@@ -121,15 +119,28 @@ Test case counts should track **boundary complexity**, not be uniform. Relations
 
 ## Retrieval corpus
 
-Fixtures for the retrieval scorer (recall@5 gated, precision@5 logged). Each fixture seeds a candidate pool into pgvector, runs `NodeRetriever.retrieve()` on a single query node, and checks which candidates appear in the top-5 results.
+Fixtures for the retrieval scorer (recall@5 and mrr@5 gated, precision@5 logged). Each fixture seeds a candidate pool into pgvector, runs a search on a single query node, and checks which candidates appear in the top-5 results.
 
 ### Naming convention
 
 ```
-NNN_description.yaml
+TIER_NNN_description.yaml
 ```
 
-Flat sequence — no tier prefix. The description should encode the query type, candidate type, and scenario (e.g. `decision_risk_cross_type`, `no_relation_thematically_adjacent`).
+| Segment | Values | Meaning |
+|---------|--------|---------|
+| `TIER` | `same_type`, `cross_type`, `realistic`, `negative` | Which test tier (see below) |
+| `NNN` | `001`, `002`, … | Sequential within the tier |
+| `description` | kebab-case slug | Query type, candidate type, and scenario |
+
+### Tiers
+
+| Tier prefix | Pool composition | Polarity |
+|------------|------------------|----------|
+| `same_type` | single-type pool, same-type query→candidate pairing | positive |
+| `cross_type` | single-type pool, cross-type query→candidate pairing | positive |
+| `realistic` | mixed-type pool (all 4 node types), reflects production distribution | positive |
+| `negative` | mixed-type pool, `expected_relevant_ids: []` | negative |
 
 ### YAML format
 
@@ -195,9 +206,9 @@ To add a new fixture: find the highest `NNN` for that tier and increment.
 
 ---
 
-## Verification corpus
+## Grounding corpus
 
-Fixtures for the verification agent, which checks whether a quoted excerpt supports a stated claim.
+Fixtures for the grounding agent, which checks whether a quoted excerpt supports a stated claim.
 
 ### Naming convention
 

@@ -1,10 +1,10 @@
 from pathlib import Path
 from typing import ClassVar
 
-from pydantic import Field, computed_field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from seshat.core.config.settings import DEFAULT_EVAL_GATE_PATH, PROJECT_ROOT, ObservabilityConfig
+from seshat.core.config.settings import DEFAULT_EVAL_GATE_PATH, PROJECT_ROOT
 from seshat.core.models.enums import SearchMode
 
 _DEFAULT_CORPUS_BASE_DIR: Path = PROJECT_ROOT / "data" / "eval" / "corpora"
@@ -27,7 +27,6 @@ class EvalConfig(BaseSettings):
         default=DEFAULT_EVAL_GATE_PATH,
         description="Full path (including filename) for the GateResult JSON output.",
     )
-    observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     run_identification: bool = Field(
         default=True,
         description=(
@@ -85,55 +84,74 @@ class EvalConfig(BaseSettings):
     # a hidden folder in the project root for caching intermediate results during eval runs; not intended for manual use
     _cache_dir: ClassVar[Path] = PROJECT_ROOT / ".seshat" / "eval_cache"
 
-    @computed_field  # type: ignore[prop-decorator]
+    def corpus_dir_for(self, harness: str) -> Path:
+        """Return the corpus directory for a harness name (relative to the configured corpus_base_dir)."""
+        subdir = getattr(self, f"_{harness}_subdir", None)
+        if subdir is None:
+            raise ValueError(f"unknown harness: {harness!r}")
+
+        return self.corpus_base_dir / subdir
+
     @property
     def identification_corpus_dir(self) -> Path:
-        return self.corpus_base_dir / self._identification_subdir
+        return self.corpus_dir_for("identification")
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def resolution_corpus_dir(self) -> Path:
-        return self.corpus_base_dir / self._resolution_subdir
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def retrieval_corpus_dir(self) -> Path:
-        return self.corpus_base_dir / self._retrieval_subdir
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def grounding_corpus_dir(self) -> Path:
-        return self.corpus_base_dir / self._grounding_subdir
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def identification_cache_dir(self) -> Path:
-        return self._cache_dir / self._identification_subdir
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def resolution_cache_dir(self) -> Path:
-        return self._cache_dir / self._resolution_subdir
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def retrieval_cache_dir(self) -> Path:
-        return self._cache_dir / self._retrieval_subdir
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def grounding_cache_dir(self) -> Path:
-        return self._cache_dir / self._grounding_subdir
-
-    @computed_field  # type: ignore[prop-decorator]
     @property
     def grouping_corpus_dir(self) -> Path:
-        return self.corpus_base_dir / self._grouping_subdir
+        return self.corpus_dir_for("grouping")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def grounding_corpus_dir(self) -> Path:
+        return self.corpus_dir_for("grounding")
+
+    @property
+    def resolution_corpus_dir(self) -> Path:
+        return self.corpus_dir_for("resolution")
+
+    @property
+    def retrieval_corpus_dir(self) -> Path:
+        return self.corpus_dir_for("retrieval")
+
+    @classmethod
+    def cache_dir_for(cls, harness: str) -> Path:
+        """Return the cache directory for a harness name, without constructing an instance."""
+        subdir = getattr(cls, f"_{harness}_subdir", None)
+        if subdir is None:
+            raise ValueError(f"unknown harness: {harness!r}")
+
+        return cls._cache_dir / subdir
+
+    @property
+    def identification_cache_dir(self) -> Path:
+        return self.cache_dir_for("identification")
+
     @property
     def grouping_cache_dir(self) -> Path:
-        return self._cache_dir / self._grouping_subdir
+        return self.cache_dir_for("grouping")
+
+    @property
+    def grounding_cache_dir(self) -> Path:
+        return self.cache_dir_for("grounding")
+
+    @property
+    def resolution_cache_dir(self) -> Path:
+        return self.cache_dir_for("resolution")
+
+    @property
+    def retrieval_cache_dir(self) -> Path:
+        return self.cache_dir_for("retrieval")
+
+    @property
+    def enabled_harnesses(self) -> list[str]:
+        """Harness names whose run_<harness> flag is enabled, in canonical order."""
+        flags = [
+            (self.run_identification, "identification"),
+            (self.run_resolution, "resolution"),
+            (self.run_retrieval, "retrieval"),
+            (self.run_grounding, "grounding"),
+            (self.run_grouping, "grouping"),
+        ]
+        return [name for enabled, name in flags if enabled]
 
     @field_validator("gate_path", mode="after")
     @classmethod
@@ -145,15 +163,9 @@ class EvalConfig(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_corpus_dirs(self) -> "EvalConfig":
-        checks = [
-            (self.run_identification, self.identification_corpus_dir),
-            (self.run_resolution, self.resolution_corpus_dir),
-            (self.run_retrieval, self.retrieval_corpus_dir),
-            (self.run_grounding, self.grounding_corpus_dir),
-            (self.run_grouping, self.grouping_corpus_dir),
-        ]
-        for enabled, path in checks:
-            if enabled and not path.is_dir():
+        for harness in self.enabled_harnesses:
+            path = self.corpus_dir_for(harness)
+            if not path.is_dir():
                 raise ValueError(f"corpus dir does not exist: {path}")
         return self
 

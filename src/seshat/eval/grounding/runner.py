@@ -74,6 +74,7 @@ class GroundingEvalRunner:
             run_id=run_id,
             harness="grounding",
             gate_passed=gate.passed,
+            harness_passed=gate.harness_passed("grounding"),
             corpus_dir=self._config.grounding_corpus_dir,
             corpus_examples=examples,
             breakdown_artifact=_build_breakdown(examples, result_cache),

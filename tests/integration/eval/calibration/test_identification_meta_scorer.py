@@ -17,7 +17,7 @@ class TestIdentificationMetaScorerIntegration:
     async def test_sweep_end_to_end(self, tmp_path: Path) -> None:
         """Real corpus loader + cheap LLM orchestrator; verifies the full sweep path runs
         without errors and produces one result point per step."""
-        config = make_eval_config(tmp_path, "seshat-identification-meta-scorer")
+        config = make_eval_config(tmp_path)
         scorer = make_identification_meta_scorer(config)
 
         result = await scorer.sweep_threshold()

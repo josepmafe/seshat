@@ -184,7 +184,7 @@ class APIConfig(BaseConfig):
     max_concurrent_jobs: int = 1             # global cap on TRANSCRIBING/IDENTIFYING/RESOLVING/WRITING jobs
     eval_gate_path: Path = PROJECT_ROOT / "eval_gate.json"
     skip_eval_gate: bool = False             # bypass eval gate at startup; never use in production
-    skip_llm_ping: bool = False              # bypass LLM connectivity check at startup
+    skip_external_provider_ping: bool = False  # bypass external provider connectivity check at startup
     root_api_key_secret_key: str = "root-api-key"  # Secrets key for the root admin API key
 
 class SeshatConfig(BaseSettings):
@@ -1519,7 +1519,7 @@ tests/
   integration/   # Slow tests requiring Postgres, LocalStack, or LLM APIs
 scripts/         # Operational scripts; not part of the application package
 data/            # Local KB, MLflow artifacts (gitignored)
-eval_gate.json   # Written by seshat eval; read by worker at startup; gitignored
+eval_gate.json   # Written by seshat eval; read by API at startup; gitignored
 ```
 
 ---
@@ -1689,7 +1689,6 @@ Each eval run writes to a configurable `EvalConfig.gate_path` (typically `data/e
 class EvalConfig(BaseSettings):  # inherits from BaseSettings, not BaseConfig
     corpus_base_dir: Path = PROJECT_ROOT / "data/eval/corpora"
     gate_path: Path = DEFAULT_EVAL_GATE_PATH   # validated: must end in .json; parent dir created if missing
-    observability: ObservabilityConfig = ObservabilityConfig()
     run_identification: bool = True
     run_resolution: bool = True
     run_retrieval: bool = True
@@ -1728,7 +1727,14 @@ Quality metrics are logged to MLflow for regression visibility. Quality gates ar
 
 ### Evaluation Entrypoint
 
-No `seshat eval` CLI command exists yet — eval is currently invoked programmatically or via integration tests. The `seshat eval` CLI is deferred; it will wrap `run_all()` from a future `eval/run_all.py` orchestrator module.
+The `seshat eval` CLI (Typer, in `src/seshat/cli/app.py`) exposes four subcommands:
+
+- **`harness <name>`** — run one harness (`identification | resolution | retrieval | grouping | grounding`). `--all` runs every harness whose `EvalConfig.run_<harness>` flag is enabled (all `True` by default); the `run_<harness>` flags gate the `--all` suite only — a named run always executes regardless. `--tag key=value` (repeatable) filters the corpus; `--clear-cache` wipes that harness's prediction cache before running.
+- **`calibrate <component>`** — sweep thresholds for `retrieval` or `identification` (`--pc-curve`, `--p-target`, `--ignore-grounding`, `--clear-cache`).
+- **`clear-cache [harness]`** — delete cached predictions for one harness, or all five when no name is given.
+- **`mlflow`** — start the MLflow tracking server.
+
+Each invocation bootstraps its own MLflow run via `_bootstrap_eval`, which targets `http://localhost:5000` and names the experiment `seshat-eval-<harness>`. (The MLflow URI/experiment are set directly by the CLI, not through `EvalConfig`.)
 
 **Bootstrap note:** eval does not check or require a pre-existing gate file and does not submit jobs through the API worker — it invokes pipeline components directly in-process. This breaks the circular dependency: the gate file can't exist before eval runs, and eval doesn't need it to run.
 
@@ -1741,11 +1747,11 @@ No real meeting recordings may be processed until eval has been run and all thre
 2. `resolution_metrics` precision and recall ≥ 0.80
 3. `retrieval_metrics` recall@5 ≥ 0.70
 
-**Enforcement:** on startup, the worker reads the gate file at `EvalConfig.gate_path`. If the file is absent or `passed=False`, the worker refuses to accept jobs and logs a clear error. The check can be bypassed by setting `SESHAT_SKIP_EVAL_GATE=true`.
+**Enforcement:** on startup, the API reads the gate file at `APIConfig.eval_gate_path`. If the file is absent or `passed=False`, the API exits with a clear error and refuses to serve. The check can be bypassed by setting `API__SKIP_EVAL_GATE=true`.
 
 ### Regression Gate
 
-Any change to an agent system prompt, model, or confidence scoring logic must be run through eval before promotion. A change that improves one `ConceptType` at the cost of another is a regression — visible in MLflow as a metric degradation vs the baseline run. A failing run sets `passed=False` (computed on next gate file load) and the worker will refuse to start until a passing run is recorded.
+Any change to an agent system prompt, model, or confidence scoring logic must be run through eval before promotion. A change that improves one `ConceptType` at the cost of another is a regression — visible in MLflow as a metric degradation vs the baseline run. A failing run sets `passed=False` (computed on next gate file load) and the API will refuse to start until a passing run is recorded.
 
 ---
 

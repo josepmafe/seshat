@@ -5,7 +5,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from seshat.core.models.enums import ConceptType, RelationshipType
 
@@ -90,7 +90,16 @@ class RetrievalScoredResult(BaseModel):
 
 class MetricEntry(BaseModel):
     value: float
-    passed: bool
+    # passed is the threshold verdict for GATED metrics; None for non-gated (informational)
+    # metrics, which are logged but never checked against a threshold.
+    gated: bool = True
+    passed: bool | None = None
+
+    @model_validator(mode="after")
+    def _gated_requires_passed(self) -> MetricEntry:
+        if self.gated and self.passed is None:
+            raise ValueError("a gated MetricEntry must have a non-None `passed`")
+        return self
 
 
 class GateResult(BaseModel):
@@ -124,10 +133,20 @@ class GateResult(BaseModel):
         for harness_metrics in all_metrics:
             if harness_metrics is None:
                 continue
-            if not all(entry.passed for entry in harness_metrics.values()):
+            if not all(entry.passed for entry in harness_metrics.values() if entry.gated):
                 return False
 
         return True
+
+    def harness_passed(self, harness: str) -> bool:
+        """Whether this harness's own metric block passed, independent of the other blocks.
+
+        Unlike `passed` (the AND of every present block), this isolates a single harness —
+        so a green harness reads as green even when another block drags the overall gate down.
+        Only gated metrics count; an absent (never-run) block is not a pass.
+        """
+        block: dict[str, MetricEntry] | None = getattr(self, f"{harness}_metrics")
+        return block is not None and all(entry.passed for entry in block.values() if entry.gated)
 
     def model_post_init(self, __context: object) -> None:
         if not self.timestamp:

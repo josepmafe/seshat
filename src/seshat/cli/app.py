@@ -4,21 +4,21 @@ import asyncio
 import selectors
 import subprocess
 import sys
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Any
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
 
-    from seshat.eval.corpus_tags import CorpusTagFilter
-
 import typer
-from dotenv import load_dotenv
 
-from seshat.app.platform.observability.mlflow_setup import setup_mlflow
+from seshat.cli._eval_support import (
+    CALIBRATION_TYPES,
+    HARNESS_TYPES,
+    bootstrap_eval,
+    parse_tags,
+)
 from seshat.core.config.eval_settings import EvalConfig
-from seshat.core.config.settings import GroundingLLMConfig, ObservabilityConfig, SeshatConfig
-from seshat.core.utils.log import configure_logging, get_logger, set_job_id
+from seshat.core.utils.log import get_logger
 
 logger = get_logger(__name__)
 
@@ -35,35 +35,75 @@ app = typer.Typer(name="seshat", help="Seshat — meeting knowledge base CLI", n
 eval_app = typer.Typer(help="Eval harnesses, calibration, and tooling", no_args_is_help=True)
 app.add_typer(eval_app, name="eval")
 
-_HARNESS_TYPES = ["grounding", "grouping", "identification", "resolution", "retrieval"]
-_CALIBRATION_TYPES = ["retrieval", "identification"]
-
-
-def _patch_httpx_ssl() -> None:
-    import httpx
-
-    _orig = httpx.Client.__init__
-
-    def _no_verify(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-        kwargs.setdefault("verify", False)
-        _orig(self, *args, **kwargs)
-
-    httpx.Client.__init__ = _no_verify  # type: ignore[method-assign]
-
 
 @eval_app.command("harness")
 def eval_cmd(
-    harness: Annotated[str, typer.Argument(help=f"Harness to run: {' | '.join(_HARNESS_TYPES)}")],
+    harness: Annotated[
+        str | None,
+        typer.Argument(help=f"Harness to run: {' | '.join(HARNESS_TYPES)}. Omit with --all to run all enabled."),
+    ] = None,
     tags: Annotated[
         list[str] | None,
         typer.Option("--tag", help="Filter corpus by tag in `key=value` format. Repeatable."),
     ] = None,
+    clear_cache: Annotated[
+        bool,
+        typer.Option("--clear-cache", help="Clear the prediction cache of each harness that runs, before running."),
+    ] = False,
+    run_all: Annotated[
+        bool,
+        typer.Option("--all", help="Run every harness whose EVAL__RUN_<harness> flag is enabled."),
+    ] = False,
 ) -> None:
-    """Run an evaluation harness against the labelled corpus."""
+    """Run one evaluation harness, or every enabled harness with --all."""
+    if harness is not None and run_all:
+        typer.echo("Pass either a harness name or --all, not both.", err=True)
+        raise typer.Exit(code=1)
+
+    # Single named harness: the simple case — run it, and let any failure propagate (fail-hard).
+    if harness is not None:
+        if clear_cache:
+            _clear_cache(harness)
+
+        _run_single_harness(harness, tags)
+        return
+
+    if not run_all:
+        typer.echo("Provide a harness name or --all.", err=True)
+        raise typer.Exit(code=1)
+
+    harnesses = EvalConfig().enabled_harnesses
+    if not harnesses:
+        typer.echo("No harnesses enabled: every EVAL__RUN_<harness> flag is false.", err=True)
+        raise typer.Exit(code=1)
+
+    # A single harness failing (transient provider error, a bad fixture) should not throw away
+    # the spend on the others — run them all, collect failures, and report at the end.
+    failed: list[str] = []
+    for h in harnesses:
+        if clear_cache:
+            _clear_cache(h)
+
+        try:
+            _run_single_harness(h, tags)
+        except Exception as exc:  # report and continue across the suite
+            logger.exception("Harness %r failed", h)
+            typer.echo(f"Harness '{h}' failed: {exc}", err=True)
+            failed.append(h)
+
+    if failed:
+        typer.echo(f"\n{len(failed)}/{len(harnesses)} harness(es) failed: {', '.join(failed)}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"\nAll {len(harnesses)} harnesses completed: {', '.join(harnesses)}")
+
+
+def _run_single_harness(harness: str, tags: list[str] | None) -> None:
+    """Bootstrap MLflow and run a single named harness against the labelled corpus."""
     import mlflow
 
     async def _run() -> None:
-        eval_config, seshat_config, run_name = _bootstrap_eval(harness)
+        eval_config, seshat_config, run_name = bootstrap_eval(harness)
 
         match harness:
             case "grouping":
@@ -77,28 +117,50 @@ def eval_cmd(
             case "grounding":
                 from seshat.eval.grounding.entrypoint import run
             case _:
-                typer.echo(f"Unknown harness '{harness}'. Choose from: {', '.join(_HARNESS_TYPES)}", err=True)
+                typer.echo(f"Unknown harness '{harness}'. Choose from: {', '.join(HARNESS_TYPES)}", err=True)
                 raise typer.Exit(code=1)
 
-        tag_filter = _parse_tags(tags) if tags is not None else None
+        tag_filter = parse_tags(tags) if tags is not None else None
         with mlflow.start_run(run_name=run_name):
             await run(eval_config, seshat_config, tag_filter=tag_filter)
 
     _run_async(_run())
 
 
+@eval_app.command("clear-cache")
+def clear_cache_cmd(
+    harness: Annotated[
+        str | None,
+        typer.Argument(help=f"Harness cache to clear: {' | '.join(HARNESS_TYPES)}. Omit to clear all."),
+    ] = None,
+) -> None:
+    """Clear cached eval predictions for one harness, or all harnesses when none is given."""
+    if harness is None:
+        for h in HARNESS_TYPES:
+            _clear_cache(h)
+    else:
+        _clear_cache(harness)
+
+
 @eval_app.command("calibrate")
 def calibrate_cmd(
-    component: Annotated[str, typer.Argument(help=f"Component to calibrate: {' | '.join(_CALIBRATION_TYPES)}")],
+    component: Annotated[str, typer.Argument(help=f"Component to calibrate: {' | '.join(CALIBRATION_TYPES)}")],
     pc_curve: bool = typer.Option(False, "--pc-curve", help="Plot precision-coverage curve (identification only)"),
     p_target: float = typer.Option(0.95, "--p-target", help="Precision target for threshold sweep"),
     ignore_grounding: bool = typer.Option(False, "--ignore-grounding", help="Ignore grounding signal in calibration"),
+    clear_cache: Annotated[
+        bool,
+        typer.Option("--clear-cache", help="Clear this component's prediction cache before calibrating."),
+    ] = False,
 ) -> None:
     """Calibrate eval thresholds and weights for the given component."""
     import mlflow
 
+    if clear_cache:
+        _clear_cache(component)
+
     async def _run() -> None:
-        eval_config, seshat_config, run_name = _bootstrap_eval(f"{component}-calibration")
+        eval_config, seshat_config, run_name = bootstrap_eval(f"{component}-calibration")
 
         _kwargs: dict[str, Any] = {"eval_config": eval_config, "seshat_config": seshat_config}
         match component:
@@ -112,7 +174,7 @@ def calibrate_cmd(
                 _kwargs.update({"mode": mode, "p_target": p_target, "ignore_grounding": ignore_grounding})
 
             case _:
-                typer.echo(f"Unknown component '{component}'. Choose from: {', '.join(_CALIBRATION_TYPES)}", err=True)
+                typer.echo(f"Unknown component '{component}'. Choose from: {', '.join(CALIBRATION_TYPES)}", err=True)
                 raise typer.Exit(code=1)
 
         with mlflow.start_run(run_name=run_name):
@@ -173,57 +235,17 @@ def migrate_cmd(
     raise typer.Exit(code=result.returncode)
 
 
-def _parse_tags(tags: list[str]) -> CorpusTagFilter:
-    """Parse ``key=value`` tag strings into a dict, erroring on malformed entries."""
-    result: CorpusTagFilter = {}
-    for tag in tags:
-        if "=" not in tag:
-            typer.echo(f"Invalid tag format '{tag}': expected key=value", err=True)
-            raise typer.Exit(code=1)
-        k, _, v = tag.partition("=")
-        result[k] = v
-    return result
+def _clear_cache(harness: str) -> None:
+    """Clear the prediction cache directory for a single harness."""
+    from seshat.eval.cache import clear_cache_dir
 
+    if harness not in HARNESS_TYPES:
+        typer.echo(f"Unknown harness '{harness}'. Choose from: {', '.join(HARNESS_TYPES)}", err=True)
+        raise typer.Exit(code=1)
 
-def _assert_reachable(uri: str, *, label: str, timeout: float = 2.0) -> None:
-    import socket
-    from urllib.parse import urlparse
-
-    parsed = urlparse(uri)
-    host = parsed.hostname or "localhost"
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            pass
-    except OSError as exc:
-        typer.echo(f"Cannot reach {label} at {uri} — is the stack up? ({exc})", err=True)
-        raise typer.Exit(code=1) from exc
-
-
-def _bootstrap_eval(harness_type: str) -> tuple[EvalConfig, SeshatConfig, str]:
-    """Set up MLflow and configs for an eval or calibration run."""
-    load_dotenv()
-    _patch_httpx_ssl()
-
-    job_id = f"seshat-eval-{harness_type}"
-    run_name = f"seshat-eval-{harness_type}-{datetime.now(tz=UTC).isoformat(timespec='minutes')}"
-
-    set_job_id(job_id)
-    eval_config = EvalConfig(
-        observability=ObservabilityConfig(mlflow_tracking_uri="http://localhost:5000", mlflow_experiment_name=job_id)
-    )
-
-    _assert_reachable(eval_config.observability.mlflow_tracking_uri, label="MLflow")
-    setup_mlflow(eval_config.observability)
-
-    seshat_config = SeshatConfig()
-    configure_logging(seshat_config.logging)
-
-    if harness_type == "grounding" and seshat_config.extraction.grounding is None:
-        seshat_config = seshat_config._with(extraction=seshat_config.extraction._with(grounding=GroundingLLMConfig()))
-        logger.warning("grounding LLM config not found in SeshatConfig, using default grounding config")
-
-    return eval_config, seshat_config, run_name
+    cache_dir = EvalConfig.cache_dir_for(harness)
+    clear_cache_dir(cache_dir)
+    typer.echo(f"Cleared eval cache for '{harness}': {cache_dir}")
 
 
 if __name__ == "__main__":

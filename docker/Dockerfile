@@ -14,5 +14,6 @@ CMD ["uv", "run", "--no-sync", "seshat", "migrate"]
 
 FROM deps AS api
 COPY src/ src/
+COPY eval_gate.json .
 EXPOSE 8000
 CMD ["uv", "run", "--no-sync", "seshat", "api"]

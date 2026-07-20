@@ -258,7 +258,7 @@ Configures the secrets backend used to resolve API keys and connection strings.
 
 ### `observability` → `ObservabilityConfig`
 
-Configures MLflow tracing/experiment tracking. Also reused, unchanged, as `EvalConfig.observability`.
+Configures MLflow tracing/experiment tracking.
 
 | Field | Default | Definition |
 |---|---|---|
@@ -275,7 +275,7 @@ Configures the FastAPI application's rate limits and startup gates.
 | `max_concurrent_jobs` | `1` | Maximum number of jobs that may run concurrently. |
 | `eval_gate_path` | `<PROJECT_ROOT>/eval_gate.json` | Path to the eval gate JSON file produced by `seshat eval`. |
 | `skip_eval_gate` | `False` | Bypass the eval gate check at startup. Should never be used in production. |
-| `skip_llm_ping` | `False` | Skip the LLM ping check at startup. Should never be used in production. |
+| `skip_external_provider_ping` | `False` | Skip the external model provider ping check at startup. Should never be used in production. |
 | `root_api_key_secret_key` | `root-api-key` | Secrets key for the root API key used to create new API keys. |
 
 ### `document_loader` → `DocumentLoaderConfig`
@@ -309,7 +309,6 @@ Top-level `BaseSettings` root for the `seshat eval` harnesses. Loads from `.env`
 |---|---|---|
 | `corpus_base_dir` | `<PROJECT_ROOT>/data/eval/corpora` | Root directory for eval corpora. Expected subdirs: one per eval harness. |
 | `gate_path` | `<PROJECT_ROOT>/eval_gate.json` | Full path (including filename) for the `GateResult` JSON output; must end in `.json`. |
-| `observability` | `ObservabilityConfig()` | Same class as [`observability` → `ObservabilityConfig`](#observability--observabilityconfig). |
 | `run_identification` | `True` | Run the identification eval pass (did the pipeline extract the right nodes from the transcript). |
 | `run_resolution` | `True` | Run the resolution eval pass (did the pipeline infer the correct relationships between nodes). |
 | `run_retrieval` | `True` | Run the retrieval eval pass (does vector search surface the right nodes). |
@@ -454,7 +453,7 @@ API__MAX_JOBS_PER_USER_PER_HOUR=10
 API__MAX_CONCURRENT_JOBS=1
 # API__EVAL_GATE_PATH=/path/to/eval_gate.json
 API__SKIP_EVAL_GATE=false
-API__SKIP_LLM_PING=false
+API__SKIP_EXTERNAL_PROVIDER_PING=false
 API__ROOT_API_KEY_SECRET_KEY=root-api-key
 
 # ── Document loader (only used by `seshat init`) ────────────────────────────
@@ -466,8 +465,6 @@ MAX_CONCURRENT_INIT_RUNS=1
 # ── Eval harness (seshat eval) ───────────────────────────────────────────────
 # EVAL__CORPUS_BASE_DIR=/path/to/data/eval/corpora
 # EVAL__GATE_PATH=/path/to/eval_gate.json
-EVAL__OBSERVABILITY__MLFLOW_TRACKING_URI=http://mlflow:5000
-EVAL__OBSERVABILITY__MLFLOW_EXPERIMENT_NAME=seshat
 EVAL__RUN_IDENTIFICATION=true
 EVAL__RUN_RESOLUTION=true
 EVAL__RUN_RETRIEVAL=true

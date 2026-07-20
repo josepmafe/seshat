@@ -9,7 +9,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.llm, pytest.mark.agents, pyte
 
 class TestIdentificationEvalRunner:
     async def test_run_produces_gate_result_and_file(self, tmp_path):
-        config = make_eval_config(tmp_path, "seshat-identification-eval-test")
+        config = make_eval_config(tmp_path)
         runner = make_identification_runner(config)
         result = await runner.run()
 
