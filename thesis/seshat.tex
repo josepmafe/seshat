@@ -1,0 +1,202 @@
+\documentclass[
+  12pt,
+  a4paper,
+  spanish,
+  twoside,
+  openany,
+  BCOR=10mm,
+  DIV=14,
+  headinclude,
+  footinclude=false
+]{scrbook}
+
+% ── Codificación y tipografía ────────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{babel}
+\addto\captionsspanish{\renewcommand{\tablename}{Tabla}}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% ── Matemáticas ──────────────────────────────────────────────────────────────
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% ── Figuras y gráficos ───────────────────────────────────────────────────────
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% ── Tablas ───────────────────────────────────────────────────────────────────
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{diagbox}
+\usepackage{dirtree}
+
+% ── Código fuente ────────────────────────────────────────────────────────────
+\usepackage{listings}
+\usepackage{xcolor}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  keywordstyle=\color{blue!70!black}\bfseries,
+  commentstyle=\color{green!50!black}\itshape,
+  stringstyle=\color{red!60!black},
+  showstringspaces=false,
+}
+
+% ── Hiperenlaces ─────────────────────────────────────────────────────────────
+\usepackage[
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=green!50!black,
+  urlcolor=blue!60!black,
+  pdfauthor={Nombre Apellidos},
+  pdftitle={Seshat: Extracción y Estructuración del Conocimiento mediante Agentes LLM},
+  pdfsubject={Trabajo de Fin de Máster},
+  pdflang={es}
+]{hyperref}
+
+% ── Bibliografía ─────────────────────────────────────────────────────────────
+\usepackage[
+  backend=biber,
+  style=ieee,
+  sortlocale=es_ES,
+  url=true,
+  doi=true
+]{biblatex}
+\addbibresource{references.bib}
+
+% ── Encabezados KOMA ─────────────────────────────────────────────────────────
+\usepackage{scrlayer-scrpage}
+\pagestyle{scrheadings}
+\clearpairofpagestyles
+\ohead{\headmark}
+\rofoot{\pagemark}
+\refoot{\pagemark}
+\automark[section]{chapter}
+
+% ── Márgenes ─────────────────────────────────────────────────────────────────
+\usepackage[top=2.2cm, bottom=2.2cm, left=2.5cm, right=2.5cm]{geometry}
+
+% ── Otros paquetes útiles ────────────────────────────────────────────────────
+\emergencystretch=2em
+\setlength{\parskip}{4pt}
+\usepackage{csquotes}
+\usepackage{enumitem}
+\setlist{topsep=4pt, itemsep=3pt, parsep=0pt, partopsep=0pt}
+
+% Encabezado run-in como \paragraph pero con menos espacio superior. No se puede
+% lograr con un \vspace negativo previo: el beforeskip de \paragraph se inserta con
+% \addvspace, que toma el máximo y descarta el salto negativo. Se reduce el propio
+% beforeskip en su lugar. Sólo surte efecto donde se usa (anexo técnico).
+\makeatletter
+\newcommand{\tightparagraph}[1]{%
+  \@startsection{paragraph}{4}{\z@}%
+    {1.5ex \@plus .5ex \@minus .2ex}%   % beforeskip reducido (por defecto ~3.25ex)
+    {-1em}%                              % afterskip negativo → encabezado run-in
+    {\usekomafont{disposition}\usekomafont{paragraph}}{#1}}
+\makeatother
+
+\usepackage[nohyperlinks]{acronym}
+\usepackage{pdfpages}
+
+% ── Metadatos del documento ──────────────────────────────────────────────────
+\newcommand{\tituloTFM}{Seshat: Extracción y Estructuración del Conocimiento mediante Agentes LLM}
+\newcommand{\autorTFM}{Josep Martinez}
+\newcommand{\otroautorTFM}{Nombre Apellidos}
+\newcommand{\universidadTFM}{EBIS Business Techschool}
+\newcommand{\masterTFM}{Máster en Ingeniería y Desarrollo de Soluciones de IA Generativa}
+\newcommand{\anioTFM}{2026}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+\hypersetup{pageanchor=false}
+\frontmatter
+
+% ── Portada ──────────────────────────────────────────────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\LARGE \universidadTFM \par}
+  \vspace{0.5cm}
+  {\large \masterTFM \par}
+  \vspace{3cm}
+  {\huge \bfseries \tituloTFM \par}
+  \vspace{2cm}
+  {\large \textbf{Autor:} \autorTFM \par}
+  \vspace{0.5cm}
+  {\large \textbf{Autor:} \otroautorTFM \par}
+  \vfill
+  {\large \anioTFM \par}
+\end{titlepage}
+
+% ── Resumen ──────────────────────────────────────────────────────────────────
+\chapter*{Resumen}
+\addcontentsline{toc}{chapter}{Resumen}
+
+Las reuniones técnicas generan decisiones, riesgos y compromisos que con frecuencia quedan dispersos en notas informales o en la memoria de los participantes. Este trabajo presenta \textbf{Seshat}\footnote{%
+  Seshat (egipcio antiguo \emph{ss3t}, lit.\ \emph{``escriba femenina''}) era la diosa egipcia de la escritura, el conocimiento y la sabiduría. Considerada inventora de la escritura y guardiana de los registros, también presidía la arquitectura, la astronomía y la historia~\cite{wilkinson2003gods}. El nombre fue elegido por su resonancia con la misión del sistema: extraer, preservar y conectar el conocimiento generado en las reuniones.%
+}, un sistema que ingiere grabaciones de reuniones, extrae entidades estructuradas mediante agentes LLM y las persiste en una base de conocimiento con forma de grafo. Las relaciones entre decisiones a través de reuniones se rastrean explícitamente, permitiendo consultar la evolución del conocimiento organizativo a lo largo del tiempo.
+
+\bigskip
+\noindent\textbf{Palabras clave:} grandes modelos de lenguaje, extracción de información, grafos de conocimiento, recuperación aumentada por generación, búsqueda vectorial, orquestación de agentes, gestión del conocimiento organizativo.
+
+% ── Índice de contenidos ─────────────────────────────────────────────────────
+\tableofcontents
+
+% ─────────────────────────────────────────────────────────────────────────────
+\mainmatter
+
+\include{chapters/01-introduccion}
+\include{chapters/02-estado-del-arte}
+\include{chapters/03-requisitos-diseno}
+\include{chapters/04-implementacion}
+\include{chapters/05-evaluacion}
+\include{chapters/06-pruebas-validacion}
+\include{chapters/07-discusion}
+\include{chapters/08-conclusiones}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\appendix
+\include{chapters/anexos-despliegue}
+\include{chapters/anexos-tecnico}
+
+\backmatter
+
+\listoffigures
+\listoftables
+
+% ── Acrónimos ────────────────────────────────────────────────────────────────
+\chapter*{Acrónimos}
+\addcontentsline{toc}{chapter}{Acrónimos}
+\begin{acronym}[KOMA]
+  \acro{ASR}{Automatic Speech Recognition}
+  \acro{LLM}{Large Language Model}
+  \acro{RAG}{Retrieval-Augmented Generation}
+  \acro{NLI}{Natural Language Inference}
+  \acro{RRF}{Reciprocal Rank Fusion}
+  \acro{OTel}{OpenTelemetry}
+  \acro{API}{Application Programming Interface}
+  \acro{HITL}{Human-in-the-Loop}
+  \acro{TFM}{Trabajo de Fin de Máster}
+  \acro{MVP}{Minimum Viable Product}
+  \acro{CI}{Continuous Integration}
+  \acro{IAG}{Inteligencia Artificial Generativa}
+\end{acronym}
+
+\printbibliography[heading=bibintoc]
+
+\end{document}

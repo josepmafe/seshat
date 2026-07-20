@@ -141,6 +141,8 @@ runtime-evaluated-base-classes = ["pydantic.BaseModel"]
 # Scripts are CLI tools — print() is intentional, and long string literals
 # (sample scripts, argparse help text, noise profile prompts) cannot be split.
 "scripts/**" = ["T201", "E501"]
+# Thesis figure-generation helpers are standalone scripts, not application code.
+"thesis/**" = ["T201", "E501"]
 
 [tool.mypy]
 files = ["src"]

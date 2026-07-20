@@ -10,7 +10,11 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
-        exclude: ^data/fixtures/audio/
+        exclude: |
+          (?x)^(
+            data/fixtures/audio/|  # audio fixtures are large by nature
+            thesis/                # holds the compiled PDF (~1MB)
+          )
       - id: check-json
       - id: check-toml
       - id: check-yaml

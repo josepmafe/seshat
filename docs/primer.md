@@ -18,19 +18,18 @@ Seshat ingests a meeting recording (audio or pre-formatted transcript), extracts
 Streamlit UI
      │
      ▼
-FastAPI  ──────────────► Pipeline Worker
-     │                         │
-     │                         ▼
-     │              ┌──────────────────────┐
-     │              │   Storage Layer       │
-     │              │  Postgres (ops + KB)  │
-     │              │  pgvector             │
-     │              │  S3 / LocalStack      │
-     └──────────────┘  MLflow               │
-                    └──────────────────────┘
+┌─────────────────────────────────┐
+│ seshat-api                      │
+│   FastAPI ──► Pipeline Worker   │        ┌──────────────────────┐
+│               (in-process queue)│───────►│   Storage Layer       │
+└─────────────────────────────────┘        │  Postgres (ops + KB)  │
+                                            │  pgvector             │
+                                            │  S3 / LocalStack      │
+                                            │  MLflow               │
+                                            └──────────────────────┘
 ```
 
-Five services run in Docker Compose: `api`, `worker`, `streamlit`, `postgres`, `mlflow`, and `localstack` (AWS S3 + Secrets Manager emulation). The `api` and `worker` use the same Docker image with different entrypoints. All pipeline stages run inside the worker.
+Six services run in Docker Compose: `postgres`, `mlflow`, `localstack` (AWS S3 + Secrets Manager emulation), `seshat-api`, `seshat-ui`, and a one-shot `migrate` service that applies DB migrations before the API starts. There is no separate worker process — the pipeline worker is an in-process asyncio task queue inside `seshat-api`, and all pipeline stages run there.
 
 **Key design principle:** every external dependency — LLM, vector store, KB store, blob store, secrets — is accessed through a factory-created abstract interface. Pipeline stages never import a concrete implementation. This means swapping providers (e.g. Postgres → Neo4j for the KB, asyncio queue → ARQ/Redis) is a config change, not a refactor.
 
@@ -118,9 +117,9 @@ This means the full decision history is always preserved in the graph. If a deci
 
 Confidence scores are only meaningful if they are calibrated. A confidence threshold chosen without measurement is just a number.
 
-`seshat eval` is the calibration tool. It runs the extraction pipeline directly (not through the API worker) against a hand-crafted synthetic corpus of labelled transcripts in `tests/eval/corpus/`. It measures precision and recall per concept type and recall@5 on the retrieval baseline, and writes the results to `data/eval_gate.json`.
+`seshat eval` is the calibration tool. It runs the extraction pipeline directly in-process (not through the API's job queue) against a hand-crafted synthetic corpus of labelled transcripts in `data/eval/`. It measures precision and recall per concept type and recall@5 on the retrieval baseline, and writes the results to `eval_gate.json`.
 
-The worker reads this file at startup. If it is absent or `passed=false`, the worker refuses to accept jobs. **No real meeting data is processed until `seshat eval` has passed.** The gate can be bypassed via `SESHAT_SKIP_EVAL_GATE=true` but that must be an explicit act.
+The API reads this file at startup. If it is absent or `passed=false`, the API refuses to start. **No real meeting data is processed until `seshat eval` has passed.** The gate can be bypassed via `API__SKIP_EVAL_GATE=true` but that must be an explicit act.
 
 The same gate enforces the regression rule: any change to an agent system prompt, model, or confidence scoring logic must pass `seshat eval` before it goes to production.
 

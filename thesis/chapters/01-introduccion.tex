@@ -1,0 +1,138 @@
+\chapter{Introducción}
+
+\section{Contexto y motivación}
+
+Los equipos de ingeniería toman decisiones continuamente, tales como qué arquitectura adoptar, qué
+riesgos aceptar, qué tareas asignar y qué preguntas quedan abiertas. Una parte importante de ese
+proceso ocurre en reuniones técnicas, donde la conversación directa facilita la deliberación y la
+toma de acuerdos. Sin embargo, el conocimiento generado en esas reuniones rara vez queda
+registrado de manera estructurada: termina disperso en notas informales, hilos de mensajería
+instantánea y en la memoria de los participantes, sin trazabilidad del razonamiento que condujo
+a cada decisión.
+
+Esta brecha entre el conocimiento producido y el conocimiento preservado tiene consecuencias
+prácticas: cuando un nuevo miembro del equipo necesita entender por qué se eligió una base de
+datos en particular, o cuando un riesgo identificado meses atrás resurge en un contexto diferente,
+no existe un registro consultable que responda a esas preguntas. La ausencia de un grafo de
+decisiones explícito obliga a reconstruir el contexto a partir de fuentes fragmentadas, con el
+coste de tiempo y el riesgo de inconsistencia que ello conlleva.
+
+Existen herramientas que transcriben y resumen reuniones automáticamente, pero su salida es texto
+no estructurado: un resumen o una transcripción, no un conjunto de entidades consultables. Ninguna
+de ellas distingue entre una decisión, un riesgo o una tarea; ninguna rastrea cómo una decisión
+tomada en marzo contradice o matiza otra tomada en junio. La estructuración del conocimiento, su
+tipado y la trazabilidad de su evolución a lo largo del tiempo quedan fuera de su alcance.
+
+Los \ac{LLM} han transformado las capacidades de procesamiento del lenguaje natural. Desde la
+introducción de la arquitectura Transformer~\cite{vaswani2017attention}, los modelos de lenguaje
+han escalado en capacidad hasta alcanzar rendimiento notable en tareas de comprensión y generación
+de texto~\cite{brown2020gpt3}. Esta evolución ha abierto la puerta a sistemas capaces de extraer
+información estructurada a partir de texto no estructurado de forma fiable, sin necesidad de
+entrenamiento supervisado específico por dominio.
+
+Al mismo tiempo, la técnica de \ac{RAG}~\cite{lewis2020rag} ha demostrado que combinar la
+búsqueda en bases de conocimiento externas con la generación de modelos de lenguaje mejora
+significativamente la precisión y trazabilidad de las respuestas. Esta combinación resulta
+especialmente relevante en contextos donde el conocimiento evoluciona a lo largo del tiempo y
+la coherencia entre distintas fuentes es crítica.
+
+El presente \ac{TFM} presenta \textbf{Seshat}: un sistema que ingiere grabaciones de reuniones
+técnicas, extrae entidades estructuradas mediante una cadena de agentes LLM, y las persiste en
+una base de conocimiento con forma de grafo. El diseño incorpora un paso de revisión humana,
+asistida por puntuación de confianza; un arnés de evaluación reproducible que permite comparar
+el rendimiento del sistema cuando se introducen cambios, y una capa de observabilidad basada en
+MLflow. El resultado es un sistema completo, desplegable mediante Docker Compose, orientado a
+equipos de ingeniería que necesitan documentar y consultar el conocimiento técnico generado en
+sus reuniones.
+
+\section{Objetivos}
+
+\subsection{Objetivo general}
+
+Diseñar e implementar un sistema de extracción automática de conocimiento a partir de grabaciones
+de reuniones técnicas, capaz de identificar elementos clave de forma estructurada, gestionar las
+relaciones entre ellas a lo largo del tiempo mediante un grafo de conocimiento, e incorporar revisión
+humana asistida y evaluación calibrada como requisitos de calidad.
+
+\subsection{Objetivos específicos}
+
+Por simplicidad, se descompone el objetivo general en los siguientes objetivos específicos:
+
+\begin{enumerate}
+  \item Diseñar un flujo multi-agente que extraiga entidades estructuradas de cuatro
+        tipos a partir de transcripciones de reuniones e infiera las relaciones semánticas entre
+        ellas y con el conocimiento preexistente.
+
+  \item Incorporar revisión humana asistida por puntuación de confianza, de modo que el revisor
+        pueda concentrar su atención en los nodos de menor certeza y el sistema pueda operar en
+        modo automático cuando la confianza lo permita.
+
+  \item Construir un marco de evaluación con corpus etiquetado que mida el rendimiento mediante
+        de forma reproducible, usando métricas como \textit{precision}, \textit{recall} o \textit{F2 score},
+        y bloquee el procesamiento de datos reales si no se alcanza la calidad definida.
+
+  \item Desarrollar una \ac{API} REST y una interfaz web que cubran el ciclo de vida completo del
+        trabajo (envío, transcripción, extracción, revisión y consulta del grafo) sin requerir
+        acceso directo a la base de datos.
+
+  \item Desplegar el sistema como servicios contenerizados con observabilidad integrada, de modo
+        que el rendimiento y el coste sean medibles y comparables entre versiones.
+\end{enumerate}
+
+\section{Alcance de la solución}
+\label{sec:alcance}
+
+El sistema admite dos tipos de entrada: archivos de audio (\texttt{.mp3}, \texttt{.wav},
+\texttt{.m4a}) transcritos mediante un servicio externo, y transcripciones preformateadas
+(\texttt{.yaml} o \texttt{.json}). Ambas convergen en una representación interna común antes
+de entrar en el proceso de extracción.
+
+La extracción cubre cuatro tipos de nodo y siete tipos de relación semántica entre ellos,
+detallados en el capítulo~\ref{ch:requisitos-diseno}. La base de conocimiento sigue un modelo
+de escritura por estado: el contenido de un nodo aprobado es estable por diseño, aunque
+operadores y administradores pueden corregirlo mediante un mecanismo de anulación explícita
+que registra el motivo y el autor del cambio. El único campo que cambia de forma automática
+es el estado del nodo, que se actualiza cuando una reunión posterior establece una relación
+de supersesión o enmienda.
+
+El sistema incluye una interfaz web para la revisión humana de los nodos extraídos, un
+mecanismo de aprobación masiva por umbral de confianza y la posibilidad de que el operador
+añada nodos manualmente durante la revisión. Las relaciones inferidas se escriben
+automáticamente tras la aprobación de los nodos. La observabilidad está cubierta mediante
+\href{https://mlflow.org}{MLflow}~\cite{zaharia2018mlflow}: cada ejecución registra el uso
+de tokens, la latencia por etapa y los resultados de las métricas de evaluación.
+
+El sistema distingue tres tipos de trabajo: el \textit{pipeline} de ingesta y extracción, que
+constituye el flujo principal descrito en este documento; los trabajos de inicialización, que
+preparan la base de conocimiento antes de que el sistema entre en operación; y las operaciones
+manuales del operador, como la adición directa de nodos durante la revisión. En lo que sigue,
+el término \textit{pipeline} se reserva para el flujo de ingesta y extracción.
+
+\bigskip
+\noindent Esta versión inicial (\ac{MVP}) deja fuera de su alcance un conjunto de capacidades
+que se agrupan en cuatro categorías según la razón de su aplazamiento. La primera es el
+\textbf{endurecimiento para producción}: el despliegue en infraestructura cloud —con su definición
+mediante \textit{Infrastructure as Code}— y la autenticación con un proveedor de identidad externo
+(\textit{SSO}) exceden lo que un prototipo de investigación necesita demostrar. La segunda son las
+\textbf{extensiones del núcleo generativo}, funcionalidades afines a los objetivos pero pospuestas
+por tiempo o por depender de datos de producción: la detección y anonimización de información
+personal identificable (PII), la recuperación agéntica como alternativa al \textit{pipeline}
+\ac{RAG}~\cite{yao2023react}, o una señal de confianza complementaria basada en inferencia de
+lenguaje natural\footnote{%
+  La \textit{inferencia de lenguaje natural} (\textit{Natural Language Inference}, NLI) es la tarea
+  de determinar si una hipótesis se puede deducir (\textit{entailment}), contradice
+  (\textit{contradiction}) o es neutral respecto a una premisa dada. Aplicada a la puntuación de
+  confianza, un modelo NLI verifica si la descripción del nodo extraído está respaldada por su cita
+  fuente, aún usando sinónimos.%
+} (\acs{NLI}). La tercera es la \textbf{profundización del grafo de conocimiento}, trabajo de
+modelado de datos más que de \ac{IAG}: la revisión humana de las relaciones inferidas o el uso de un
+\textit{backend} de grafo nativo como \href{https://neo4j.com}{Neo4j}. La cuarta abarca la
+\textbf{integración y nuevas fuentes de entrada}: la entrada de vídeo, la
+diarización\footnote{%
+  La \textit{diarización} (\textit{speaker diarization}) es el proceso de segmentar una grabación
+  de audio en intervalos etiquetados por locutor, respondiendo a la pregunta «¿quién habló
+  cuándo?».%
+} de locutores, y la inicialización de la base desde un corpus documental existente —por ejemplo
+desde \href{https://www.notion.so}{Notion} o \href{https://www.atlassian.com/software/confluence}{Confluence}—.
+El capítulo~\ref{ch:conclusiones} retoma y detalla estas líneas como trabajo futuro
+(sección~\ref{sec:trabajo-futuro}).

@@ -1,0 +1,191 @@
+\chapter{Estado del Arte y Fundamentos Teóricos}
+\label{ch:estado-arte}
+
+\section{Grandes modelos de lenguaje}
+
+\subsection{Arquitectura Transformer}
+
+Hasta 2017, los modelos dominantes en procesamiento del lenguaje natural eran las redes
+recurrentes, que procesan el texto token a token acumulando el contexto en un vector de estado
+oculto. El problema es estructural: esa cadena de multiplicaciones hace que los gradientes se
+desvanezcan o exploten durante el entrenamiento, dificultando el aprendizaje de dependencias entre
+palabras lejanas\footnote{%
+  El problema del gradiente desvaneciente fue estudiado por Hochreiter~(1991) y formalizado por
+  Bengio et al.~(1994). LSTM y GRU paliaron el síntoma introduciendo compuertas, pero no
+  eliminaron la causalidad secuencial.%
+}. La propuesta de Vaswani et al.~\cite{vaswani2017attention} fue eliminar la recurrencia por
+completo: en lugar de propagar el contexto de forma secuencial, cada token puede relacionarse
+directamente con cualquier otro de la secuencia en un único paso paralelizable.
+
+El mecanismo que lo hace posible es la \textbf{atención}. A partir de la entrada se derivan,
+mediante proyecciones lineales de la matriz de embeddings, tres matrices: $Q$ (\textit{queries}),
+que representa qué información busca cada posición; $K$ (\textit{keys}), que representa qué
+información ofrece cada posición para ser encontrada; y $V$ (\textit{values}), que contiene el
+contenido que se recupera cuando una posición es seleccionada. La atención se calcula como:
+
+\begin{equation}
+  \text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V
+  \label{eq:attention}
+\end{equation}
+
+El producto $QK^\top$ mide la afinidad entre cada par de posiciones; dividirlo por $\sqrt{d_k}$
+evita que los valores crezcan tanto que el \textit{softmax} sature y los gradientes desaparezcan.
+El resultado es una suma ponderada de los valores $V$, donde los pesos reflejan cuánto «presta
+atención» cada posición a las demás.
+
+Una sola aplicación de esta operación captura un tipo de relación a la vez. Por eso la
+arquitectura usa \textit{multi-head attention}: aplica la ecuación~\eqref{eq:attention}
+en paralelo en múltiples subespacios proyectados independientemente, cada uno libre de especializarse
+en un patrón distinto —sintáctico, semántico, correferencial— y concatena las salidas al final.
+Así, el modelo puede razonar simultáneamente sobre estructura local y dependencias globales.
+
+La arquitectura original combina dos bloques con roles complementarios. El \textbf{codificador}
+(\textit{encoder}) procesa la secuencia de entrada completa con atención bidireccional,
+produciendo una representación contextualizada de cada token; es la elección natural para tareas
+de comprensión. El \textbf{decodificador} (\textit{decoder}) genera la salida token a token de
+forma autoregresiva, usando atención enmascarada para no ver posiciones futuras y atención cruzada
+sobre la salida del codificador para anclar la generación en la entrada.
+
+Ambos bloques inyectan codificaciones posicionales sinusoidales para preservar el orden sin recurrir
+a la recurrencia. Escalada en datos y parámetros, esta arquitectura dio lugar a los grandes modelos
+de lenguaje actuales.
+
+\subsection{Modelos de generación de texto}
+
+Los grandes modelos de lenguaje para generación de texto adoptan una variante \textit{decoder-only}
+del Transformer: eliminan el bloque codificador y emplean únicamente el decodificador con atención
+causal sobre toda la secuencia. Esta simplificación concentra el entrenamiento en un único objetivo
+—predecir el siguiente token sobre el corpus completo— y ha demostrado escalar de forma
+especialmente eficiente a cientos de miles de millones de parámetros. Modelos como GPT-5, Claude
+o Gemini responden a esta arquitectura.
+
+Un hallazgo determinante sobre estos modelos llegó con Brown et al.~\cite{brown2020gpt3}: los modelos
+con suficiente capacidad exhiben \textit{few-shot learning}, es decir, dados unos pocos ejemplos en
+el propio prompt son capaces de generalizar la tarea sin actualizar sus pesos. Esto redujo drásticamente
+la dependencia de conjuntos de datos etiquetados para cada aplicación específica y abrió la puerta a
+sistemas adaptables sin \textit{fine-tuning}.
+
+El siguiente paso fue el \textit{fine-tuning}. Los modelos preentrenados son competentes, pero no
+necesariamente útiles: pueden generar texto coherente sin seguir instrucciones ni respetar
+preferencias humanas. El aprendizaje por refuerzo a partir de retroalimentación humana
+(\textit{RLHF}) resolvió esto en dos fases: primero, evaluadores humanos clasifican pares de
+respuestas del modelo, entrenando un modelo de recompensa que aprende a predecir qué respuesta
+preferiría un humano; después, el modelo de lenguaje se ajusta mediante aprendizaje por refuerzo
+para maximizar esa recompensa. El resultado es un modelo que sigue instrucciones, reconoce cuando
+no sabe algo y produce salidas estructuradas con mucha mayor fiabilidad. Son estos modelos —
+preentrenados a escala y alineados con instrucciones— los que \textbf{Seshat} emplea como base
+de sus agentes.
+
+\subsection{\textit{Fine-tuning} y adaptación mediante prompts}
+
+El \textit{fine-tuning} permite especializar un modelo preentrenado en un dominio concreto
+mediante entrenamiento adicional sobre datos etiquetados. Aunque eficaz, introduce costes de
+datos, cómputo y mantenimiento que lo hacen poco adecuado para sistemas que deben adaptarse a
+cambios frecuentes de modelo base o de dominio.
+
+Una alternativa más ligera es el \textit{prompt engineering}, que explota la capacidad de los
+\ac{LLM} de generalizar a partir del contexto sin modificar sus pesos. Más allá de proporcionar
+ejemplos de salida esperada (\textit{few-shot learning}), el diseño cuidadoso de prompts para
+tareas de extracción estructurada combina varias técnicas complementarias: el razonamiento en
+cadena~\cite{wei2022cot} descompone la tarea en pasos intermedios verificables antes de emitir
+la respuesta; el anclaje en cita literal obliga al modelo a localizar el fragmento de texto que
+respalda cada nodo antes de describirlo, reduciendo la alucinación; las compuertas lógicas
+codifican condiciones de inclusión y exclusión que el modelo debe evaluar explícitamente; y los
+contraejemplos etiquetados delimitan fronteras semánticas entre categorías próximas. La salida
+estructurada forzada mediante esquemas Pydantic elimina la ambigüedad de formato y habilita
+reintentos automáticos ante violaciones de tipo. \textbf{Seshat} opta por este enfoque; las
+técnicas concretas se describen en el anexo~\ref{anx:tecnicas-prompts}.
+
+\section{Recuperación aumentada por generación}
+
+Los \ac{LLM} tienen un límite estructural: su conocimiento queda congelado en el momento del
+entrenamiento. La generación aumentada por recuperación (\ac{RAG})~\cite{lewis2020rag} aborda
+este problema combinando el modelo generativo con un módulo de recuperación: antes de generar,
+el sistema consulta una base de conocimiento externa, selecciona los fragmentos más relevantes e
+incluye estos en el prompt. La respuesta queda así anclada en evidencia concreta y el
+conocimiento del sistema puede actualizarse sin re-entrenar el modelo.
+
+La pieza central del módulo de recuperación son los \textit{embeddings}: representaciones
+vectoriales densas que codifican el significado semántico de un texto en un espacio de alta
+dimensión, de modo que textos con significado similar queden cerca en ese espacio. La similitud
+entre vectores, medida típicamente mediante coseno, permite identificar los fragmentos más
+relevantes para una consulta dada. Bases de datos vectoriales como pgvector proporcionan la
+infraestructura de indexación y búsqueda eficiente sobre estas representaciones.
+
+El paradigma ha evolucionado más allá de la búsqueda plana. Para mejorar la cobertura, se han
+propuesto estrategias de expansión de consulta: en lugar de buscar con la pregunta original,
+el sistema genera múltiples variantes con un LLM y fusiona los resultados, diversificando los
+candidatos recuperados~\cite{gao2024ragsurvey}. En la etapa de selección, el reranking con
+modelos \textit{cross-encoder}~\cite{nogueira2020reranking} mejora la precisión al comparar
+directamente la consulta con cada candidato, en lugar de aproximar la relevancia con la similitud
+coseno. GraphRAG~\cite{edge2025graphrag} va más allá y construye un grafo de entidades a partir
+de un corpus documental para enriquecer la recuperación con contexto estructural. \textbf{Seshat}
+incorpora las dos primeras estrategias —multi-query y reranking opcional— e invierte la premisa
+de GraphRAG: usa \ac{RAG} no para responder preguntas, sino para construir y mantener el propio
+grafo, recuperando los nodos preexistentes más relevantes para determinar qué relaciones semánticas
+introduce cada nuevo nodo extraído.
+
+\section{Procesamiento del habla}
+
+\subsection{Reconocimiento automático del habla}
+
+Hasta mediados de la década pasada, los sistemas de reconocimiento automático del habla (\ac{ASR})
+se construían como cadenas de módulos especializados: un modelo acústico que asignaba
+probabilidades a fonemas, un modelo de lenguaje que los combinaba en palabras y un decodificador
+que buscaba la secuencia más probable. El aprendizaje profundo fue reemplazando estos módulos por
+redes neuronales entrenadas conjuntamente, y la arquitectura Transformer completó la transición
+hacia modelos encoder-decoder que aprenden directamente la correspondencia entre audio y texto sin
+alineamiento explícito.
+
+Whisper~\cite{radford2023whisper} demostró hasta dónde podía llegar este enfoque: entrenado sobre
+680.000 horas de audio con transcripciones débilmente supervisadas obtenidas de internet, produce
+un modelo robusto y multilingüe que no requiere \textit{fine-tuning} para nuevos dominios. Su
+codificador procesa espectrogramas de log-Mel y su decodificador genera la transcripción de forma
+autoregresiva.
+
+\textbf{Seshat} delega la transcripción en AssemblyAI, un servicio de la misma familia. La
+interfaz de transcripción es abstracta y sustituible sin modificar la lógica del \textit{pipeline}.
+
+\subsection{Síntesis de voz}
+
+La síntesis de voz (\textit{Text-to-Speech}, TTS) siguió un arco similar. Los sistemas clásicos
+producían voz inteligible pero perceptiblemente artificial. WaveNet~\cite{oord2016wavenet} fue el
+primer modelo neuronal capaz de generar formas de onda con naturalidad comparable a la voz humana,
+aunque con un coste computacional prohibitivo para tiempo real. Los modelos posteriores separaron
+la generación del espectrograma de mel de la síntesis de la forma de onda, reduciendo la latencia.
+VITS~\cite{kim2021vits} unificó ambas etapas: combina un  autocodificador variacional con un modelo
+de flujo normalizado y entrenamiento adversarial para generar audio de alta calidad en una sola pasada.
+
+En este trabajo, la TTS no forma parte del \textit{pipeline} en tiempo de ejecución. ElevenLabs,
+un servicio comercial de alta fidelidad, se empleó exclusivamente fuera de línea para generar
+grabaciones sintéticas de reuniones multi-locutor —con ruido de fondo de oficina opcional— que
+ejercitan la ruta de transcripción e ingesta de audio de extremo a extremo.
+
+\section{Consideraciones éticas y legales}
+
+Las transcripciones de reuniones técnicas pueden contener información sensible: datos personales,
+decisiones estratégicas confidenciales o referencias a terceros. El Reglamento General de
+Protección de Datos (RGPD) exige que el tratamiento de datos personales cuente con una base
+legal, que los interesados sean informados y que los datos se almacenen de forma segura.
+\textbf{Seshat} no implementa en su versión actual ningún mecanismo de detección ni anonimización
+de información personal identificable (PII); esta capacidad queda identificada como línea de
+trabajo futuro y se aborda en el capítulo~\ref{ch:discusion}.
+
+Un aspecto igualmente relevante es el consentimiento informado de los participantes: más allá del
+cumplimiento del RGPD, la existencia de un sistema que estructura permanentemente el contenido de
+las reuniones puede desincentivar la comunicación abierta si los participantes no son conscientes
+de su funcionamiento. Para uso interno, esto es una cuestión de confianza organizativa tanto como
+de obligación legal.
+
+Más allá de la privacidad y el consentimiento, los \ac{LLM} introducen un riesgo propio: las
+alucinaciones, es decir, la generación de afirmaciones falsas pero plausibles. Estas pueden dar
+lugar a nodos incorrectos en la base de conocimiento, con consecuencias reales si esos nodos
+informan decisiones futuras. \textbf{Seshat} mitiga este riesgo mediante la revisión humana de
+los nodos de baja confianza, el anclaje de cada nodo a una cita literal de la transcripción y el
+registro completo de prompts e inferencias en MLflow~\cite{zaharia2018mlflow} para auditoría.
+
+Un tercer vector de riesgo es la inyección de prompt: un actor que controle el contenido de la
+transcripción podría insertar instrucciones que manipulen el comportamiento del agente.
+\textbf{Seshat} lo previene mediante delimitadores explícitos que separan el contenido procesado
+de las instrucciones del sistema, impidiendo que el texto de entrada pueda reinterpretar el rol
+del agente.

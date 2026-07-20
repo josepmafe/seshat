@@ -59,6 +59,20 @@ docs/*/plans/
 docs/*/code/
 todos.md
 
+# LaTeX build artifacts (thesis source is tracked; these are regenerated on compile)
+thesis/**/*.aux
+thesis/**/*.log
+thesis/**/*.toc
+thesis/**/*.lof
+thesis/**/*.lot
+thesis/**/*.bbl
+thesis/**/*.blg
+thesis/**/*.bcf
+thesis/**/*.run.xml
+thesis/**/*.synctex.gz
+thesis/**/*.fls
+thesis/**/*.fdb_latexmk
+
 
 # Git worktrees
 .worktrees/

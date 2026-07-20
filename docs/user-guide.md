@@ -109,13 +109,13 @@ Navigate to **Jobs → Submit**.
 | Source type | audio |
 | Confidence threshold | 1.05 $^{(*)}$ |
 | Auto mode | Off |
-| File | `data/fixtures/audio/new_service_2026_05_13.mp3` $^{(**)} |
+| File | `data/fixtures/audio/new_service_2026_05_13.mp3` $^{(**)}$ |
 
 Click **Submit**. The progress bar auto-refreshes through: `pending → transcribing → extracting → awaiting_review`.
 
-(*): Scores are in [0, 1]. Setting above 1 forces all nodes into manual review.
-
-(**): This synthetic meeting recording was generated with the `scripts/generate_synthetic_audio.py` script, which uses Eleven Labs TTS models via their SDK. You need to install the `audio` dependency group as well as an `ELEVENLABS_API_KEY` to re-generate it: `uv run --group audio python scripts/generate_synthetic_audio.py`.
+Some remarks:
+- About the confidence threshold (*): Scores are in [0, 1]. Setting above 1 forces all nodes into manual review.
+- About the file (**): This synthetic meeting recording was generated with the `scripts/generate_synthetic_audio.py` script, which uses Eleven Labs TTS models via their SDK. You need to install the `audio` dependency group as well as an `ELEVENLABS_API_KEY` to re-generate it: `uv run --group audio python scripts/generate_synthetic_audio.py`.
 
 ### What to expect
 
@@ -157,15 +157,18 @@ Navigate back to **Jobs**, and click the **Submit another job** button.
 | Auto mode | **On** |
 | File | `data/fixtures/text/new_service_followup_2026_05_20.yaml` |
 
-With auto mode on, the job skips the manual review step — all nodes above the confidence threshold are approved automatically. The job goes `pending → extracting → writing → done`.
+With auto mode on, the job skips the manual review step — all nodes above the confidence threshold are approved automatically. The job goes `pending → extracting → writing → done` $^{(**)}$.
 
-(*): The auto mode with a low confidence threshold is not recommended in general but intentional here. If any spurious nodes and/or relationships are introduced, go to the **Manual Actions** page and delete them manually.
+Some remarks:
+- About the confidence threshold (*): The auto mode with a low confidence threshold is not recommended in general but intentional here. If any spurious nodes and/or relationships are introduced, go to the **Manual Actions** page and delete them manually.
+- After the extraction process finishes (**): you will see a link to the MLflow run that corresponds to the extraction. By clicking on it you will open
+the corresponding MLflow run in the MLflow UI; there you can see the run metrics (usage, latency, etc.), and the traces.
 
 ### What to expect
 
 The follow-up resolves items from Monday: staging is back up, migrations validated, Redis chosen as the caching layer (Memcached ruled out due to session state requirements), and Riley takes a connection pool sizing action item.
 
-Expect 3–4 nodes automatically approved: a decision (Redis), an action item (Riley's pool sizing), and possibly a node resolving the staging risk. The resolution agent should also link these back to the Monday meeting nodes.
+Expect 8-10 nodes automatically approved, such as a decision (Redis), an action item (Riley's pool sizing), and possibly a node resolving the staging risk. The resolution agent should also link these back to the Monday meeting nodes.
 
 ---
 

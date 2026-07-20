@@ -1,0 +1,127 @@
+\chapter{Pruebas y Validación de Producto}
+\label{ch:pruebas}
+
+Este capítulo cubre cómo se testea \textbf{Seshat} y cómo se pone en manos de sus usuarios. La
+comprobación se apoya en dos niveles complementarios: una suite de pruebas automatizadas
+—unitarias y de integración— verifica que el código se comporta como se espera, y el \textit{gate}
+de evaluación (capítulo~\ref{ch:evaluacion}) protege la calidad de los agentes frente a regresiones.
+El tercer elemento es de otra naturaleza: una interfaz web que ofrece a los usuarios una forma
+sencilla de operar el sistema —enviar reuniones, revisar los nodos extraídos y explorar el grafo—
+sin tener que construir a mano las peticiones, extensas y anidadas, que la \ac{API} espera y necesita.
+Este capítulo recorre los tres.
+
+\section{Tests unitarios y de integración}
+\label{sec:tests}
+
+La suite de pruebas separa lo que puede verificarse de forma aislada y barata de lo que exige
+levantar sistemas externos. Esa separación no es sólo organizativa: gobierna qué se ejecuta en cada
+contexto —en cada \textit{commit}, en cada \textit{pull request} o sólo bajo demanda— y es la base
+de la canalización de integración continua descrita en la sección~\ref{sec:ci}.
+
+\subsection{Pruebas unitarias}
+
+Las pruebas unitarias cubren la lógica pura y los adaptadores con todo el mundo exterior sustituido
+por \textit{mocks}: el cálculo de confianza heurística, los validadores de entrada, la fusión de
+configuración, los \textit{scorers} de evaluación, la lógica de los \textit{routers} de la \ac{API}
+—que se prueban sin levantar un servidor, sustituyendo las dependencias inyectadas y ejercitando la
+aplicación en proceso— o el comportamiento base de los agentes. Son rápidas y deterministas, no necesitan credenciales ni
+servicios, y constituyen el grueso de la suite. Los \textit{mocks} se apoyan en las interfaces
+abstractas que aíslan a \textbf{Seshat} de sus proveedores: los \ac{LLM} se sustituyen por
+\textit{mocks} que devuelven salidas estructuradas predefinidas, y componentes como el
+\textit{reranker} cuentan con implementaciones falsas de su interfaz para probar la lógica que los
+rodea.
+
+\subsection{Pruebas de integración}
+
+Las pruebas de integración ejercitan el código contra las dependencias reales —PostgreSQL con
+pgvector, el almacenamiento S3 y Secrets Manager emulados por LocalStack, y MLflow— levantadas
+mediante los mismos contenedores de Docker Compose que se usan en desarrollo, sin réplicas ni
+simuladores de esas dependencias. Cada prueba parte de un estado limpio: la base de datos de prueba se crea y
+migra una vez, y el estado se reinicia entre pruebas vaciando las tablas y recreando la colección
+vectorial. No todas requieren una clave de un proveedor de pago: la persistencia en pgvector, por
+ejemplo, se valida con un modelo de \textit{embeddings} determinista que evita llamar a un servicio
+real.
+
+El eje que estructura estas pruebas es un sistema de \textit{marcadores} de \texttt{pytest}
+organizados de forma jerárquica: \texttt{integration} engloba toda prueba que necesita un servicio
+externo, y dentro de ella \texttt{llm} —y sus subconjuntos \texttt{agents}, \texttt{embedding},
+\texttt{transcription} y \texttt{reranker}— señala las que requieren una clave de un proveedor en
+vivo. Por defecto, la configuración de \texttt{pytest} excluye el marcador \texttt{llm}, de modo que
+la ejecución habitual es rápida y gratuita; las pruebas que consumen llamadas de pago a los modelos
+son explícitamente opcionales. Este diseño responde a una tensión real: las pruebas más valiosas
+para un sistema basado en \ac{LLM} son también las más lentas, caras y no deterministas, y forzar su
+ejecución en cada \textit{commit} sería inviable.
+
+Las pruebas dependientes de un servicio están protegidas además por una doble compuerta: al
+marcador se suma una condición de salto (\texttt{skipif}) que sondea la disponibilidad real del
+servicio o de la clave. Así, un mismo fichero de prueba se comporta correctamente tanto en la
+integración continua —con los servicios levantados— como en una máquina de desarrollo sin
+credenciales, donde simplemente se omite en lugar de fallar. Para las pruebas que sí necesitan un
+modelo, un ayudante selecciona automáticamente el proveedor disponible más económico, lo que hace
+la suite portable a cualquier conjunto de credenciales del ejecutor.
+
+La prueba de mayor alcance es un \textit{golden path} de extremo a extremo que recorre el
+\textit{pipeline} completo —ingesta, transcripción, identificación y resolución— sobre una
+transcripción breve, con Postgres, LocalStack y un modelo real: la aproximación más cercana a una
+prueba de sistema.
+
+\section{Eval gate y regresión automatizada}
+\label{sec:eval-regresion}
+
+Las pruebas de la sección anterior verifican el comportamiento del código, pero no bastan para un
+sistema cuyo núcleo es un modelo de lenguaje: un cambio de \textit{prompt}, de modelo o de corpus
+puede degradar la calidad de la extracción sin romper ninguna aserción. Esa clase de regresión es
+justamente la que el \textit{gate} de evaluación vigila. Sus cinco arneses, su corpus y sus
+umbrales se describen en el capítulo~\ref{ch:evaluacion}; lo que aquí importa es su papel como
+mecanismo de control de regresión.
+
+El \textit{gate} funciona como una prueba de aceptación de la calidad de los agentes, no del código.
+Al ejecutarse contra el corpus de referencia produce un veredicto agregado —aprobado o suspenso
+frente a los umbrales fijados— que se persiste en un fichero versionable. Comparar ese fichero entre
+dos ejecuciones convierte la calidad en una magnitud observable: si una modificación hace caer la
+precisión de un tipo de concepto por debajo de su umbral, el \textit{gate} pasa a suspenso y la
+regresión se detecta antes de llegar a producción. Ese veredicto tiene consecuencias operativas: la
+\ac{API} comprueba el \textit{gate} en el arranque y se niega a servir si no está en verde
+(sección~\ref{sec:orquestacion}), de modo que la calidad medida es una precondición del despliegue,
+no un informe que se pueda ignorar.
+
+A diferencia de las pruebas unitarias y de integración, el \textit{gate} no forma parte de la
+canalización de integración continua: reproducir sus llamadas reales a los modelos en cada
+\textit{commit} sería caro y no determinista, por las mismas razones que apartan a las pruebas
+\texttt{llm} de la ejecución por defecto. Se ejecuta, por tanto, de forma deliberada —antes de una
+fusión sensible, de un cambio de modelo o de un despliegue— y su resultado se conserva junto al
+código como constancia de la calidad con la que se validó cada versión.
+
+\section{Experiencia de usuario (UX)}
+\label{sec:ux}
+
+La \ac{API} REST es el único punto de entrada al sistema, pero operarla directamente exige construir
+peticiones HTTP a mano —subir un archivo por \textit{multipart}, componer el cuerpo JSON de una
+revisión con las decisiones de cada nodo, encadenar consultas para recorrer el grafo—. Para que un
+usuario pueda trabajar con \textbf{Seshat} sin ese esfuerzo, el proyecto incluye una interfaz web:
+una herramienta de conveniencia, una capa de ergonomía sobre la \ac{API} que traduce esas operaciones en
+formularios, botones y vistas, y hace el sistema utilizable en la práctica sin conocer la \ac{API}.
+
+Su rasgo de diseño más relevante es precisamente lo que \emph{no} hace. La interfaz se comunica con
+el sistema exclusivamente a través de la \ac{API}: no accede a la base de datos, al almacenamiento de objetos
+ni a ningún servicio interno, y no reimplementa ninguna regla del \textit{pipeline}. La aprobación
+automática, la puntuación de confianza, la resolución de relaciones y las transiciones de estado ocurren
+todas en el servidor; la interfaz sólo dispara acciones y representa lo que la \ac{API} le devuelve. Es,
+además, sin estado: se autentica introduciendo una clave de \ac{API} —la misma que gobierna los roles
+(sección~\ref{sec:orquestacion})— y no persiste nada entre sesiones. Construida sobre Streamlit,
+esta delegación estricta la mantiene como un cliente fino que no puede divergir del comportamiento
+del sistema.
+
+Sobre esa base, la interfaz cubre el ciclo de vida completo de un \textit{pipeline}. Un operador
+envía un archivo desde un formulario y sigue su avance por la máquina de estados en una barra de
+progreso que sondea periódicamente el estado del trabajo; no gobierna las transiciones —de eso se
+encarga el \textit{worker}— sino que las refleja. Cuando el trabajo se detiene en revisión, presenta
+la interfaz de \acs{HITL} descrita en el capítulo~\ref{ch:implementacion}: aprobación masiva por
+umbral de confianza y decisiones individuales de aprobar, rechazar o editar cada nodo, con acceso al
+fragmento de transcripción que respalda cada uno. Fuera del flujo de revisión, ofrece acciones
+manuales —añadir nodos o relaciones, corregir contenido mediante anulaciones justificadas— y
+herramientas de exploración del grafo: consulta por filtros, búsqueda semántica y una vista
+interactiva del impacto de un nodo sobre sus vecinos. Un panel de administración, protegido por la
+clave raíz, gestiona las claves de \ac{API}. En conjunto, la interfaz hace visible y operable desde el
+navegador lo que la \ac{API} expone de forma programática, sin alterar lo que ya se ha descrito en los
+capítulos anteriores.

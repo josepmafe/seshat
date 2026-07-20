@@ -1,0 +1,83 @@
+\chapter{Discusión}
+\label{ch:discusion}
+
+\section{Lecciones aprendidas}
+
+El desarrollo de \textbf{Seshat} dejó varias lecciones que trascienden este proyecto concreto y
+que orientarían el diseño de cualquier sistema similar basado en \ac{LLM}.
+
+\begin{itemize}
+  \item \textbf{La evaluación reproducible es innegociable, pero no es suficiente por sí sola.}
+        En un sistema no determinista, sin una medición repetible es imposible saber si un cambio
+        mejora o degrada la calidad; por eso el \textit{gate} descansa sobre \textit{scorers}
+        deterministas y no sobre un juez basado en \ac{LLM}. Ahora bien, esos \textit{scorers} sólo
+        alcanzan los aspectos estructurales y dejan sin medir dimensiones cualitativas —la calidad
+        semántica de un título o una descripción, por ejemplo (sección~\ref{sec:analisis-errores})—.
+        Ahí un juez basado en \ac{LLM} complementaría bien la evaluación determinista, siempre como
+        señal observacional y no como criterio de bloqueo, para no reintroducir en el veredicto el
+        no determinismo que se quiere contener.
+
+  \item \textbf{Frente a un objetivo móvil, el \textit{prompt engineering} sobre una abstracción de
+        proveedor supera al \textit{fine-tuning}.} Los modelos base cambian cada pocos meses;
+        apostar por agentes guiados por \textit{prompt} tras una interfaz de proveedor común
+        mantuvo el sistema adaptable —cambiar de modelo o de proveedor es configuración, no
+        reentrenamiento— y evitó los costes de datos y cómputo que un modelo ajustado habría atado
+        a una versión concreta.
+
+  \item \textbf{La fiabilidad nace de superponer salvaguardas modestas, no de una sola fuerte.}
+        Ninguna medida contra la alucinación es infalible, pero el anclaje en cita, la auto-revisión
+        opcional y la revisión humana guiada por confianza se cubren mutuamente sus puntos ciegos.
+        Este principio de defensa en profundidad se desarrolla en la
+        sección~\ref{sec:riesgos}.
+
+  \item \textbf{Aislar cada etapa se pagó en evaluabilidad.} Las fronteras entre componentes no se
+        trazaron sólo por limpieza arquitectónica, sino para poder medir cada etapa por separado.
+        Ese aislamiento es lo que permite un arnés por etapa y atribuir una regresión a su origen
+        —qué se recuperó frente a cómo se clasificó— en lugar de diluirla en una métrica global.
+\end{itemize}
+
+\section{Riesgos, ética y mitigaciones}
+\label{sec:riesgos}
+
+El perfil de riesgo de \textbf{Seshat} es moderado: procesa conocimiento técnico interno de
+reuniones de ingeniería —decisiones, riesgos, tareas—, no datos personales sensibles a gran escala
+ni información sujeta a regulación sectorial. Esto no exime al sistema de consideraciones éticas y
+de seguridad, pero permite que sus mitigaciones sean proporcionadas. Los fundamentos éticos y
+legales se expusieron en el capítulo~\ref{ch:estado-arte}; esta sección los revisa a la luz del
+sistema ya implementado, centrándose en los tres riesgos de mayor incidencia práctica.
+
+\subsection{Alucinaciones y fiabilidad de los agentes}
+
+El riesgo técnico central de un sistema basado en \ac{LLM} es la alucinación: un agente puede
+generar un nodo plausible pero no respaldado por la transcripción, y un nodo incorrecto en la base
+de conocimiento puede informar decisiones futuras. \textbf{Seshat} no confía en una sola salvaguarda,
+sino que superpone varias. Cada nodo queda anclado a una cita literal del texto fuente, lo que hace
+auditable toda afirmación frente a su origen. Los agentes admiten además una pasada opcional de
+auto-revisión que valida cada nodo extraído y descarta los que no superan sus propias reglas de
+extracción (anexo~\ref{anx:agentes-reflectivos}). Y los nodos cuya confianza no alcanza el umbral
+calibrado se derivan a revisión humana antes de persistirse. Ninguna capa elimina el riesgo por sí
+sola, pero su combinación —anclaje, auto-revisión y revisión humana— lo acota a un nivel manejable
+para el caso de uso.
+
+\subsection{Privacidad de las conversaciones}
+
+Las transcripciones de reuniones pueden contener información sensible, y \textbf{Seshat} no
+implementa en su versión actual detección ni anonimización de información personal identificable
+(PII), como se anticipó en el capítulo~\ref{ch:estado-arte}. La mitigación para el \ac{MVP} es
+organizativa antes que técnica: informar a los participantes de que la reunión se graba y de que su
+contenido se procesa y se estructura de forma permanente, de modo que exista consentimiento
+informado y una base legal para el tratamiento. Es una medida sencilla y suficiente para el
+despliegue interno previsto; la detección automática de PII queda como línea de trabajo futuro para
+escenarios de mayor exposición.
+
+\subsection{Dependencia de proveedores externos}
+
+Delegar la transcripción, la inferencia y los \textit{embeddings} en proveedores externos plantea
+dos preocupaciones: que el contenido de las reuniones salga de la organización, y la dependencia de
+un tercero. La primera se mitiga por diseño. Aunque \textbf{Seshat} admite proveedores públicos como
+OpenAI o Anthropic, su capa de abstracción de proveedores permite igualmente Azure OpenAI y Amazon
+Bedrock, que pueden servir los modelos dentro de la red privada de la organización mediante
+\textit{endpoints} privados, de modo que el contenido de las reuniones no abandona el perímetro de
+red. La segunda se mitiga por la propia intercambiabilidad: al quedar todos los proveedores tras una
+interfaz común, cambiar de uno a otro es una cuestión de configuración y no de refactorización
+(capítulo~\ref{ch:requisitos-diseno}), lo que evita el bloqueo con un único proveedor.

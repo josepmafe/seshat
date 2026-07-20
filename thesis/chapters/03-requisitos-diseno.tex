@@ -1,0 +1,273 @@
+\chapter{Requisitos y Diseño de la Solución}
+\label{ch:requisitos-diseno}
+
+\section{Requisitos funcionales y no funcionales}
+
+\subsection{Requisitos funcionales}
+
+Los requisitos siguientes describen el comportamiento esperado del sistema desde la perspectiva
+del usuario y del operador.
+
+\begin{enumerate}
+  \item \textbf{Interfaz de acceso.} El sistema debe exponer todas sus funcionalidades a través
+        de una \ac{API} REST como único punto de entrada programático. Las operaciones de ingesta,
+        consulta y revisión deben ser accesibles sin intervención de la interfaz gráfica.
+
+  \item \textbf{Ingesta de reuniones.} El sistema debe aceptar grabaciones de audio en formato
+        MP3, WAV o M4A, así como transcripciones preformateadas en YAML o JSON. Ambas rutas deben
+        converger en una representación interna común antes de continuar el procesamiento.
+
+  \item \textbf{Extracción estructurada.} A partir de la transcripción, el sistema debe identificar
+        nodos de cuatro tipos: decisiones (\texttt{decision}), riesgos (\texttt{risk}), preguntas
+        abiertas (\texttt{open\_question}) e ítems de acción (\texttt{action\_item}). Cada nodo
+        debe quedar anclado a una cita literal del texto fuente.
+
+  \item \textbf{Resolución de relaciones.} El sistema debe inferir relaciones semánticas entre los
+        nodos extraídos y los nodos preexistentes en la base de conocimiento, clasificándolas en
+        siete tipos: \texttt{supersedes}, \texttt{amends}, \texttt{conflicts\_with},
+        \texttt{depends\_on}, \texttt{mitigates}, \texttt{blocks} y \texttt{resolves}.
+
+  \item \textbf{Puntuación de confianza.} Cada nodo extraído debe recibir una puntuación de
+        confianza en $[0, 1]$ antes de la revisión humana. La puntuación combina señales
+        heurísticas basadas en reglas y, opcionalmente, un agente de verificación independiente.
+
+  \item \textbf{Revisión y corrección humana.} Los nodos con puntuación inferior al umbral
+        configurado deben quedar en estado de revisión pendiente. Un revisor debe poder aprobar,
+        rechazar o editar cada nodo antes de que éste entre en la base de conocimiento. Debe
+        existir también un mecanismo de aprobación masiva por umbral.
+
+  \item \textbf{Base de conocimiento consultable.} Los nodos aprobados deben persistir en una
+        base de conocimiento con forma de grafo, consultable por tipo, estado, equipo, proyecto,
+        dominio y rango de fechas. El sistema debe permitir búsqueda semántica y travesía del
+        grafo para explorar el impacto de un nodo sobre otros.
+
+  \item \textbf{Marco de evaluación.} El sistema debe incluir un marco de evaluación funcionalmente
+        determinista con corpus etiquetado, que mida la calidad de extracción y bloquee el procesamiento
+        de datos reales si no se alcanzan los objetivos de calidad definidos.
+
+\end{enumerate}
+
+\subsection{Requisitos no funcionales}
+
+Los requisitos siguientes describen las propiedades de calidad que el sistema debe satisfacer con
+independencia de la funcionalidad concreta que se esté ejecutando.
+
+\begin{itemize}
+  \item \textbf{Trazabilidad.} Cada nodo debe referenciar la cita literal del texto fuente que
+        lo originó. Todos los prompts e inferencias deben quedar registrados para auditoría.
+
+  \item \textbf{Seguridad.} El acceso a la \ac{API} debe estar controlado mediante claves de \ac{API} con
+        modelo de roles. Las entradas de audio deben validarse por contenido (firma de bytes), no
+        por extensión o cabecera. Las instrucciones del sistema deben estar aisladas del contenido
+        procesado para prevenir la inyección de prompts.
+
+  \item \textbf{Extensibilidad.} Los proveedores de LLM, transcripción, almacenamiento vectorial
+        y secretos deben ser intercambiables sin modificar la lógica del \textit{pipeline}. Los
+        cambios de proveedor deben ser una modificación de configuración, no una refactorización.
+
+  \item \textbf{Observabilidad.} El sistema debe registrar el uso de tokens, la latencia por
+        etapa, las métricas de confianza y los errores en MLflow~\cite{zaharia2018mlflow} de
+        forma automática, sin instrumentación manual en los agentes.
+
+  \item \textbf{Reproducibilidad.} El marco de evaluación debe producir resultados consistentes
+        entre ejecuciones sobre el mismo corpus, dentro de los límites del no determinismo
+        inherente a los \ac{LLM}.
+
+  \item \textbf{Atomicidad.} Cada escritura en la base de conocimiento debe ser una transacción
+        única. No puede existir estado parcial tras un fallo.
+
+  \item \textbf{Resiliencia.} Las llamadas a proveedores externos —LLM, transcripción, reranking,
+        almacenamiento— deben estar sujetas a reintentos con \textit{backoff} exponencial y
+        \textit{jitter}, y a tiempos de espera máximos configurables. El consumo de tokens debe
+        estar acotado mediante límites por llamada y por ejecución, tanto para LLM como para
+        embeddings. El sistema debe continuar operando ante fallos transitorios sin requerir
+        intervención manual.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\section{Arquitectura de la aplicación}
+
+\textbf{Seshat} se organiza en cuatro capas con flujo de control estrictamente unidireccional,
+tal como muestra la figura~\ref{fig:arquitectura}.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{architecture-diagram.png}
+  \caption{Arquitectura de \textbf{Seshat}: la interfaz envía trabajos a la \ac{API} por HTTP; la
+           \ac{API} los encola para el Worker; el Worker ejecuta el procesamiento y persiste los
+           resultados en la capa de almacenamiento.}
+  \label{fig:arquitectura}
+\end{figure}
+
+Cada capa tiene una responsabilidad delimitada, que se describe a continuación:
+
+\begin{enumerate}
+  \item \textbf{Interfaz de usuario}: envía trabajos, muestra su estado y presenta los nodos
+        pendientes de revisión al operador. Se comunica exclusivamente con la \ac{API} por HTTP.
+  \item \textbf{API}: autentica y valida las peticiones, registra el trabajo en la base de datos
+        y lo encola para su procesamiento asíncrono.
+  \item \textbf{Worker}: consume los trabajos de la cola y ejecuta el procesamiento
+        correspondiente, persistiendo los resultados en la capa de almacenamiento.
+  \item \textbf{Capa de almacenamiento}: Postgres para el estado operativo y la base de
+        conocimiento; pgvector para los embeddings; almacenamiento de objetos compatible con S3
+        para artefactos de audio, transcripciones y resultados de extracción.
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\section{Selección tecnológica}
+
+\subsection{Lenguaje y frameworks}
+
+\textbf{Seshat} está implementado en Python, el lenguaje dominante en el ecosistema de IA
+generativa. Las principales dependencias son:
+
+\begin{itemize}
+  \item \textbf{FastAPI} — API REST asíncrona con validación de esquemas y documentación OpenAPI autogenerada.
+  \item \textbf{LangChain} — orquestación de agentes LLM con soporte para múltiples proveedores; integra pgvector como almacén vectorial mediante \texttt{langchain-postgres}.
+  \item \textbf{MLflow} — observabilidad: registro automático de trazas, uso de tokens, latencia y métricas de evaluación.
+  \item \textbf{Pydantic} — validación de modelos de datos y configuración centralizada desde variables de entorno.
+\end{itemize}
+
+\subsection{Proveedores de modelos externos}
+
+Todos los proveedores son intercambiables mediante configuración. El sistema distingue cuatro
+roles:
+
+\begin{itemize}
+  \item \textbf{Transcripción:} AssemblyAI por defecto; sustituible por OpenAI Whisper u otros
+        mediante la interfaz \texttt{AbstractTranscriber}.
+
+  \item \textbf{LLM:} OpenAI, Anthropic, Azure OpenAI y Amazon Bedrock Converse, todos a través
+        de la abstracción de LangChain.
+
+  \item \textbf{Embeddings:} OpenAI, Azure OpenAI y Cohere sobre pgvector, otra vez mediante la
+        abstracción de LangChain.
+
+  \item \textbf{Reranking:} Cohere y Voyage como paso opcional de reordenación de candidatos
+        RAG, encapsulados detrás de la interfaz \texttt{AbstractReranker}.
+\end{itemize}
+
+Un requisito de diseño relevante afecta al agente de verificación de confianza
+(\textit{grounding}): debe usar un proveedor distinto al de los agentes de identificación, ya que
+verificar con el mismo modelo produce errores correlacionados que anulan el valor de la
+señal~\cite{zheng2023judging,cohen2023lmvslm}.
+
+\subsection{Almacenamiento}
+
+La capa de almacenamiento combina tres tecnologías con roles claramente separados:
+
+\begin{itemize}
+  \item \textbf{PostgreSQL}: base de datos principal; almacena el estado operativo (trabajos,
+        claves de \ac{API}) y los nodos y relaciones de la base de conocimiento.
+  \item \textbf{pgvector}: extensión de Postgres para búsqueda por similitud vectorial. Elimina
+        la necesidad de un servicio vectorial separado y mantiene las escrituras en la base de
+        conocimiento y los embeddings sincronizadas.
+  \item \textbf{S3 / LocalStack}: almacenamiento de artefactos: audio original, transcripciones
+        y resultados de extracción. LocalStack emula la \ac{API} de AWS en desarrollo.
+\end{itemize}
+
+La gestión de secretos (claves de \ac{API}, cadena de conexión de base de datos, etc) se delega en AWS
+Secrets Manager, también emulado por LocalStack en desarrollo.
+
+% ---------------------------------------------------------------------------
+\section{Diseño de datos y pipelines}
+
+\subsection{Modelo de datos: el grafo de conocimiento}
+
+El conocimiento extraído de las reuniones se representa como un grafo de
+conocimiento~\cite{hogan2021knowledge}: un grafo dirigido y etiquetado donde, los nodos pueden ser
+entidades de cuatro tipos (ver tabla~\ref{tab:node-types}) y las aristas son relaciones semánticas
+entre ellos de siete tipos, agrupados en dos categorías (ver tabla~\ref{tab:rel-types}). La dimensión
+temporal es inherente al modelo: cuando una reunión posterior introduce un nodo que reemplaza o matiza
+a uno anterior, la relación queda registrada explícitamente y el estado del nodo destino se actualiza
+en consecuencia. El grafo preserva así la historia completa del conocimiento organizativo, no sólo su
+estado actual.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{kg_example.drawio.png}
+  \caption{Ejemplo de grafo de conocimiento en \textbf{Seshat}. El nodo con borde discontinuo
+           representa una decisión previa en estado \texttt{SUPERSEDED}; las relaciones entre
+           nodos de distinto tipo se muestran con flechas de línea discontinua.}
+  \label{fig:kg-example}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \begin{tabularx}{\textwidth}{l>{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Tipo} & \textbf{Descripción} \\
+    \midrule
+    \texttt{decision}
+      & Compromiso explícito y de ámbito grupal sobre qué opción adoptar, qué política seguir
+        o qué restricción imponer. Tiene consecuencias operativas más allá de la conversación. \\
+    \texttt{risk}
+      & Modo de fallo concreto, bloqueante activo o incertidumbre con una consecuencia declarada
+        que el grupo trata como sustantiva y no resuelta. \\
+    \texttt{open\_question}
+      & Pregunta cuya respuesta el grupo necesita pero aún no ha determinado; su resolución
+        condiciona decisiones o trabajo futuro. \\
+    \texttt{action\_item}
+      & Tarea asignada a una persona o equipo con resultado esperado y, típicamente, fecha límite. \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Tipos de nodo en el grafo de conocimiento de \textbf{Seshat}.}
+  \label{tab:node-types}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \begin{tabularx}{\textwidth}{ll>{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Tipo} & \textbf{Categoría} & \textbf{Definición} \\
+    \midrule
+    \texttt{supersedes}      & Mismo tipo   & El nodo fuente reemplaza permanentemente al destino \\
+    \texttt{amends}          & Mismo tipo   & El nodo fuente matiza o actualiza parcialmente al destino \\
+    \texttt{conflicts\_with} & Mismo tipo   & Los dos nodos están en contradicción activa \\
+    \texttt{depends\_on}     & Mismo tipo   & El nodo fuente presupone al destino \\
+    \texttt{mitigates}       & Tipo cruzado & Un riesgo queda mitigado por una decisión \\
+    \texttt{blocks}          & Tipo cruzado & Un riesgo bloquea una decisión o pregunta abierta \\
+    \texttt{resolves}        & Tipo cruzado & Una decisión o tarea cierra una pregunta abierta \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Tipos de relación en el grafo de conocimiento de \textbf{Seshat}.}
+  \label{tab:rel-types}
+\end{table}
+
+Cada nodo almacena su contenido —título, descripción y cita literal del texto fuente— junto con
+una puntuación de confianza y metadatos de auditoría. El contenido es estable por diseño una vez
+aprobado; el único campo que cambia automáticamente es el estado, actualizado cuando una reunión
+posterior introduce una relación de supersesión o enmienda.
+
+El grafo en su conjunto sigue un principio de \textit{append-and-state-only}: no existe operación
+de borrado ni sobreescritura. El único matiz es que el contenido de un nodo aprobado puede
+corregirse mediante una operación explícita reservada a operadores y administradores, que exige
+justificación escrita y queda registrada en el historial de auditoría.
+
+\subsection{Ciclo de vida de un trabajo}
+
+Un trabajo \textit{pipeline} en \textbf{Seshat} representa el procesamiento completo de una reunión,
+desde la recepción del audio o texto hasta la persistencia de los resultados en la base de
+conocimiento. Recorre seis estados principales: \texttt{PENDING}, \texttt{TRANSCRIBING},
+\texttt{IDENTIFYING}, \texttt{AWAITING\_REVIEW}, \texttt{RESOLVING} y \texttt{WRITING}, más
+los estados terminales \texttt{DONE} y \texttt{FAILED}. Las dos fases de trabajo intensivo con
+LLM —identificación de nodos y resolución de relaciones— están separadas por la revisión humana
+opcional (\textit{Human-in-the-Loop}, HITL): si hay nodos pendientes de aprobación y el modo
+automático no está activo, el \textit{pipeline} se detiene en \texttt{AWAITING\_REVIEW} hasta
+que el operador interviene. Los fallos recuperables permiten reintentar el trabajo mediante la
+\ac{API}; los fatales requieren un nuevo envío.
+
+La figura~\ref{fig:job-lifecycle} muestra las transiciones posibles.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{job_lifecycle.drawio.png}
+  \caption{Ciclo de vida de un \textit{pipeline} en \textbf{Seshat}. \texttt{IDENTIFYING} y
+           \texttt{RESOLVING} corresponden a las dos pasadas de extracción; el paso
+           \textit{HITL} indica la revisión humana opcional; y en \texttt{WRITING} se
+           persisten los nodos y sus relaciones en la base de conocimiento.
+           \linebreak
+           Las flechas discontinuas rojas señalan transiciones a error y la flecha inferior
+           muestra el reintento mediante llamada a la \ac{API}.}
+  \label{fig:job-lifecycle}
+\end{figure}

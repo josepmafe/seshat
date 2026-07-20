@@ -1,0 +1,468 @@
+\chapter{Detalles Técnicos}
+\label{anx:tecnico}
+
+\section{Arquitectura de agentes}
+
+\textbf{Seshat} llama «agente» a todo componente que envuelve una invocación estructurada a un
+\ac{LLM} con reintentos y control de concurrencia. Todos comparten una clase base abstracta,
+\texttt{\_BaseAgent}, y desde ahí se distinguen sólo dos formas de especialización: la primera son
+las familias parametrizadas del \textit{pipeline} de extracción —los agentes de identificación y
+los de resolución—, y la segunda son agentes de propósito único y diverso, todos descritos a
+continuación.
+
+Por un lado, las dos \textbf{familias parametrizadas} interponen una base intermedia para generar,
+por configuración, un agente concreto por tipo de concepto o par de tipos; cada familia admite
+además una variante \textbf{reflectiva} opcional que añade una segunda pasada de auto-revisión
+sobre la  salida del agente primario. Por otro, los \textbf{agentes de propósito único} extienden
+\texttt{\_BaseAgent} directamente, y sólo difieren entre sí en su prompt y su esquema de salida:
+el de \textit{grounding} verifica el anclaje de un nodo en su cita y el de agrupación consolida
+los conceptos fragmentados, mientras que el extractor de palabras clave y el generador
+\textit{multi-query} sirven a la recuperación de información de la base de datos vectorial.
+
+Cada familia se expone tras un \textit{registro} que actúa como fachada: lee la configuración,
+instancia los agentes concretos habilitados y los ofrece al orquestador como una colección
+uniforme, de modo que este dialoga con el registro y no con cada agente por separado. Hay uno
+por familia —\texttt{IdentificationRegistry} y \texttt{ResolutionRegistry}, este último apoyado
+a su vez en un registro de mismo tipo y otro de tipo cruzado—. Gracias a esta abstracción, activar
+o desactivar un tipo de concepto es un cambio de configuración y no del código del orquestador.
+Por otro lado, los agentes de propósito único, al no parametrizarse, no pasan por ningún registro
+y se construyen directamente.
+
+\subsection{Jerarquía de clases y registro}
+\label{anx:jerarquia-agentes}
+
+La jerarquía completa de clases, colgando toda de \texttt{\_BaseAgent}, es la siguiente:
+
+\begin{itemize}
+  \item \textbf{Familia de identificación}: base \texttt{\_BaseIdentificationAgent}, que extiende
+        \texttt{\_BaseAgent} con un esquema de salida genérico parametrizado por el tipo de
+        concepto:
+        \begin{itemize}
+          \item \texttt{DecisionIdentificationAgent}
+          \item \texttt{RiskIdentificationAgent}
+          \item \texttt{ActionItemIdentificationAgent}
+          \item \texttt{OpenQuestionIdentificationAgent}
+        \end{itemize}
+
+        Además, \texttt{ReflectiveIdentificationAgent} envuelve a cualquiera de estos agentes para
+        añadir una segunda pasada de auto-revisión sobre su salida.
+
+  \item \textbf{Familia de resolución}: base \texttt{\_BaseResolutionAgent}, con dos sub-bases
+        según si el nodo fuente y el destino son del mismo tipo de concepto o de tipos distintos.
+        Por un lado, \texttt{BaseSameTypeResolutionAgent} relaciona nodos de un mismo tipo y
+        parametriza los tipos de relación válidos para ese \texttt{ConceptType} con un agente
+        concreto por concepto:
+        \begin{itemize}
+          \item \texttt{DecisionResolutionAgent}
+          \item \texttt{RiskResolutionAgent}
+          \item \texttt{ActionItemResolutionAgent}
+          \item \texttt{OpenQuestionResolutionAgent}
+        \end{itemize}
+
+        Por el otro, \texttt{BaseCrossTypeResolutionAgent} relaciona nodos de tipos distintos, con un
+        agente concreto por cada tipo fuente que fija los pares \texttt{(source\_type, target\_type)}
+        que ese agente gestiona:
+        \begin{itemize}
+          \item \texttt{DecisionCrossTypeResolutionAgent}
+          \item \texttt{RiskCrossTypeResolutionAgent}
+          \item \texttt{ActionItemCrossTypeResolutionAgent}
+          \item \texttt{OpenQuestionCrossTypeResolutionAgent}
+        \end{itemize}
+
+        Análogamente, \texttt{ReflectiveResolutionAgent} envuelve a cualquiera de estos agentes para
+        arbitrar los ambiguos en una segunda pasada.
+
+  \item \textbf{Agentes de propósito único}: extienden \texttt{\_BaseAgent} directamente, sin base
+        intermedia:
+        \begin{itemize}
+          \item \texttt{GroundingAgent}: verificación del anclaje de un nodo en su cita.
+          \item \texttt{GroupingAgent}: agrupación de conceptos fragmentados.
+          \item \texttt{KeywordAgent}: extracción de palabras clave para la búsqueda dispersa.
+          \item \texttt{MultiQueryAgent}: expansión multi-consulta para la búsqueda densa.
+        \end{itemize}
+\end{itemize}
+
+Sea cual sea su función, todos los agentes anteriores cumplen el mismo contrato heredado de
+\texttt{\_BaseAgent}: aportan un \textit{prompt} de sistema propio, producen una salida
+estructurada conforme a un modelo Pydantic dado —cuyas violaciones de tipo se rechazan y
+reintentan— y encapsulan sus llamadas al proveedor con reintentos de \textit{backoff} exponencial
+y \textit{jitter}. Es este contrato común, ya mencionado en el capítulo~\ref{ch:implementacion}, el
+que permite tratarlos de manera uniforme pese a la diversidad de sus propósitos.
+
+\subsection{Agentes reflectivos}
+\label{anx:agentes-reflectivos}
+
+A pesar de todas las técnicas de diseño de prompts usadas (descritas en la sección~\ref{anx:tecnicas-prompts})
+y de forzar la salida estructurada los agentes, hay veces que estos agentes "shallow" no son suficientes.
+Por ello, se ha implementado un modo de \textbf{auto-revisión} (\textit{self-review}) opcional sobre las
+familias de agentes parametrizadas, que añade una segunda pasada de LLM sobre la salida del agente primario.
+
+Por una parte, el \texttt{ReflectiveIdentificationAgent} implementa un ciclo \emph{extraer → validar →
+filtrar}: tras la extracción, una llamada de validación comprueba el cumplimiento lógico y semántico de
+cada nodo (¿satisface las reglas de extracción? ¿coincide la descripción con la cita?); los nodos que
+fallan se descartan. En caso de fallo de la validación, todos los nodos se devuelven sin filtrar,
+garantizando que el modo reflectivo nunca sea más perjudicial que el modo plano.
+
+Por otra, el \texttt{ReflectiveResolutionAgent} actúa como árbitro para los casos genuinamente ambiguos.
+Sólo las entradas con \texttt{alt\_rel\_type} no nulo se envían a una llamada de desempate; las entradas
+claras se omiten por completo, lo que minimiza el coste adicional. Ante cualquier fallo del árbitro, se
+conserva el \texttt{rel\_type} original.
+
+Ambos agentes utilizan el patrón \textit{subclass-and-delegate}: heredan de la misma base que
+los agentes planos y delegan todas las propiedades abstractas al agente interno. El orquestador
+y los registros de agentes no requieren ningún cambio para soportar el modo reflectivo.
+
+\subsection{Matriz de relaciones por par de tipos}
+\label{anx:matriz-relaciones}
+
+La tabla~\ref{tab:rel-matrix} recoge las relaciones que un agente de resolución puede asignar
+para cada par dirigido (tipo fuente~$\rightarrow$~tipo destino): de las 12 combinaciones dirigidas
+entre tipos distintos, sólo 9 se habilitan.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\tabularxcolumn}[1]{m{#1}}
+  \begin{tabularx}{\textwidth}{>{\centering\arraybackslash}m{2.7cm}!{\vrule}*{4}{>{\centering\arraybackslash}X}}
+    \toprule
+    \diagbox[width=\dimexpr 2.7cm+2\tabcolsep\relax, height=1.1cm, linewidth=0.2pt]{\textbf{Fuente}}{\textbf{Destino}}
+      & \texttt{decision} & \texttt{risk} & \texttt{action\_item} & \texttt{open\_question} \\
+    \midrule
+    \texttt{decision}
+      & \texttt{supersedes}, \texttt{amends}, \texttt{conflicts\_with}
+      & \texttt{mitigates} & \texttt{blocks} & \texttt{resolves} \\
+    \midrule[0.02em]
+    \texttt{risk}
+      & \texttt{blocks} & \texttt{amends} & \texttt{blocks} & \texttt{blocks} \\
+    \midrule[0.02em]
+    \texttt{action\_item}
+      & ---
+      & \texttt{mitigates}
+      & \texttt{supersedes}, \texttt{amends}, \texttt{conflicts\_with}, \texttt{blocks}, \texttt{depends\_on}
+      & --- \\
+    \midrule[0.02em]
+    \texttt{open\_question}
+      & \texttt{blocks} & --- & \texttt{blocks} & \texttt{amends}, \texttt{depends\_on} \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Relaciones permitidas por par de tipos (fuente~$\rightarrow$~destino). La diagonal
+           es resolución de mismo tipo; el resto, de tipo cruzado. Un guión (---) indica que
+           ningún agente gestiona ese par en la versión actual.}
+  \label{tab:rel-matrix}
+\end{table}
+
+\subsection{Técnicas de diseño de prompts}
+\label{anx:tecnicas-prompts}
+
+El diseño de los \textit{prompts} de los agentes combina varias técnicas complementarias, aplicadas
+en mayor o menor medida según la tarea de cada uno:
+
+\begin{itemize}
+  \item \textbf{Razonamiento en cadena} (\textit{chain-of-thought}~\cite{wei2022cot}): el
+        prompt descompone la tarea en pasos intermedios secuenciales y verificables —localizar
+        el fragmento relevante, evaluar las compuertas lógicas, clasificar el tipo de concepto—
+        antes de emitir la salida final. Hacer explícito el razonamiento reduce los errores
+        al exponer los pasos intermedios a la propia lógica del modelo.
+
+  \item \textbf{Anclaje en cita literal} (\textit{quote-first grounding}): antes de describir
+        un nodo, el agente debe localizar y copiar el fragmento literal del texto fuente que lo
+        respalda. Esto reduce la alucinación al obligar al modelo a anclar cada afirmación en
+        evidencia concreta antes de sintetizarla; es central en la identificación y en el propio
+        agente de \textit{grounding}, cuya tarea es verificar ese anclaje.
+
+  \item \textbf{Compuertas lógicas}: el prompt enumera condiciones necesarias y suficientes
+        para emitir un nodo o una relación —por ejemplo, para que un \texttt{risk} sea válido deben
+        cumplirse simultáneamente cuatro condiciones: modo de fallo concreto, implicación sustantiva
+        del grupo, no totalmente resuelto en el mismo intercambio, y no un requisito sin consecuencia
+        declarada. Si alguna condición no se satisface, no debe emitirse. Es la técnica más presente
+        en los agentes de resolución, cuyas fronteras entre tipos de relación son sutiles.
+
+  \item \textbf{Contraejemplos etiquetados}: el prompt incluye ejemplos de casos límite que
+        \emph{no} deben producirse, con explicación de por qué. Esto delimita la frontera
+        semántica entre categorías próximas —por ejemplo, \texttt{risk} frente a
+        \texttt{open\_question} en identificación, o \texttt{amends} frente a \texttt{supersedes}
+        en resolución.
+
+  \item \textbf{Delimitadores XML}: en los agentes que reciben la transcripción —identificación y
+        \textit{grounding}—, el contenido de la reunión y los \textit{hints} de la base de
+        conocimiento se encierran en bloques \texttt{<transcript>} y \texttt{<kb\_hint>}. Las
+        instrucciones del sistema indican explícitamente que cualquier texto con apariencia de
+        instrucción dentro de esos bloques debe tratarse como datos y no ejecutarse, lo que mitiga
+        la inyección de prompts desde el contenido de la reunión.
+
+  \item \textbf{Salida estructurada forzada}: común a todos los agentes. Los esquemas Pydantic se
+        inyectan como instrucción de herramienta en la llamada al modelo; las violaciones de tipo
+        activan reintentos automáticos, lo que elimina la ambigüedad de formato y hace el
+        post-procesamiento determinista.
+\end{itemize}
+
+
+
+\subsection{Caché de prompts y optimización de latencia}
+\label{anx:cache-prompts}
+
+La caché de \textit{prompts} a nivel de proveedor opera sobre el \emph{prefijo} de la petición: el
+tramo inicial e idéntico de una llamada a otra, que en estos agentes es el prompt de sistema. La
+primera llamada que envía ese prefijo paga una prima de escritura y deja el prefijo en la caché del
+proveedor durante una ventana temporal corta; cualquier llamada posterior que reutilice un prefijo
+ya visto obtiene descuento de lectura sobre esos tokens. El mecanismo se activa de forma distinta
+según el proveedor —en Anthropic hay que marcar el prefijo con la cabecera \texttt{cache\_control};
+OpenAI cachea automáticamente los prefijos compartidos—, pero la lógica de cuándo conviene es la misma:
+sólo compensa cuando ese prefijo se reutiliza en varias llamadas \emph{sucesivas}, no concurrentes,
+dentro de un mismo trabajo.
+
+Esa condición no la cumplen todos los agentes por igual, porque las llamadas al \ac{LLM} se lanzan
+en paralelo bajo un límite de concurrencia; es decir, en oleadas. La primera oleada falla la caché
+—todas sus llamadas escriben a la vez, sin lecturas previas—, y sólo las oleadas posteriores, o los
+reintentos, la aprovechan. De ahí que la caché rinda cuando el número de llamadas supera el límite
+de concurrencia:
+
+\begin{itemize}
+  \item En la \textbf{resolución}, donde cada nodo nuevo se compara con muchos candidatos, el prompt
+        de sistema —y el contexto de nodos hermanos— se reutiliza a lo largo de sucesivas oleadas.
+  \item En las \textbf{variantes reflectivas}, la segunda pasada de auto-revisión reemite el mismo
+        prompt de sistema inmediatamente después de la primera, garantizando una lectura de caché.
+  \item En el \textbf{grounding}, sólo cuando hay más nodos que verificar que el límite de
+        concurrencia; en caso contrario, la única oleada no llega a beneficiarse.
+\end{itemize}
+
+La \textbf{identificación} es el caso límite: sus agentes de concepto se lanzan todos a la vez —sin
+límite de concurrencia— y cada uno usa un prompt de sistema distinto, de modo que dentro de un
+trabajo no hay ningún prefijo que se reutilice y amortice la escritura. Por eso no cachea su prompt
+salvo en modo reflectivo, donde la pasada de validación sí lo reemite y la caché rinde. Su
+transcripción, además, se excluye siempre de la caché por la misma razón de fondo: al lanzarse
+todos los agentes en paralelo, cualquier lectura fallaría.
+
+\section{Capa de observabilidad}
+\label{anx:observabilidad}
+
+La medición del consumo y la latencia descrita en la sección~\ref{sec:observabilidad} se apoya en
+dos rastreadores —\texttt{UsageTracker} y \texttt{LatencyTracker}— que se instalan como
+\textit{callbacks} de LangChain. El reto de implementación es que los agentes se ejecutan de forma
+concurrente: la solución evita propagar el rastreador por la firma de cada método y lo publica en
+una variable de contexto (\texttt{contextvars.ContextVar}). Las tareas hijas heredan el valor de la
+variable al crearse, de modo que todos los agentes lanzados dentro de una etapa acumulan en el
+mismo rastreador sin cambio alguno en sus firmas.
+
+Cada etapa del \textit{pipeline} se envuelve con dos decoradores —\texttt{track\_token\_budget} y
+\texttt{track\_latency\_profile}— que, al entrar, crean el rastreador y lo fijan en la variable de
+contexto y, al salir, registran los totales como métricas de MLflow (tokens por tipo, y latencia
+mínima, media, mediana, p95 y máxima). El decorador de presupuesto lee sus límites de la
+configuración en tiempo de llamada, avisa al alcanzar el 90\,\% del cupo y aborta la etapa al
+superarlo en más de un 10\,\%; este margen tolera que varios agentes concurrentes rebasen el cupo
+antes de que cualquiera de ellos pueda observarlo. Los totales de cada etapa se agregan además en
+un rastreador a nivel de trabajo.
+
+Dos fuentes de consumo no pasan por las llamadas al LLM y se contabilizan mediante envoltorios
+transparentes: \texttt{TrackingEmbeddings} envuelve el modelo de \textit{embeddings} y cuenta sus
+tokens de entrada, y \texttt{TrackingTranscriber} envuelve al transcriptor y contabiliza los
+segundos de audio procesados. Ambos empujan su medición al rastreador activo en la variable de
+contexto, integrándose en el mismo presupuesto que las llamadas al LLM.
+
+\section{Arquitectura de evaluación}
+
+\subsection{Estructura común de los arneses y el emparejador de identificación}
+\label{anx:harnesses-eval}
+
+Los cinco arneses comparten el mismo esqueleto de ejecución, condicionado por un detalle del marco
+de evaluación: \texttt{mlflow.genai.evaluate} invoca su función de predicción de forma síncrona,
+mientras que los componentes de \textbf{Seshat} —orquestador y agentes— son asíncronos. Para
+salvar esa incompatibilidad, cada arnés pre-computa todas las predicciones antes de entregar el
+control a MLflow: un método \texttt{\_run\_all\_predictions} recorre el corpus, ejecuta el
+componente real de cada caso y almacena el resultado en una caché en memoria; la función de
+predicción que ve MLflow es entonces una mera consulta a esa caché. Sobre las predicciones
+cacheadas, MLflow aplica el \textit{scorer} del arnés —una función determinista, sin llamadas al
+LLM—, agrega las métricas por caso y el arnés vuelca el veredicto al fichero de \textit{gate}
+mediante \texttt{upsert\_gate}, que actualiza sólo el bloque del arnés en ejecución y conserva el
+resto.
+
+El emparejador de identificación merece una descripción aparte, pues es la pieza no trivial de esa
+cadena: debe decidir qué nodo extraído corresponde a qué nodo esperado antes de poder contar
+aciertos y fallos. Resuelve un emparejamiento bipartito \textit{greedy} restringido a pares del
+mismo tipo de concepto. Para cada par candidato calcula una puntuación de solapamiento en $[0,1]$
+por una de dos vías: si el nodo predicho lleva cita (\texttt{quote\_anchors}), la puntuación es la
+similitud difusa (\texttt{rapidfuzz}, \textit{partial ratio}) entre la cita esperada y el fragmento
+de transcripción que abarca la predicha; si no la lleva, se recurre a una similitud difusa
+ponderada sobre título y descripción. Los pares se ordenan de mayor a menor puntuación y se van
+reclamando de forma \textit{greedy} —cada nodo esperado y cada predicho se asignan una sola vez—;
+un par sólo se acepta como acierto si supera el umbral \texttt{QUOTE\_MATCH\_THRESHOLD} de 0.70. Los
+nodos predichos sin pareja cuentan como falsos positivos y los esperados sin pareja, como falsos
+negativos. Sobre los pares aceptados, el \textit{scorer} puntúa además la exactitud de los campos
+estructurados propios de cada tipo (difusa para \texttt{assignee}, \texttt{due}, \texttt{rationale}
+y \texttt{context}; exacta para el subtipo de \texttt{risk}; solapamiento de conjuntos para
+\texttt{alternatives\_considered}), señales que se registran en MLflow pero no condicionan el
+\textit{gate}.
+
+Cada arnés registra en la traza de MLflow, junto a la salida que consume el \textit{scorer}, una
+vista de comparación legible: los nodos —o relaciones— esperados y predichos uno al lado del otro.
+El objetivo es la depurabilidad: en la interfaz de MLflow cada caso es una fila, y un caso fallido
+debe poder diagnosticarse desde esa fila sin abrir el fichero YAML del corpus. Un
+post-procesador de trazas recorta además los campos más verbosos de los nodos —citas en bruto,
+descripciones largas— y conserva sólo tipo, título, descripción y confianza, de modo que la
+comparación quepa de un vistazo.
+
+\subsection{Caché de evaluación y meta-scorers de calibración}
+\label{anx:cache-eval}
+
+\tightparagraph{Caché de predicciones.}
+La caché de predicciones que sostiene la ejecución de los arneses es también la que permite
+calibrar umbrales sin repetir llamadas al LLM. Su pieza central es \texttt{read\_or\_run}: dada la
+ruta de un fichero de caché y la corrutina que produciría el resultado, devuelve el contenido
+cacheado si el fichero existe —cerrando la corrutina sin ejecutarla— y, en caso contrario, ejecuta
+la corrutina y persiste el resultado como JSON. El nombre del fichero se deriva de tres
+componentes: el identificador del caso de corpus, una huella (\textit{fingerprint}) del agente y un
+\textit{hash} de la entrada. La huella del agente incorpora su \textit{prompt} y configuración, de
+modo que cualquier cambio en el agente invalida automáticamente sus entradas de caché sin afectar a
+las de otras variantes. Al terminar, cada arnés no borra la caché, sino que aplica un barrido de
+marcado (\texttt{sweep\_stale\_entries}) que elimina únicamente las entradas en ámbito que no se
+tocaron en la ejecución —predicciones obsoletas por un cambio de \textit{prompt} o de entrada—,
+preservando las válidas para ejecuciones posteriores.
+
+\tightparagraph{Meta-scorers de calibración.}
+Sobre esa caché operan los dos meta-\textit{scorers}\footnote{%
+  Un meta-\textit{scorer} opera un nivel por encima de un \textit{scorer}: mientras que un
+  \textit{scorer} mide la calidad a un umbral \emph{fijo}, un meta-\textit{scorer} recorre
+  valores discretos del rango de validez del umbral para \emph{elegir} su mejor valor.%
+} de calibración. Ambos siguen un diseño en dos
+fases: primero pueblan la caché con el resultado del \textit{pipeline} para cada caso —reutilizando
+las predicciones que el arnés correspondiente ya hubiera generado—, y después barren el umbral
+sobre esos resultados en memoria, sin más entrada/salida ni llamadas al modelo.
+
+El meta-\textit{scorer} de identificación barre el umbral sobre la confianza heurística en el
+intervalo $[0,1]$ con paso 0.01. En cada punto reproduce qué nodos se auto-aprobarían y, aplicando
+el emparejador de identificación contra la verdad de referencia, calcula dos magnitudes, de forma
+agregada y por tipo de concepto: la \textbf{precisión} entre los nodos aprobados y la \textbf{cobertura}
+(qué fracción de los nodos esperados se llegó a auto-aprobar; es el \textit{recall}, renombrado para
+subrayar que un nodo por debajo del umbral no se pierde, sólo se difiere a revisión humana). El umbral
+sugerido es el que maximiza la cobertura sujeto a que la precisión alcance un objetivo configurable
+(0.95 por defecto); si ninguno lo logra, se conserva el de mayor precisión, con los empates resueltos
+hacia el umbral más bajo. No se emplea F1 porque contaría cada nodo diferido como un falso
+negativo, justo la lectura que el renombrado de la cobertura descarta.
+
+El meta-\textit{scorer} de \textit{retrieval} barre el umbral de similitud con paso 0.005. Para que
+un único resultado cacheado sirva a cualquier corte, las búsquedas se siembran sin filtro de
+puntuación y el umbral se aplica en memoria durante el barrido. El umbral sugerido es el que
+maximiza el F2\footnote{%
+  $F_\beta$ es la media armónica ponderada de precisión ($P$) y \textit{recall} ($R$);
+  con $\beta = 2$ se obtiene $F_2 = \dfrac{5\,P\,R}{4P + R}$.%
+} macro-promediado: los casos positivos aportan su F2 —que pondera el \textit{recall}
+más que la precisión— y los negativos aportan especificidad (1 si no se devuelve nada por
+encima del umbral, 0 en caso contrario), lo que impide que un umbral en cero, que lo aceptaría
+todo, domine la selección.
+
+\section{Esquema de la base de datos}
+\label{anx:db-schema}
+
+El estado del sistema se reparte en dos esquemas de PostgreSQL con responsabilidades separadas:
+\texttt{ops}, que guarda el estado operativo (trabajos y claves de \acs{API}), y
+\texttt{knowledge\_base}, que guarda el grafo de conocimiento (nodos y relaciones). Los
+\textit{embeddings} viven en una tercera tabla, gestionada por LangChain, que reside en el mismo
+PostgreSQL a través de la extensión pgvector.
+
+\tightparagraph{Esquema \texttt{ops}.}
+La tabla \texttt{jobs} registra el ciclo de vida de cada \textit{pipeline} —su estado, marcas de
+tiempo, el \textit{blob} de entrada y el identificador de la ejecución de MLflow— e incluye una
+clave de idempotencia única (\texttt{U}) que sostiene el control de duplicados. La tabla
+\texttt{api\_keys} guarda las credenciales como \textit{hashes} junto con su rol. Ambas son
+independientes entre sí, como muestra la figura~\ref{fig:er-ops}.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{er_diagram_ops.drawio.png}
+  \caption{Esquema \texttt{ops}. Las dos tablas no comparten claves foráneas; \texttt{U} marca la
+           clave de idempotencia única de \texttt{jobs}.}
+  \label{fig:er-ops}
+\end{figure}
+
+\tightparagraph{Esquema \texttt{knowledge\_base}.}
+Aquí reside el grafo (figura~\ref{fig:er-kb}). \texttt{kb\_nodes} almacena cada nodo con su
+contenido, su cita de anclaje y sus metadatos; \texttt{kb\_relationships} es la tabla de aristas, y
+su carácter de grafo se ve en que \texttt{source\_id} y \texttt{target\_id} son ambos claves foráneas
+hacia \texttt{kb\_nodes.node\_id}. Cada arista tiene una clave primaria subrogada \texttt{rel\_id} y
+una restricción de unicidad sobre la terna \texttt{(source\_id, target\_id, rel\_type)} —marcada
+\texttt{U1} en la figura— que impide duplicar una misma relación.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{er_diagram_kb.drawio.png}
+  \caption{Esquema \texttt{knowledge\_base}. \texttt{PK} marca la clave primaria; \texttt{FK1} y
+           \texttt{FK2}, las dos claves foráneas de \texttt{kb\_relationships} hacia
+           \texttt{kb\_nodes}; y \texttt{U1}, las columnas de la restricción de unicidad de la arista.}
+  \label{fig:er-kb}
+\end{figure}
+
+\tightparagraph{Almacén vectorial.}
+Los \textit{embeddings} de los nodos residen en la tabla \texttt{langchain\_pg\_embedding}, que
+LangChain materializa de forma diferida en la primera conexión. Sobre ella se añade una
+columna generada de \textit{tsvector} con un índice \textit{GIN} que habilita la búsqueda por palabras
+clave; la búsqueda semántica usa el índice vectorial de pgvector sobre la columna de \textit{embeddings}.
+El vínculo con el grafo es el \texttt{node\_id}, que se conserva en los metadatos de cada
+\textit{embedding} para poder recuperar el nodo correspondiente.
+
+\section{Referencia de la API REST}
+\label{anx:api-reference}
+
+La tabla~\ref{tab:api-endpoints} agrupa los \textit{endpoints} por router: salvo \texttt{/admin} —autenticado
+con la clave raíz— y \texttt{health}, todos exigen una clave de \acs{API} válida y el rol indicado
+en la sección~\ref{sec:orquestacion}.
+
+\begin{table}[H]
+  \centering
+  \begin{tabularx}{\textwidth}{@{}l l >{\raggedright\arraybackslash}X@{}}
+  \toprule
+  \textbf{Método} & \textbf{Ruta} & \textbf{Descripción} \\
+  \midrule
+  \multicolumn{3}{@{}l}{\textbf{\texttt{/jobs} — ciclo de vida del \textit{pipeline}}} \\
+  \addlinespace
+  \texttt{POST}   & \texttt{/jobs}                     & Crear un \textit{pipeline} a partir de un archivo de entrada \\
+  \texttt{GET}    & \texttt{/jobs}                     & Listar \textit{pipelines} con filtros \\
+  \texttt{GET}    & \texttt{/jobs/\{id\}}              & Consultar el estado de un \textit{pipeline} \\
+  \texttt{GET}    & \texttt{/jobs/\{id\}/results}      & Recuperar los nodos extraídos \\
+  \texttt{GET}    & \texttt{/jobs/\{id\}/transcript/excerpt} & Extraer un fragmento de la transcripción \\
+  \texttt{POST}   & \texttt{/jobs/\{id\}/approve}      & Enviar decisiones de revisión y disparar la escritura \\
+  \texttt{POST}   & \texttt{/jobs/\{id\}/retry}        & Reintentar un \textit{pipeline} fallido \\
+  \addlinespace
+  \multicolumn{3}{@{}l}{\textbf{\texttt{/graph} — consulta de la base de conocimiento}} \\
+  \addlinespace
+  \texttt{GET}    & \texttt{/graph}                    & Consultar nodos por filtros \\
+  \texttt{GET}    & \texttt{/graph/search}             & Búsqueda semántica sobre los nodos \\
+  \texttt{GET}    & \texttt{/graph/\{id\}}             & Obtener un nodo por su identificador \\
+  \texttt{GET}    & \texttt{/graph/\{id\}/neighbours}  & Vecinos directos (profundidad~1) \\
+  \texttt{GET}    & \texttt{/graph/\{id\}/detail}      & Nodo junto con sus vecinos directos \\
+  \texttt{GET}    & \texttt{/graph/\{id\}/impact}      & Travesía multi-salto de impacto \\
+  \texttt{POST}   & \texttt{/graph/nodes}              & Añadir un nodo manualmente \\
+  \texttt{POST}   & \texttt{/graph/nodes/bulk}         & Añadir nodos en lote \\
+  \texttt{POST}   & \texttt{/graph/nodes/resolve}      & Resolver relaciones para nodos dados \\
+  \texttt{PUT}    & \texttt{/graph/nodes/\{id\}}       & Editar un nodo \\
+  \texttt{PUT}    & \texttt{/graph/nodes/\{id\}/override} & Anular contenido con justificación \\
+  \texttt{DELETE} & \texttt{/graph/nodes/\{id\}}       & Eliminar un nodo \\
+  \texttt{DELETE} & \texttt{/graph/nodes/bulk}         & Eliminar nodos en lote \\
+  \texttt{GET}    & \texttt{/graph/relationships}      & Listar relaciones \\
+  \texttt{POST}   & \texttt{/graph/relationships}      & Crear una relación \\
+  \texttt{DELETE} & \texttt{/graph/relationships/\{id\}} & Eliminar una relación \\
+  \addlinespace
+  \multicolumn{3}{@{}l}{\textbf{\texttt{/admin} — provisión de claves (clave raíz)}} \\
+  \addlinespace
+  \texttt{GET}    & \texttt{/admin/api-keys}           & Listar claves de \ac{API} \\
+  \texttt{POST}   & \texttt{/admin/api-keys}           & Crear una clave de \ac{API} \\
+  \texttt{DELETE} & \texttt{/admin/api-keys/\{id\}}    & Revocar una clave de \ac{API} \\
+  \addlinespace
+  \multicolumn{3}{@{}l}{\textbf{Identidad y salud}} \\
+  \addlinespace
+  \texttt{GET}    & \texttt{/me}                       & Resolver la clave de \ac{API} a usuario y rol \\
+  \texttt{GET}    & \texttt{/health}                   & Sondeo de salud de la \ac{API} \\
+  \texttt{GET}    & \texttt{/health/components}        & Estado de las dependencias externas \\
+  \bottomrule
+  \end{tabularx}
+  \caption{%
+    \textit{Endpoints} de la \acs{API} que expone \textbf{Seshat}, agrupados por router. Todos cuelgan del
+    prefijo de versión \texttt{/v1}.%
+  }
+  \label{tab:api-endpoints}
+\end{table}
+
+\section{Configuración completa de referencia}
+
+La referencia completa de parámetros de configuración y sus variables de entorno se mantiene junto
+al código, en \href{https://github.com/josepmafe/seshat/blob/main/docs/configuration.md}{\texttt{docs/configuration.md}},
+para que evolucione con él sin quedar desactualizada en este documento.

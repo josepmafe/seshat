@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Seshat Architecture Diagram</title>
+  <style>
+    body { margin:0; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#f5f5f5; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    svg { background:#fff; border:1px solid #e0e0e0; border-radius:6px; }
+  </style>
+</head>
+<body>
+<svg width="1060" height="350" viewBox="0 0 1060 350" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#555"/>
+    </marker>
+    <marker id="arrow-dash" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#555"/>
+    </marker>
+  </defs>
+
+  <!-- ── FRONTEND ──────────────────────────────────────────────────────────── -->
+  <rect x="10" y="10" width="130" height="330" rx="6" fill="#f2f2f2" stroke="#c8c8c8" stroke-width="1.5"/>
+  <text x="75" y="32" text-anchor="middle" font-size="13" font-weight="600" fill="#1a1a1a">Frontend</text>
+
+  <rect x="23" y="145" width="104" height="40" rx="4" fill="#fff" stroke="#aaa" stroke-width="1.5"/>
+  <text x="75" y="170" text-anchor="middle" font-size="12" fill="#1a1a1a">Streamlit UI</text>
+
+  <!-- ── BACKEND (includes Storage); starts at x=190 → 50px gap for HTTP ───── -->
+  <rect x="190" y="10" width="850" height="330" rx="6" fill="#f2f2f2" stroke="#c8c8c8" stroke-width="1.5"/>
+  <text x="615" y="32" text-anchor="middle" font-size="13" font-weight="600" fill="#1a1a1a">Backend</text>
+
+  <!-- FastAPI -->
+  <rect x="213" y="145" width="104" height="40" rx="4" fill="#fff" stroke="#aaa" stroke-width="1.5"/>
+  <text x="265" y="170" text-anchor="middle" font-size="12" fill="#1a1a1a">FastAPI</text>
+
+  <!-- Task Queue: 3 stacked offset cards, moved right -->
+  <rect x="408" y="133" width="82" height="46" rx="3" fill="#e0e0e0" stroke="#aaa" stroke-width="1.5"/>
+  <rect x="414" y="139" width="82" height="46" rx="3" fill="#eaeaea" stroke="#aaa" stroke-width="1.5"/>
+  <rect x="420" y="145" width="82" height="46" rx="3" fill="#fff"    stroke="#aaa" stroke-width="1.5"/>
+  <text x="461" y="172" text-anchor="middle" font-size="11" fill="#1a1a1a">Task Queue</text>
+
+  <!-- Worker: moved right, closer to storage -->
+  <rect x="580" y="60" width="155" height="215" rx="5" fill="#e8e8e8" stroke="#bbb" stroke-width="1.5"/>
+  <text x="657" y="82" text-anchor="middle" font-size="13" font-weight="600" fill="#1a1a1a">Worker</text>
+
+  <!-- Pipeline -->
+  <rect x="595" y="112" width="125" height="115" rx="4" fill="#f8f8f8" stroke="#aaa" stroke-width="1.5"/>
+  <text x="657" y="175" text-anchor="middle" font-size="12" fill="#1a1a1a">Pipeline</text>
+
+  <!-- ── STORAGE sub-group ─────────────────────────────────────────────────── -->
+  <rect x="810" y="22" width="210" height="308" rx="5" fill="#e8e8e8" stroke="#bbb" stroke-width="1.5"/>
+  <text x="915" y="44" text-anchor="middle" font-size="13" font-weight="600" fill="#1a1a1a">Storage</text>
+
+  <!--
+    DB cylinder, opaque. Draw order:
+      bottom ellipse → white fill rect (no stroke) → side lines →
+      curved half-ellipse separators → dots centered in the bands → top cap
+    cx=915, rx=48, ry=9
+  -->
+
+  <!-- Postgres, top cap cy=62, bottom cy=107; separators 77 & 92 -->
+  <ellipse cx="915" cy="107" rx="48" ry="9" fill="#fff" stroke="#aaa" stroke-width="1.5"/>
+  <rect    x="867" y="62"  width="96" height="45" fill="#fff" stroke="none"/>
+  <line x1="867" y1="62"  x2="867" y2="107" stroke="#aaa" stroke-width="1.5"/>
+  <line x1="963" y1="62"  x2="963" y2="107" stroke="#aaa" stroke-width="1.5"/>
+  <path d="M 867,77 A 48,9 0 0,0 963,77" fill="none" stroke="#aaa" stroke-width="1.5"/>
+  <path d="M 867,92 A 48,9 0 0,0 963,92" fill="none" stroke="#aaa" stroke-width="1.5"/>
+  <ellipse cx="915" cy="62"  rx="48" ry="9" fill="#fff" stroke="#aaa" stroke-width="1.5"/>
+  <text x="915" y="126" text-anchor="middle" font-size="12" fill="#1a1a1a">Postgres</text>
+
+  <!-- pgvector, top cap cy=160, bottom cy=205; separators 175 & 190 -->
+  <ellipse cx="915" cy="205" rx="48" ry="9" fill="#fff" stroke="#aaa" stroke-width="1.5"/>
+  <rect    x="867" y="160" width="96" height="45" fill="#fff" stroke="none"/>
+  <line x1="867" y1="160" x2="867" y2="205" stroke="#aaa" stroke-width="1.5"/>
+  <line x1="963" y1="160" x2="963" y2="205" stroke="#aaa" stroke-width="1.5"/>
+  <path d="M 867,175 A 48,9 0 0,0 963,175" fill="none" stroke="#aaa" stroke-width="1.5"/>
+  <path d="M 867,190 A 48,9 0 0,0 963,190" fill="none" stroke="#aaa" stroke-width="1.5"/>
+  <ellipse cx="915" cy="160" rx="48" ry="9" fill="#fff" stroke="#aaa" stroke-width="1.5"/>
+  <text x="915" y="224" text-anchor="middle" font-size="12" fill="#1a1a1a">pgvector</text>
+
+  <!--
+    S3 Bucket. Draw order: trapezoid body → rim ellipse.
+    rim cy=258
+  -->
+  <path d="M 877,258 L 953,258 L 945,305 L 885,305 Z" fill="#fff" stroke="#aaa" stroke-width="1.5"/>
+  <ellipse cx="915" cy="258" rx="38" ry="8" fill="#fff" stroke="#aaa" stroke-width="1.5"/>
+  <text x="915" y="323" text-anchor="middle" font-size="12" fill="#1a1a1a">S3-compatible</text>
+
+  <!-- ── ARROWS ────────────────────────────────────────────────────────────── -->
+
+  <!-- Streamlit → FastAPI (50px gap holds HTTP) -->
+  <line x1="129" y1="165" x2="211" y2="165" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="170" y="160" text-anchor="middle" font-size="10" fill="#555">HTTP</text>
+
+  <!-- FastAPI → Task Queue -->
+  <line x1="319" y1="165" x2="406" y2="165" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="362" y="160" text-anchor="middle" font-size="10" fill="#555">enqueue job</text>
+
+  <!-- Task Queue → Worker (dashed) -->
+  <line x1="504" y1="165" x2="578" y2="165" stroke="#555" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-dash)"/>
+  <text x="541" y="160" text-anchor="middle" font-size="10" fill="#555">pull job</text>
+
+  <!-- Worker → Storage -->
+  <line x1="737" y1="165" x2="808" y2="165" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="772" y="160" text-anchor="middle" font-size="10" fill="#555">persist</text>
+
+</svg>
+</body>
+</html>
