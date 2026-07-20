@@ -1,0 +1,180 @@
+\chapter{Conclusiones y Trabajo Futuro}
+\label{ch:conclusiones}
+
+\section{Conclusiones}
+
+Este trabajo se propuso diseñar e implementar un sistema capaz de extraer conocimiento estructurado
+de reuniones técnicas, gestionar su evolución en el tiempo mediante un grafo, e incorporar la
+revisión humana y la evaluación calibrada como requisitos de calidad. El resultado, \textbf{Seshat},
+es un sistema completo y desplegable que cumple ese objetivo general. Las conclusiones se organizan
+en torno a los cinco objetivos específicos planteados en la introducción.
+
+El \textbf{flujo multi-agente de extracción} (objetivo~1) se materializó en dos pasadas: una de
+identificación, con un agente especializado por tipo de concepto, y otra de resolución, que infiere
+las relaciones semánticas de cada nodo nuevo con el conocimiento preexistente recuperado por
+similitud. La inversión de la premisa habitual de la \ac{RAG} —usar la recuperación no para
+responder preguntas, sino para construir y mantener el propio grafo— resultó ser la decisión
+conceptual que articula todo el sistema.
+
+La \textbf{revisión humana asistida por confianza} (objetivo~2) se implementó como una compuerta
+entre ambas pasadas: cada nodo recibe una puntuación heurística que decide si se aprueba de forma
+automática o se deriva a un revisor, cuyo umbral se calibra —en vez de fijarse a mano— para
+maximizar la cobertura sin comprometer la precisión de lo aprobado. El sistema puede así operar de
+forma plenamente automática cuando la confianza lo permite, o concentrar la atención humana en los
+nodos de menor certeza.
+
+El \textbf{marco de evaluación} (objetivo~3) es, quizá, la contribución más transferible del
+trabajo: cinco arneses independientes miden cada etapa no determinista del \textit{pipeline} contra
+un corpus etiquetado, con \textit{scorers} deterministas que garantizan la reproducibilidad. Su
+veredicto no es meramente informativo, sino que se materializa en un \textit{gate} que impide el
+arranque del sistema si la calidad medida cae por debajo de los umbrales fijados
+(capítulo~\ref{ch:evaluacion}). En la última ejecución, las cinco etapas superan sus objetivos de
+calidad.
+
+La \textbf{API REST y la interfaz web} (objetivo~4) cubren el ciclo de vida completo de un trabajo
+—envío, transcripción, extracción, revisión y consulta del grafo— sin exigir acceso directo a la
+base de datos: la \ac{API} es el único punto de entrada, y la interfaz una capa de conveniencia que
+delega íntegramente en ella. Por último, el \textbf{despliegue contenerizado con observabilidad}
+(objetivo~5) integra la medición del consumo de \textit{tokens}, la latencia por etapa y las trazas
+de ejecución en \href{https://mlflow.org}{MLflow}, haciendo el rendimiento y el coste comparables
+entre versiones.
+
+En conjunto, \textbf{Seshat} demuestra que un sistema basado en \ac{LLM} puede alcanzar una fiabilidad
+apta para producción no por la infalibilidad de sus modelos, sino por la disciplina de ingeniería
+que los rodea: el anclaje de cada afirmación a su evidencia, la superposición de salvaguardas contra
+la alucinación, y —sobre todo— la conversión de la calidad en una magnitud medible, reproducible y
+exigible como condición de despliegue. Las limitaciones conocidas y las líneas de continuación se
+detallan a continuación.
+
+\section{Trabajo futuro}
+\label{sec:trabajo-futuro}
+
+El desarrollo dejó abiertas varias líneas de continuación —incluidas las capacidades excluidas del
+\ac{MVP} (sección~\ref{sec:alcance})—, que se organizan aquí en cuatro categorías según la razón por
+la que permanecen pendientes: el endurecimiento que exigiría un despliegue de producción, las
+extensiones del núcleo generativo aplazadas por tiempo o por depender de datos reales, la
+profundización del grafo de conocimiento —trabajo de modelado de datos más que de \ac{IAG}—, y la
+integración con sistemas externos y nuevas fuentes de entrada.
+
+\subsection{Endurecimiento para producción}
+
+Capacidades que un despliegue real exigiría, pero que exceden lo que un prototipo de investigación
+necesita demostrar.
+
+\begin{itemize}
+  \item \textbf{Despliegue en infraestructura cloud.} El sistema corre en local contra LocalStack;
+        llevarlo a una nube real, con su infraestructura definida como código, queda pendiente.
+
+  \item \textbf{Autenticación con proveedor de identidad externo (\textit{SSO}).} El modelo de
+        claves de \ac{API} basta para la base de usuarios prevista; un IdP externo —por ejemplo con
+        JWT— sería el paso natural al crecer o al necesitar inicio de sesión único.
+
+  \item \textbf{Cola de tareas durable y escalado horizontal.} El \textit{worker} asíncrono en
+        proceso (sección~\ref{sec:orquestacion}) es suficiente para el \ac{MVP}, pero mantiene los
+        trabajos en memoria: una caída del proceso los pierde y no admite más de una instancia. Una
+        cola durable respaldada por Redis permitiría persistir los trabajos en curso, ejecutar
+        varias réplicas del \textit{worker} en paralelo y, sobre esa base, incorporar mecanismos
+        como la caducidad de las revisiones pendientes que hoy no tienen plazo.
+
+  \item \textbf{Reintento de trabajos consciente del progreso ya realizado.} Actualmente, reintentar
+        un trabajo fallido recupera el archivo de entrada original desde el almacenamiento de
+        \textit{blobs} y repite el \textit{pipeline} completo desde cero, incluida una nueva llamada
+        al proveedor de transcripción cuando el origen es audio. Sin embargo, cada etapa ya persiste
+        su artefacto durable en \textit{blob storage}, de modo que la información para reanudar sin
+        repetir trabajo ya existe; lo que falta es un reintento que la aproveche. La idea es sondear
+        los artefactos en orden inverso de etapa, localizar el más avanzado que ya esté presente y
+        reanudar desde ahí, evitando las llamadas externas redundantes y facturables.
+\end{itemize}
+
+\subsection{Extensiones del núcleo generativo}
+
+Funcionalidades alineadas con los objetivos del sistema, pospuestas por falta de tiempo o por
+requerir datos de producción para validarse.
+
+\begin{itemize}
+  \item \textbf{Arneses de evaluación para los componentes de recuperación aún sin cubrir}: el
+        extractor de palabras clave, el generador \textit{multi-query} y el \textit{reranker}.
+        Los tres son agentes ligeros de propósito único, análogos al de \textit{grounding}, por
+        lo que un arnés propio, es decir, un corpus etiquetado más un \textit{scorer} determinista,
+        encaja de forma natural en el marco existente. El más difícil de evaluar es el generador
+        \textit{multi-query}: al pedirle reformulaciones libres de la consulta, la salida esperada
+        no es única, lo que sugiere explorar señales como la \acs{NLI} —aplazada como señal de
+        confianza (sección~\ref{sec:confidence-scoring}) pero aún sin analizar en este contexto—
+        para juzgar si cada variante preserva la intención original.
+
+  \item \textbf{Recuperación agéntica.} Un agente autónomo con herramientas de consulta como
+        alternativa al \textit{pipeline} \ac{RAG}, que recupere nodos por razonamiento iterativo en
+        lugar de por similitud vectorial.
+
+  \item \textbf{Señal de confianza basada en \acs{NLI}.} Complementar las heurísticas con una
+        segunda señal, ortogonal, que verifique si la descripción de un nodo se deduce de su cita
+        fuente; se aplaza por requerir un modelo local con latencia aceptable y por quedar
+        pendiente confirmar que aporta información realmente ortogonal a las heurísticas.
+
+  \item \textbf{Detección y anonimización de PII.} Identificar y ocultar información personal en
+        las transcripciones antes de procesarlas, para escenarios de mayor exposición que el
+        despliegue interno previsto.
+
+  \item \textbf{Captura de tareas sin responsable.} La identificación descarta hoy los ítems de
+        acción sin un responsable nombrado; capturarlos con confianza reducida se pospone hasta
+        contar con evidencia de su necesidad en transcripciones reales.
+\end{itemize}
+
+\subsection{Profundización del grafo de conocimiento}
+
+Trabajo centrado en el modelo de datos, su ciclo de vida y su almacenamiento, más que en los
+componentes de \ac{IAG}.
+
+\begin{itemize}
+  \item \textbf{Archivado de nodos (borrado lógico).} La base de conocimiento sigue hoy un modelo
+        de sólo-adición: un nodo aprobado no puede retirarse salvo por la re-ingesta forzada, que lo
+        elimina físicamente. Un estado \texttt{ARCHIVED} permitiría un borrado lógico reversible
+        —excluir el nodo de la búsqueda y la navegación, y retirar su \textit{embedding} del almacén
+        vectorial, sin perder su historial de auditoría—, de modo que la re-ingesta forzada
+        archivara los nodos del trabajo anterior en lugar de destruirlos.
+
+  \item \textbf{Eje de ciclo de vida de los nodos.} El modelo actual distingue el tipo y el estado
+        de un nodo (vigente, supersedido, enmendado), pero no si el asunto que representa sigue
+        \emph{abierto} o ya se ha \emph{cerrado}. Un tercer eje de ciclo de vida —una pregunta
+        abierta que pasa a \texttt{RESOLVED}, un riesgo a \texttt{MITIGATED}, una decisión a
+        \texttt{ENACTED} cuando una relación entrante la completa— enriquecería tanto las consultas
+        al grafo como el filtrado de candidatos en la recuperación, evitando arrastrar a la
+        resolución nodos ya zanjados. Su despliegue está previsto por fases, e implicaría ampliar el
+        vocabulario de relaciones (por ejemplo, una arista \texttt{implements} de un ítem de acción
+        hacia la decisión que materializa).
+
+  \item \textbf{Revisión humana de las relaciones inferidas.} Una fase de revisión para las aristas,
+        análoga a la que hoy existe para los nodos, que hoy se escriben sin aprobación explícita.
+
+  \item \textbf{\textit{Backend} de grafo nativo.} La base de conocimiento se almacena hoy en
+        PostgreSQL; un \textit{backend} de grafo nativo como \href{https://neo4j.com}{Neo4j}, tras
+        la abstracción de almacén ya existente, habilitaría travesías y consultas sobre el grafo más
+        expresivas que las que permite el modelo relacional actual.
+
+  \item \textbf{Validación de integridad del grafo.} Detección de nodos duplicados, comprobación de
+        integridad de las relaciones y guardas contra referencias circulares.
+
+  \item \textbf{Umbrales del \textit{gate} por tipo de relación.} El \textit{gate} de resolución
+        aplica hoy un umbral uniforme por tipo de nodo origen; discriminar por tipo de relación
+        —una vez el corpus sea lo bastante grande— permitiría exigir más a las relaciones de
+        frontera más nítida y menos a las ambiguas, en línea con la limitación de la coincidencia
+        exacta de terna señalada en la sección~\ref{sec:analisis-errores}.
+\end{itemize}
+
+\subsection{Integración y nuevas fuentes de entrada}
+
+Líneas que amplían los límites del sistema: qué formatos puede ingerir y con qué sistemas externos
+se conecta.
+
+\begin{itemize}
+  \item \textbf{Entrada de vídeo y diarización de locutores.} Aceptar archivos de vídeo —con
+        extracción de audio mediante ffmpeg— y segmentar la transcripción por locutor; ambas
+        requieren muestras de producción para validar su calidad y un endurecimiento de las
+        dependencias necesarias.
+
+  \item \textbf{Inicialización de la base desde un corpus documental.} Sembrar la base de
+        conocimiento a partir de documentación existente antes de la primera reunión, como
+        herramienta complementaria de arranque. Sus fuentes naturales son las herramientas de
+        gestión del conocimiento donde ya reside esa documentación, como
+        \href{https://www.notion.so}{Notion} o \href{https://www.atlassian.com/software/confluence}{Confluence}.
+\end{itemize}

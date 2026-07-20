@@ -1,0 +1,501 @@
+\chapter{Implementación}
+\label{ch:implementacion}
+
+\section{Estructura del código y componentes}
+
+El paquete \texttt{seshat} se organiza en cinco módulos (figura~\ref{fig:package-tree}):
+\texttt{core/} contiene los modelos, configuración y utilidades; \texttt{infra/} agrupa
+los adaptadores de sistemas externos; \texttt{app/} es la capa de aplicación;
+\texttt{eval/} contiene los arneses de evaluación, que no forman parte del sistema en
+producción; y \texttt{cli/} expone la línea de comandos.
+
+\newcommand{\dtc}[1]{\hfill\makebox[10cm][l]{\textcolor{gray}{\texttt{\small\# #1}}}}
+
+\begin{figure}[H]
+\dirtree{%
+  .1 seshat/.
+  .2 app/.
+  .3 agents/.
+  .4 identification/.
+  .4 resolution/.
+  .3 pipeline/.
+  .4 extraction/ \dtc{dos pasadas: identificación → RAG + resolución}.
+  .4 ingestion/ \dtc{validación de audio/texto y subida a blob storage}.
+  .3 platform/.
+  .4 api/ \dtc{routers, autenticación, arranque}.
+  .4 observability/ \dtc{trazas MLflow, latencia, presupuesto de tokens}.
+  .4 worker/ \dtc{cola de tareas asíncrona en proceso}.
+  .3 repositories/ \dtc{capa de acceso a datos que el pipeline consume}.
+  .3 services/ \dtc{lógica de dominio: admin, graph, health, job}.
+  .3 transcription/.
+  .2 cli/.
+  .2 core/.
+  .3 config/.
+  .3 models/ \dtc{nodos, relaciones, enumeraciones, modelos API}.
+  .3 utils/ \dtc{retry, tokens, audio, logging}.
+  .2 eval/ \dtc{tooling de calidad}.
+  .3 calibration/ \dtc{meta-scorers para umbrales de confianza y retrieval}.
+  .3 grounding/ \dtc{arnés del agente de verificación}.
+  .3 grouping/ \dtc{arnés del agente de agrupación de decisiones}.
+  .3 identification/ \dtc{arnés de extracción de nodos}.
+  .3 resolution/ \dtc{arnés de resolución de relaciones}.
+  .3 retrieval/ \dtc{arnés del motor de búsqueda}.
+  .2 infra/.
+  .3 blob\_store/.
+  .3 knowledge\_store/ \dtc{nodos y relaciones}.
+  .3 ops\_store/ \dtc{estado de trabajos y claves de API}.
+  .3 secrets/ \dtc{resolución de credenciales}.
+  .3 vector\_store/.
+}
+\caption{Estructura de paquetes de \textbf{Seshat}.}
+\label{fig:package-tree}
+\end{figure}
+
+% ---------------------------------------------------------------------------
+\section{Configuración centralizada}
+
+Toda la configuración se centraliza en un único objeto \texttt{SeshatConfig}\footnote{La
+referencia completa de parámetros y variables de entorno está disponible en
+\url{https://github.com/josepmafe/seshat/blob/main/docs/configuration.md}.},
+que hereda de \texttt{pydantic\_settings.BaseSettings}, con \texttt{\_\_} como separador de
+anidamiento. Sus objetos anidados son subclases de \texttt{pydantic.BaseModel} planos de
+modo que la resolución de variables de entorno ocurre exclusivamente en la raíz. El objeto
+resultante es un \textit{singleton} inmutable cargado en el arranque del proceso.
+
+Para los trabajos que requieren parámetros diferentes a los globales —por ejemplo, un umbral
+de confianza más estricto o un modo automático activado—, la función \texttt{get\_request\_settings}
+aplica una fusión profunda de un objeto \texttt{SeshatConfigOverride} opcional sobre el
+\textit{singleton} base y devuelve un nuevo \texttt{SeshatConfig}. La fusión es recursiva a
+cualquier profundidad: un campo no presente en el \textit{override} conserva su valor base en
+todos los niveles. La configuración resultante —global o por trabajo— gobierna el comportamiento
+de todas las etapas que se describen a continuación.
+
+% ---------------------------------------------------------------------------
+\section{Ingesta}
+La ingesta comprende tres pasos: la validación del archivo de entrada, la transcripción de los
+archivos de audio y la normalización de ambas rutas de entrada en un \texttt{TranscriptDocument}
+común.
+
+\subsection{Validación}
+\label{sec:validacion-ingesta}
+
+Los archivos de audio (.mp3, .wav, .m4a) pasan tres controles secuenciales antes de subirse a
+blob storage:
+
+\begin{enumerate}
+  \item \textbf{Tamaño}: el archivo se rechaza si supera \texttt{max\_file\_bytes} (500~MiB por
+        defecto).
+  \item \textbf{Duración}: se extrae con \texttt{mutagen} y se rechaza si supera
+        \texttt{max\_audio\_seconds} (dos horas por defecto).
+  \item \textbf{Firma de bytes}: los primeros 12~bytes determinan el formato real
+        (\textit{magic bytes}), que se contrasta con la extensión declarada; cualquier
+        discrepancia se rechaza. La extensión por sí sola no es fiable al controlarla el cliente.
+\end{enumerate}
+
+El texto preformateado (.yaml, .yml, .json) solo requiere una comprobación de esquema y de
+coherencia de la fecha de reunión, tras la cual el campo \texttt{content} se extrae directamente
+como transcripción.
+
+\subsection{Transcripción}
+
+La transcripción de audio se delega en \texttt{AbstractTranscriber} —AssemblyAI por defecto—,
+envuelta en \texttt{TrackingTranscriber} para acumular los segundos consumidos contra el
+presupuesto de uso. El archivo original y la transcripción se persisten en blob storage como
+artefactos de auditoría independientes de la base de conocimiento; si el trabajo falla más
+adelante, ambos están disponibles para reintentar sin re-transcribir.
+
+% ---------------------------------------------------------------------------
+\section{Extracción multi-agente en dos pasadas}
+
+La extracción es la fase de mayor coste computacional y el núcleo del sistema. Se articula en
+dos pasadas secuenciales con un contrato estricto: todos los agentes de la primera pasada deben
+completarse antes de que comience la segunda. Entre ambas se interpone la revisión humana opcional
+(HITL): la primera pasada identifica y puntúa los nodos, y sólo para los nodos aprobados
+—automática o manualmente— la segunda infiere las relaciones.
+
+Todos los agentes comparten una base común que encapsula la invocación estructurada del LLM con
+reintentos, y se descubren en tiempo de ejecución a partir de la configuración; habilitar o
+deshabilitar un tipo de concepto es así un cambio de configuración y no de código. Sus prompts
+de sistema, estáticos por tipo, se marcan además como cacheables a nivel de proveedor para
+reducir coste y latencia. La arquitectura de clases de los agentes y el mecanismo de caché se
+detallan en el anexo~\ref{anx:tecnico}.
+
+Las cuatro subsecciones siguientes describen respectivamente la primera pasada —identificación y puntuación de
+confianza—, y la segunda —recuperación y resolución—.
+
+\subsection{Identificación}
+\label{sec:agentes-identificacion}
+
+La transcripción completa se envía en paralelo a cuatro agentes de identificación, uno por tipo
+de concepto (figura~\ref{fig:identification-flow}). El \ac{MVP} no realiza segmentación previa: la
+ventana de contexto de los modelos actuales es suficiente para transcripciones de reuniones
+típicas. Cada agente recibe además un \textit{hint} ligero con los nodos de su mismo tipo ya
+presentes en la base de conocimiento —título y resumen de los más recientes, acotado en
+tokens—, lo que le permite ver ejemplos de nodos ya aprobados.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{identification_flow.drawio.png}
+  \caption{Flujo de la primera pasada de extracción. La transcripción normalizada en la ingesta
+           alimenta el \textit{fan-out} de agentes de identificación —el de decisiones incluye
+           además el paso de agrupación—; sus salidas se deduplican, se puntúan por confianza
+           —heurísticas y, opcionalmente, verificación por \textit{grounding}— y reciben un estado
+           de aprobación (pasos descritos en la sección~\ref{sec:confidence-scoring}) antes de
+           persistirse como nodos nuevos.}
+  \label{fig:identification-flow}
+\end{figure}
+
+Cada agente devuelve una lista de nodos estructurados mediante salida forzada con esquemas
+Pydantic. Cada nodo queda anclado a una cita literal del texto fuente que lo respalda, lo que
+reduce la alucinación y hace auditable cada afirmación. El diseño de los prompts de
+identificación combina varias técnicas complementarias que se detallan en el anexo~\ref{anx:tecnico}.
+
+Para el tipo \texttt{decision} se introduce un paso adicional de agrupación: la lista plana de
+conceptos se organiza en grupos temáticos, de modo que el \textit{pipeline} genere un único
+nodo por decisión consolidada en lugar de múltiples nodos fragmentados. El paso es configurable
+por tipo, pues sólo las decisiones —que tienden a dispersarse a lo largo de un intercambio— se
+benefician de forma clara; ante un fallo del agrupador, cada concepto retrocede a un grupo
+unitario y ningún nodo se pierde.
+
+Tras la ejecución de los agentes, los nodos con título idéntico y mismo tipo se fusionan
+(\textit{deduplicación within-meeting}): el nodo más reciente en la salida del agente —que se
+asume representa el estado final de la deliberación— absorbe los anteriores.
+
+Opcionalmente, cada agente de identificación puede envolverse en una segunda pasada de
+auto-revisión que valida y filtra sus propias salidas antes de puntuarlas; el mecanismo se
+describe en el anexo~\ref{anx:tecnico}.
+
+\subsection{Puntuación de confianza y estado de aprobación}
+\label{sec:confidence-scoring}
+
+Cada nodo recibe una puntuación de confianza antes de pasar a revisión. La señal continua
+proviene exclusivamente de heurísticas basadas en reglas implementadas con spaCy\footnote{%
+  Se emplea el modelo \texttt{en\_core\_web\_sm}, la variante inglesa pequeña de spaCy, que
+  proporciona etiquetado morfosintáctico, análisis de dependencias y reconocimiento de entidades
+  nombradas con una huella de recursos mínima, suficiente para las señales léxicas y sintácticas
+  que requieren estas heurísticas.%
+}:
+
+\begin{equation}
+  \text{confianza} = 0{,}3 \cdot s_{\text{cita}} + 0{,}3 \cdot s_{\text{título}} + 0{,}4 \cdot s_{\text{descripción}}
+\end{equation}
+
+donde $s_{\text{cita}}$ es una señal en $[0,1]$ que satura a las 35 palabras de cita fuente;
+$s_{\text{título}}$ mide la especificidad del título mediante presencia de entidades nombradas
+(NER de spaCy), calificadores y longitud; y $s_{\text{descripción}}$ penaliza multiplicativamente
+el lenguaje de cobertura, la voz pasiva y el tiempo futuro.
+
+Opcionalmente, el \texttt{GroundingAgent} actúa como compuerta binaria independiente: un modelo
+ligero de un proveedor distinto al de los agentes de identificación —la configuración lo exige
+para evitar errores correlacionados— juzga si la descripción está respaldada por la cita fuente.
+Un nodo que falla la verificación es rechazado o marcado como pendiente de revisión,
+independientemente de su puntuación heurística.
+
+La política de aprobación automática combina ambas señales: si la puntuación supera el umbral
+configurado y la verificación pasa (o está desactivada), el nodo se aprueba automáticamente con
+\texttt{approval\_method=THRESHOLD}; en caso contrario el nodo queda en estado \texttt{AWAITING\_REVIEW}.
+Con \texttt{auto\_mode=True}, todos los nodos cuya puntuación supere el umbral establecido se
+aprueban sin revisión humana; los que no son rechazados automaticamente.
+
+\subsection{Recuperación aumentada}
+\label{sec:rag-resolucion}
+
+El módulo de recuperación (RAG) opera en la segunda pasada, una vez que los nodos de la primera
+han sido consolidados y aprobados. A diferencia del uso habitual de RAG, orientado a
+responder preguntas fundamentando la respuesta en los documentos previamente ingeridos, aquí la
+recuperación localiza los nodos preexistentes de la base de conocimiento con los que cada nodo
+nuevo podría relacionarse.
+
+Para cada nodo nuevo, el \texttt{NodeRetriever} construye una consulta a partir de su título y
+descripción, la envía al \texttt{SearchEngine} con el umbral de similitud configurado y expande
+los resultados con los vecinos directos del grafo (profundidad~1); por último, un reranking
+opcional reordena los candidatos por relevancia. Un presupuesto de contexto
+acotado en tokens limita el número total de candidatos para no sobrepasar la ventana del modelo
+de resolución. La figura~\ref{fig:retrieval-flow} resume el recorrido de un nodo fuente a través
+del recuperador.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{retrieval_flow.drawio.png}
+  \caption{Flujo de recuperación para un nodo fuente, en su configuración completa (modo
+           \texttt{HYBRID}). El \texttt{SearchEngine} combina una pata semántica (búsqueda densa,
+           con expansión \textit{multi-query} opcional) y una pata dispersa por palabras clave,
+           fundidas mediante RRF. El \texttt{NodeRetriever} obtiene los nodos de la base de
+           conocimiento, los expande con sus vecinos directos y opcionalmente aplica un reranking
+           (recuadro discontinuo) antes de devolver los nodos objetivo.}
+  \label{fig:retrieval-flow}
+\end{figure}
+
+Un nodo puede recuperarse por dos vías complementarias, cada una con sus propias limitaciones. La
+búsqueda \textbf{densa} (\textit{dense}) compara la consulta con los nodos en el espacio de
+\textit{embeddings} y recupera por proximidad semántica: reconoce paráfrasis y sinónimos aunque
+no compartan vocabulario, pero tiende a difuminar los términos raros y específicos. La búsqueda
+\textbf{dispersa} (\textit{sparse}) casa términos literales y sobresale justo donde la densa se
+diluye —nombres propios, herramientas o identificadores técnicos que el \textit{embedding}
+promedia—, aunque no capta reformulaciones. \texttt{SearchEngine} expone ambas, y su combinación,
+en tres modos de búsqueda configurables:
+
+\begin{itemize}
+  \item \texttt{SEMANTIC}: búsqueda densa por similitud coseno sobre pgvector. Es el modo por
+        defecto. Opcionalmente admite un \textit{fan-out} multi-consulta: un LLM genera variantes
+        de la consulta original —más abstractas, más específicas o con distinto vocabulario— y sus
+        resultados se funden con \ac{RRF}~\cite{cormack2009rrf}, ampliando la cobertura frente a una
+        única formulación.
+  \item \texttt{KEYWORD}: búsqueda dispersa. Un LLM ligero destila primero la consulta a 3--6
+        palabras clave discriminantes y la búsqueda se realiza sobre ellas; sin este paso, la
+        coincidencia literal —que exige la presencia conjunta de todos los términos— se ahogaría
+        en el vocabulario genérico de una consulta larga y devolvería poco o nada.
+  \item \texttt{HYBRID}: combina la pata densa —con su \textit{fan-out} multi-consulta si está
+        activo— y la dispersa, fusionándolas mediante \ac{RRF}, que las agrega por la posición
+        de cada nodo en cada lista y no por su puntuación. Esto es deliberado: las similitudes
+        coseno y las de texto viven en escalas distintas y no son directamente comparables,
+        mientras que el rango sí lo es.
+\end{itemize}
+
+Sobre la lista devuelta por cualquiera de los modos puede aplicarse un \textit{reranking}
+opcional. Mientras que la búsqueda densa aproxima la relevancia por la distancia entre vectores
+calculados de forma independiente para consulta y candidato, un modelo \textit{cross-encoder}
+procesa ambos textos de forma conjunta y estima su relevancia directamente, lo que reordena los
+candidatos con mayor precisión a costa de una llamada adicional a un proveedor externo.
+
+Por último, la recuperación es intencionalmente \textbf{multi-tipo}: un nodo de tipo
+\texttt{decision} puede necesitar resolver relaciones frente a nodos de tipo \texttt{risk} o
+\texttt{open\_question}, de modo que restringir la búsqueda al mismo tipo privaría de candidatos
+válidos a los agentes de resolución cruzada.
+
+\subsection{Agentes de resolución}
+\label{sec:agentes-resolucion}
+
+La resolución de relaciones opera en dos familias paralelas: \textbf{mismo tipo} y
+\textbf{tipo cruzado} (figura~\ref{fig:resolution-flow}). En ambas, las relaciones son
+\textbf{dirigidas} y se infieren en un único sentido: desde cada nodo nuevo (fuente) hacia los
+nodos preexistentes de la base de conocimiento (destino) recuperados en la fase anterior. Los
+nodos de reuniones previas no se reevalúan entre sí; sólo la llegada de un nodo nuevo dispara la
+inferencia de relaciones, lo que mantiene el coste acotado al conocimiento incremental de cada
+trabajo.
+
+%\vspace{1.5cm}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{resolution_flow.drawio.png}
+  \caption{Flujo de la segunda pasada. Para cada nodo fuente de la primera pasada se recuperan
+           sus nodos objetivo (recuperación descrita en la sección~\ref{sec:rag-resolucion}); el
+           par fuente–objetivos se envía en paralelo a las familias de resolución de mismo tipo
+           (un agente por tipo) y de tipo cruzado (hasta nueve pares activos). Un paso de
+           validación mediante reglas heurísticas filtra las relaciones inferidas antes de
+           persistirlas.}
+  \label{fig:resolution-flow}
+\end{figure}
+
+Los agentes de mismo tipo clasifican cada nodo nuevo frente a los candidatos recuperados de la
+base de conocimiento en una de las relaciones aplicables a su tipo o sin relación. Por ejemplo,
+para un nodo de tipo \texttt{decision}, las relaciones permitidas del mismo tipo son
+\texttt{supersedes}, \texttt{amends} y \texttt{conflicts\_with} (el conjunto completo por tipo se
+recoge en la tabla~\ref{tab:rel-matrix} del anexo~\ref{anx:tecnico}). Además, el prompt establece
+criterios operativos precisos: \texttt{supersedes} requiere que la decisión previa quede
+funcionalmente obsoleta; \texttt{amends} implica que la decisión previa permanece vigente pero es
+matizada o restringida; \texttt{conflicts\_with} requiere que ambas decisiones sean activas
+simultáneamente e incompatibles. Ante ambigüedad entre \texttt{amends} y \texttt{supersedes}, el
+sistema prefiere \texttt{amends} como clasificación menos destructiva.
+
+Los agentes de tipo cruzado detectan relaciones entre nodos de tipos distintos:
+\texttt{mitigates}, \texttt{blocks} y \texttt{resolves}. Por ejemplo, una \texttt{decision} puede
+mitigar (\texttt{mitigates}) un \texttt{risk} o resolver (\texttt{resolves}) una
+\texttt{open\_question}. El esquema de relaciones restringe qué pares de tipos pueden evaluarse:
+de los 12 pares dirigidos posibles entre tipos distintos, el \ac{MVP} habilita los 9 cuyas fronteras
+semánticas son más nítidas, materializados como instancias de agente fijas; los restantes quedan
+fuera de alcance por ser más ambiguos de clasificar de forma fiable. La tabla~\ref{tab:rel-matrix}
+del anexo~\ref{anx:tecnico} detalla los pares habilitados.
+
+Cuando un agente tiene incertidumbre genuina entre dos relaciones, puede señalarlo mediante el
+campo opcional \texttt{alt\_rel\_type}. Este campo es la interfaz entre el agente de resolución
+y una segunda pasada de auto-revisión opcional que arbitra los casos ambiguos, análoga a la de
+identificación y detallada igualmente en el anexo~\ref{anx:tecnico}.
+
+Tras ambas llamadas paralelas, un paso de validación heurística descarta las relaciones
+malformadas —dirección incorrecta, incompatibilidades de tipo, violaciones del esquema— y las
+registra sin interrumpir el trabajo.
+
+% ---------------------------------------------------------------------------
+\section{Orquestación y ciclo de vida del pipeline}
+\label{sec:orquestacion}
+
+Las dos pasadas de extracción descritas hasta aquí no se invocan directamente: son etapas de un
+\textit{pipeline} que la \ac{API} recibe y un \textit{worker} asíncrono ejecuta. Cada \textit{pipeline}
+avanza por la máquina de estados descrita en la figura~\ref{fig:job-lifecycle}, desde su recepción
+hasta la persistencia de los resultados.
+
+\subsection{API y creación del pipeline}
+
+La \ac{API} REST (FastAPI) es el único punto de entrada programático al sistema. Un \textit{pipeline}
+se crea enviando un archivo de entrada, que la \ac{API} valida y persiste junto con el registro del
+trabajo antes de encolarlo para su procesamiento asíncrono: la petición retorna de inmediato, sin
+esperar al resultado. El resto de operaciones del ciclo de vida —consultar estado, recuperar
+resultados, aprobar la revisión o reintentar un \textit{pipeline} fallido— se exponen como
+\textit{endpoints} sobre el mismo recurso; la referencia completa de la \ac{API} se recoge en el
+anexo~\ref{anx:api-reference}. El \texttt{JobService} concentra esta lógica de dominio y se apoya
+en repositorios que encapsulan el acceso a datos, de modo que ningún \textit{endpoint} consulta la
+base de datos directamente.
+
+En la creación se aplican además dos salvaguardas: un control de duplicados por
+\textit{hash} del contenido —que evita re-procesar un archivo ya ingerido salvo forzado
+explícito— y límites de tasa por usuario y de concurrencia global, que protegen el presupuesto
+de tokens frente a envíos masivos.
+
+\subsection{Worker asíncrono y máquina de estados}
+
+El \textit{worker} consume los \textit{pipelines} encolados y los conduce a través de los estados
+del ciclo de vida, actualizando el estado persistido en cada transición para que la \ac{API} pueda
+reportarlo. La ejecución se divide en dos tramos separados por la revisión humana. El primero
+—ingesta, transcripción e identificación— termina dejando el \textit{pipeline} en
+\texttt{AWAITING\_REVIEW}. El segundo —recuperación, resolución y escritura— sólo arranca una vez
+aprobados los nodos. Cuando el modo automático está activo, o cuando ningún nodo queda pendiente
+de revisión, el segundo tramo se encadena sin intervención manual.
+
+El \textit{worker} está diseñado para tolerar fallos sin dejar la base de conocimiento en un
+estado inconsistente. La escritura final de nodos y relaciones es una única transacción, de modo
+que un fallo en cualquier punto no deja estado parcial. Además, cuando un \textit{pipeline} falla
+queda en estado \texttt{FAILED} conservando su archivo original; la operación de reintento lo
+recupera del almacenamiento y vuelve a ejecutar el \textit{pipeline} completo desde la transcripción,
+sin reutilizar el trabajo ya realizado —una reanudación consciente del progreso queda como trabajo
+futuro (sección~\ref{sec:trabajo-futuro})—. Por último, los \textit{pipelines} interrumpidos por una
+caída del proceso durante la escritura se detectan y marcan como recuperables en el siguiente arranque.
+
+\subsection{Revisión humana (HITL)}
+
+En \texttt{AWAITING\_REVIEW}, el \textit{pipeline} se detiene a la espera de que un revisor decida
+el destino de los nodos extraídos. Las decisiones se envían en una única petición al
+\textit{endpoint} de aprobación, que admite dos mecanismos combinables. El primero es una
+aprobación masiva por umbral: aprueba de una vez todos los nodos pendientes cuya confianza supere
+un valor dado. El segundo son decisiones individuales: aprobar, rechazar o editar un nodo concreto.
+Cuando se usan juntos, la regla masiva se aplica primero y las decisiones individuales se superponen
+a su resultado, de modo que el revisor puede, por ejemplo, aprobar en bloque todo lo que supere el
+umbral y luego rechazar o corregir los casos puntuales que lo requieran. Las ediciones y aprobaciones
+registran quién y cuándo, distinción que sostiene la trazabilidad descrita a continuación. Una vez
+enviadas las decisiones, el \textit{pipeline} transita a la fase de resolución y el \textit{worker}
+retoma el segundo tramo.
+
+% ---------------------------------------------------------------------------
+\section{Mecanismos de seguridad}
+
+\subsection{Control de acceso y autenticación}
+
+Todos los \textit{endpoints} de la \ac{API} requieren una clave de \ac{API} en la cabecera
+\texttt{X-API-Key}. Las claves se almacenan como hashes bcrypt (factor de coste~12); el texto
+plano nunca se persiste. La validación de cada petición usa comparación en tiempo constante para
+prevenir ataques de temporización.
+
+El modelo de roles es jerárquico; cada nivel hereda los permisos del anterior:
+
+\begin{equation*}
+  \texttt{viewer} \;\subset\; \texttt{reviewer} \;\subset\; \texttt{operator} \;\subset\; \texttt{admin}
+\end{equation*}
+
+\texttt{viewer} sólo consulta la base de conocimiento; \texttt{reviewer} es el nivel mínimo para
+enviar un \textit{pipeline} y para decidir sobre los nodos en revisión —aprobarlos, rechazarlos o
+editarlos—. Activar el modo automático se sitúa también en este nivel, pues equivale a aprobar en
+bloque sin revisión manual. Las acciones más sensibles se reservan a niveles superiores: los
+\textit{overrides} de configuración por trabajo requieren \texttt{operator}, mientras que las
+operaciones de borrado y la re-ingesta forzosa —que elimina nodos existentes— requieren
+\texttt{admin}. La provisión de claves de \ac{API} queda al margen de esta jerarquía: se realiza a
+través de un router \texttt{/admin} separado, autenticado con una clave raíz (\textit{root})
+almacenada en Secrets Manager en lugar de con una clave de usuario.
+
+\subsection{Validación de entradas}
+
+Más allá del control de acceso, el sistema trata como hostiles sus dos entradas no controladas. El
+archivo del cliente se valida en la frontera de la \ac{API} por firma de bytes
+(sección~\ref{sec:validacion-ingesta}) en fallo cerrado: una entrada inválida se rechaza antes de
+crear el \textit{pipeline} y no deja ni trabajo encolado ni artefacto almacenado. El texto de la
+transcripción, que llega a los agentes, se aísla frente a la inyección de prompts mediante los
+delimitadores XML del anexo~\ref{anx:tecnico}, reforzados por la salida estructurada forzada:
+aunque el modelo procese contenido malicioso, el resultado debe ajustarse al esquema Pydantic para
+no ser descartado.
+
+% ---------------------------------------------------------------------------
+\section{Observabilidad y trazabilidad}
+\label{sec:observabilidad}
+
+La observabilidad es una preocupación transversal en un sistema construido sobre \ac{LLM}: las
+llamadas a los modelos son costosas, no deterministas y ocurren en paralelo, por lo que sin
+instrumentación es difícil diagnosticar un fallo, atribuir un coste o justificar una afirmación
+extraída. \textbf{Seshat} aborda esto en tres planos: el trazado de la ejecución, la medición del
+consumo con enforcement de presupuesto, y la trazabilidad del conocimiento producido.
+
+\subsection{Trazado de la ejecución}
+
+MLflow~3 actúa como \textit{backbone} de observabilidad. La instrumentación de las llamadas a los
+agentes es automática: \texttt{mlflow.langchain.autolog()} captura prompts, respuestas, uso de
+tokens y latencia sin código adicional en los agentes, emitiendo cada llamada como un \textit{span}
+de \ac{OTel}, el estándar abierto de trazado distribuido. Cada \textit{pipeline} abre un
+\textit{run} de MLflow al arrancar; su identificador se
+expone en la consulta de estado del trabajo, de modo que el operador puede saltar directamente a la
+traza completa de la ejecución.
+
+\subsection{Medición del consumo y presupuesto}
+
+Sobre el trazado automático, \textbf{Seshat} añade una capa propia de medición que acumula, por
+etapa del \textit{pipeline}, los tokens de entrada, salida y caché del LLM, los tokens de
+\textit{embeddings} y de \textit{reranking}, y los segundos de audio transcritos, junto con
+percentiles de latencia por llamada (media, p95 y máximo). Estas métricas se registran en MLflow y
+hacen comparables el coste y el rendimiento entre versiones del sistema.
+
+Esta capa no es meramente informativa: aplica un presupuesto de consumo. Cada etapa acumula su uso
+contra unos límites configurables y aborta la ejecución si los rebasa, lo que acota el gasto ante
+transcripciones anómalas o bucles inesperados. El control de gasto real recae así sobre estos
+límites de tokens, y no sobre tablas de precios que requerirían mantenimiento; los costes
+monetarios se estiman de forma informativa en la interfaz de MLflow. Los detalles de
+implementación de esta capa —su propagación transparente a los agentes concurrentes y los
+envoltorios de medición— se describen en el anexo~\ref{anx:observabilidad}.
+
+\subsection{Trazabilidad del conocimiento}
+
+Al margen de la instrumentación de ejecución, cada nodo conserva la traza de su origen y de su
+manipulación posterior. La cita literal del texto fuente (\texttt{quote\_anchors}) que originó el
+nodo hace auditable cualquier afirmación extraída. Las correcciones humanas en revisión quedan
+registradas en los campos \texttt{corrected\_by} y \texttt{corrected\_at}, distinguiendo el
+contenido corregido del generado automáticamente, y las anulaciones (\textit{overrides}) de
+operadores y administradores exigen justificación escrita, almacenada en
+\texttt{correction\_reason}.
+
+% ---------------------------------------------------------------------------
+\section{Despliegue e infraestructura}
+
+\subsection{Contenedores Docker}
+
+El sistema se orquesta con Docker Compose en seis servicios: \texttt{postgres}
+(PostgreSQL~17 con pgvector), \texttt{mlflow} (observabilidad, con \textit{backend} SQLite),
+\texttt{localstack} (emulación de S3 y Secrets Manager), \texttt{migrate} (aplica las migraciones
+de esquema mediante Alembic y termina), \texttt{seshat-api} (la \ac{API} FastAPI, que aloja además el \textit{worker}
+asíncrono en proceso) y \texttt{seshat-ui} (la interfaz de revisión en Streamlit). El arranque
+está ordenado por comprobaciones de salud: la \ac{API} sólo se inicia cuando Postgres, LocalStack y
+MLflow están operativos y las migraciones han concluido.
+
+La \ac{API} y las migraciones se construyen desde un mismo \textit{Dockerfile} multietapa —comparten la
+capa de dependencias y difieren sólo en la etapa final—, de modo que ambas ejecutan exactamente el
+mismo entorno. La configuración se inyecta por variables de entorno mediante el separador de
+anidamiento de pydantic-settings; los secretos —incluida la cadena de conexión de Postgres, bajo
+la clave \texttt{seshat/postgres\_url}— se resuelven en el arranque desde Secrets Manager, de modo
+que el mismo código se ejecuta en desarrollo (LocalStack) y en producción (AWS real) sin ramas
+condicionales.
+
+\subsection{Integración continua}
+\label{sec:ci}
+
+Cada \textit{push} a la rama principal y cada \textit{pull request} dispara una canalización de
+\ac{CI} (GitHub Actions) que actúa como guardián de calidad antes de la fusión. La canalización
+arranca con una etapa de \textit{linting} —formato y reglas estáticas con \textit{ruff}, más
+comprobación de tipos con \textit{mypy}— de la que dependen las demás: si el estilo o los tipos
+fallan, no se malgasta cómputo en las pruebas. Superada esa puerta, las pruebas unitarias y las de
+integración (sección~\ref{sec:tests}) se ejecutan en paralelo; estas últimas levantan los mismos
+contenedores de Docker Compose de la sección anterior, de modo que se validan contra Postgres, LocalStack y
+MLflow reales, y exigen una cobertura de ramas mínima del 80\,\%. Una última etapa, sólo en las \textit{pull requests}, publica
+como comentario métricas de complejidad ciclomática y de mantenibilidad del código, dando
+visibilidad a la deuda técnica en el momento de la revisión.
+
+La canalización ejecuta deliberadamente todas las pruebas salvo las marcadas como dependientes de
+un \ac{LLM} en vivo: reproducir la aleatoriedad y el coste de las llamadas reales al modelo en cada
+\textit{commit} no es ni fiable ni económico. La evaluación de la calidad de los agentes recae por
+ello en el \textit{gate} descrito en el capítulo~\ref{ch:evaluacion}, que se ejecuta de forma
+deliberada fuera de la \ac{CI} y cuyo veredicto la \ac{API} comprueba en el arranque.

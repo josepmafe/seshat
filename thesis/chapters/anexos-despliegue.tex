@@ -1,0 +1,140 @@
+\chapter{Guía de Despliegue y Manual de Usuario}
+\label{anx:despliegue}
+
+Este anexo describe cómo levantar \textbf{Seshat} y operarlo de principio a fin. El despliegue de
+referencia se empaqueta como un conjunto de contenedores autocontenido, de modo que un único comando
+arranca la base de datos, los servicios auxiliares y la aplicación. La última sección recorre la
+interfaz web como manual de usuario.
+
+\section{Requisitos previos}
+\label{anx:despliegue-requisitos}
+
+Para minimizar las dependencias que recaen sobre quien lo despliega, \textbf{Seshat} se distribuye
+completamente dockerizado. Por eso, el único requisito para arrancar el sistema completo es
+\textbf{Docker} con el complemento \textbf{Compose}~v2 (\texttt{docker compose}); los contenedores
+aportan todo lo demás —PostgreSQL, el almacén de secretos y de \textit{blobs}, el servidor de trazas
+y los dos servicios de Seshat—, sin instalar nada más en la máquina anfitriona. El único estado que
+sobrevive a los contenedores vive en volúmenes de Docker, de modo que detenerlos y volver a
+levantarlos no pierde ni la base de datos ni las trazas. La sección~\ref{anx:despliegue-arranque}
+detalla cada servicio y el orden en que arrancan.
+
+Para el desarrollo —ejecutar los tests, los arneses de evaluación o la \acs{API} fuera de los
+contenedores— se requiere además \textbf{Python~3.13} o superior y el gestor de paquetes
+\texttt{uv}\footnote{%
+  Gestor de paquetes y proyectos de Python escrito en Rust: \url{https://docs.astral.sh/uv/}.%
+}. A partir del fichero \texttt{uv.lock} versionado, \texttt{uv} reconstruye el entorno de forma
+determinista: instala las versiones exactas allí fijadas y resuelve hasta el modelo de spaCy que
+sostiene las heurísticas de puntuación de confianza (sección~\ref{sec:confidence-scoring}), que de
+otro modo exigiría una descarga aparte.
+
+\section{Configuración de credenciales}
+\label{anx:despliegue-credenciales}
+
+La configuración se suministra mediante dos ficheros de entorno que se copian de sus plantillas
+versionadas:
+
+\begin{itemize}
+  \item \texttt{.env} (a partir de \texttt{.env.example}) cumple dos funciones: Docker Compose lo
+        lee automáticamente para sustituir las variables de infraestructura del
+        \texttt{docker-compose.yml} —credenciales de PostgreSQL, puertos, nombre del \textit{bucket},
+        región—, y \texttt{python-dotenv} lo carga en las ejecuciones locales fuera de los
+        contenedores, donde añade las claves de \acs{API} y los ajustes que apuntan los servicios a
+        \texttt{localhost}.
+  \item \texttt{.env.docker} (a partir de \texttt{docker/.env.docker.example}) se inyecta
+        explícitamente en los contenedores \texttt{seshat-api} y \texttt{localstack}. Contiene las
+        claves de \ac{API} —que se siembran en el almacén de secretos al arrancar— y los ajustes de
+        configuración de Seshat que sobrescriben los valores por defecto.
+\end{itemize}
+
+Las credenciales no se leen directamente del entorno en tiempo de ejecución, sino a través de un
+\textbf{resolutor de secretos} seleccionable por configuración. Con el proveedor \texttt{env} se
+leen de las variables de entorno, adecuado para ejecuciones locales; con el proveedor \texttt{aws}
+se recuperan de AWS Secrets Manager. El despliegue en contenedores usa este último apuntando a
+\textbf{LocalStack}, que emula el servicio: así el arranque local ejercita exactamente el mismo
+camino de código que un despliegue en la nube, sin depender de infraestructura real.
+
+Las claves mínimas para un arranque funcional son la clave raíz que gobierna la administración
+(\texttt{SESHAT\_ROOT\_API\_KEY}) y las de los proveedores del pipeline por defecto:
+\texttt{OPENAI\_API\_KEY} (\textit{embeddings} y \textit{grounding}), \texttt{ANTHROPIC\_API\_KEY}
+(identificación y resolución) y \texttt{ASSEMBLYAI\_API\_KEY} (transcripción).
+
+\section{Arranque con Docker Compose}
+\label{anx:despliegue-arranque}
+
+Una vez copiados y rellenados los dos ficheros de entorno, el conjunto completo de contenedores se
+levanta desde la raíz del proyecto con un único comando:
+
+\begin{center}
+  \ttfamily docker compose up
+\end{center}
+
+En la primera ejecución, Docker Compose construye las imágenes de Seshat que aún no existen\footnote{%
+  Compose sólo construye las imágenes ausentes; tras modificar el código fuente hay que forzar la
+  reconstrucción con \texttt{docker compose up -{}-build}, o construir las imágenes manualmente
+  con \texttt{docker compose build <service\_name>}. Alternativamente, se puede crear un fichero
+  \texttt{docker-compose.override.yml} y definir en él los ajustes personalizados, tales como
+  volúmenes a las carpetas donde se encuentra el código fuente. %
+} y arranca los seis servicios de la tabla~\ref{tab:compose-services} en el orden que imponen sus
+dependencias. El servicio
+\texttt{migrate} aplica las migraciones de Alembic (\texttt{alembic upgrade head}), que crean los
+esquemas \texttt{ops} y \texttt{knowledge\_base} descritos en la sección~\ref{anx:db-schema}, y
+termina; \texttt{seshat-api} sólo arranca una vez que \texttt{migrate} ha concluido con éxito y que
+PostgreSQL, LocalStack y MLflow están sanos, y \texttt{seshat-ui} espera a su vez a que la \ac{API}
+lo esté.
+
+\begin{table}[H]
+  \centering
+  \small
+  \begin{tabularx}{\textwidth}{@{}l l c >{\raggedright\arraybackslash}X@{}}
+    \toprule
+    \textbf{Servicio} & \textbf{Origen} & \textbf{Puerto} & \textbf{Función} \\
+    \midrule
+    \texttt{postgres}   & \texttt{pgvector/pgvector:pg17} & 5432 & Base de datos: esquemas \texttt{ops} y \texttt{knowledge\_base} más los \textit{embeddings} de pgvector. \\
+    \texttt{migrate}    & Dockerfile (\texttt{migrate})   & —    & Aplica las migraciones de Alembic una sola vez y termina. \\
+    \texttt{mlflow}     & \texttt{mlflow:v3.12.0}         & 5000 & Servidor de trazas y métricas de observabilidad. \\
+    \texttt{localstack} & \texttt{localstack:3}           & 4566 & Emula AWS Secrets Manager y S3; siembra los secretos y crea el \textit{bucket} al arrancar. \\
+    \texttt{seshat-api} & Dockerfile (\texttt{api})       & 8000 & \ac{API} REST y cola de trabajos en proceso. \\
+    \texttt{seshat-ui}  & Dockerfile.ui                   & 8501 & Interfaz web (Streamlit) sobre la \ac{API}. \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Servicios de \texttt{docker compose} y el puerto que cada uno expone en la
+           máquina anfitriona.}
+  \label{tab:compose-services}
+\end{table}
+
+El arranque de la \ac{API} atraviesa además dos comprobaciones que actúan como salvaguardas: un
+sondeo a todos los proveedores de modelos configurados y la \textbf{verificación de la puerta de
+evaluación}, que aborta el arranque si no existe un \texttt{eval\_gate.json} con veredicto favorable
+(véase el capítulo~\ref{ch:evaluacion}).
+
+En el despliegue en local ambas comprobaciones se desactivan mediante las variables de entorno
+\texttt{API\_\_SKIP\_EXTERNAL\_PROVIDER\_PING} y \texttt{API\_\_SKIP\_EVAL\_GATE}, de modo
+que la demostración arranca sin exigir una ejecución previa de los arneses ni que todos los
+proveedores estén disponibles. En un despliegue real ambas se dejan activas: se ejecuta antes
+\texttt{seshat eval} para producir una puerta favorable y sólo entonces se permite servir tráfico.
+
+Una vez sanos todos los servicios, la interfaz web queda accesible en \texttt{localhost:8501}, la
+\ac{API} en \texttt{localhost:8000} y la interfaz de MLflow en \texttt{localhost:5000}. Fuera de los
+contenedores, los mismos dos pasos se ejecutan a mano con la línea de comandos: \texttt{seshat
+migrate} aplica las migraciones y \texttt{seshat api} levanta el servidor.
+
+\section{Manual de usuario}
+\label{anx:despliegue-manual}
+
+Los usuarios operan \textbf{Seshat} a través de una interfaz web: el cliente fino de Streamlit cuyo
+diseño se motiva en la sección~\ref{sec:ux}. Se apoya en la misma \ac{API} REST documentada en el
+anexo~\ref{anx:api-reference}, de modo que cualquier acción de la interfaz tiene su equivalente en un
+\textit{endpoint}. Se organiza en cuatro pantallas: \textbf{Jobs}
+envía grabaciones o transcripciones y gobierna su revisión hasta que se escriben en el grafo;
+\textbf{Graph} navega, busca y explora la base de conocimiento, incluida la travesía de impacto de un
+nodo; \textbf{Manual Actions} cubre las operaciones ajenas al pipeline —crear nodos y relaciones a
+mano, anular contenido o forzar la reingesta de un trabajo—; y el \textbf{Admin Panel}, reservado a
+la clave raíz, provisiona las claves de \ac{API} y sus roles.
+
+Dos guías de usuario, mantenidas junto al código para que evolucionen con él, cubren el detalle de
+cada superficie. El recorrido completo de la interfaz, con un escenario de ejemplo de principio a
+fin, está en
+\href{https://github.com/josepmafe/seshat/blob/main/docs/ui-testing-guide.md}{\texttt{docs/ui-testing-guide.md}};
+la operación de los arneses de evaluación —ejecutarlos, leer los resultados en MLflow y calibrar los
+umbrales— se recoge en
+\href{https://github.com/josepmafe/seshat/blob/main/docs/eval-user-guide.md}{\texttt{docs/eval-user-guide.md}}.
