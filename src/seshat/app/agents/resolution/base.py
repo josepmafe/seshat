@@ -44,7 +44,7 @@ class _EntryBase(BaseModel):
     source_id: str
     target_id: str
     rationale: str = Field(
-        description="Required non-null string. Always explain your reasoning — state why the relationship was chosen, or why no relationship applies when rel_type is null."
+        description="One sentence explaining why this classification was chosen or why null was assigned"
     )
     rel_type: str | None
 

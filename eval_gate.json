@@ -1,0 +1,151 @@
+{
+  "run_id": "1625f1d8724f4e7ab126c56bd45354e4",
+  "timestamp": "2026-07-19T22:59:44.758744+00:00",
+  "identification_metrics": {
+    "decision.precision": {
+      "value": 0.964,
+      "gated": true,
+      "passed": true
+    },
+    "decision.recall": {
+      "value": 0.893,
+      "gated": true,
+      "passed": true
+    },
+    "decision.spurious_rate": {
+      "value": 0.0,
+      "gated": true,
+      "passed": true
+    },
+    "risk.precision": {
+      "value": 0.85,
+      "gated": true,
+      "passed": true
+    },
+    "risk.recall": {
+      "value": 1.0,
+      "gated": true,
+      "passed": true
+    },
+    "risk.spurious_rate": {
+      "value": 0.0,
+      "gated": true,
+      "passed": true
+    },
+    "action_item.precision": {
+      "value": 0.895,
+      "gated": true,
+      "passed": true
+    },
+    "action_item.recall": {
+      "value": 0.947,
+      "gated": true,
+      "passed": true
+    },
+    "action_item.spurious_rate": {
+      "value": 0.077,
+      "gated": true,
+      "passed": true
+    },
+    "open_question.precision": {
+      "value": 0.867,
+      "gated": true,
+      "passed": true
+    },
+    "open_question.recall": {
+      "value": 0.867,
+      "gated": true,
+      "passed": true
+    },
+    "open_question.spurious_rate": {
+      "value": 0.111,
+      "gated": true,
+      "passed": true
+    }
+  },
+  "resolution_metrics": {
+    "decision.precision": {
+      "value": 0.91,
+      "gated": true,
+      "passed": true
+    },
+    "decision.recall": {
+      "value": 0.962,
+      "gated": true,
+      "passed": true
+    },
+    "risk.precision": {
+      "value": 0.944,
+      "gated": true,
+      "passed": true
+    },
+    "risk.recall": {
+      "value": 1.0,
+      "gated": true,
+      "passed": true
+    },
+    "action_item.precision": {
+      "value": 0.889,
+      "gated": true,
+      "passed": true
+    },
+    "action_item.recall": {
+      "value": 1.0,
+      "gated": true,
+      "passed": true
+    },
+    "open_question.precision": {
+      "value": 1.0,
+      "gated": true,
+      "passed": true
+    },
+    "open_question.recall": {
+      "value": 1.0,
+      "gated": true,
+      "passed": true
+    }
+  },
+  "retrieval_metrics": {
+    "recall_at_5": {
+      "value": 0.742,
+      "gated": true,
+      "passed": true
+    },
+    "precision_at_5": {
+      "value": 0.56,
+      "gated": false,
+      "passed": null
+    },
+    "mrr_at_5": {
+      "value": 0.944,
+      "gated": true,
+      "passed": true
+    }
+  },
+  "grounding_metrics": {
+    "precision": {
+      "value": 1.0,
+      "gated": true,
+      "passed": true
+    },
+    "recall": {
+      "value": 1.0,
+      "gated": true,
+      "passed": true
+    }
+  },
+  "grouping_metrics": {
+    "exact_match": {
+      "value": 0.875,
+      "gated": false,
+      "passed": null
+    },
+    "group_hit_rate": {
+      "value": 0.975,
+      "gated": true,
+      "passed": true
+    }
+  },
+  "validation_hash": "3b62c7037cb317f7",
+  "passed": true
+}

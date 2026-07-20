@@ -14,8 +14,47 @@ class _Dummy(BaseModel):
     value: int
 
 
+class _Text(BaseModel):
+    text: str
+
+
 async def _coro(value: int) -> _Dummy:
     return _Dummy(value=value)
+
+
+class TestCacheEncoding:
+    """Cache files must round-trip non-ASCII regardless of the platform default encoding.
+
+    See project_seshat_eval_mlflow_hang follow-up: read_text/write_text with no explicit
+    encoding used cp1252 on Windows; an em-dash written then read under a different default
+    (e.g. forced UTF-8) raised UnicodeDecodeError.
+    """
+
+    async def test_non_ascii_round_trips_through_cache(self, tmp_path: Path):
+        cache_fp = tmp_path / "entry.json"
+        payload = "decision — narrows scope, café, 你好"
+
+        # miss: writes the file
+        written, _, was_cached = await read_or_run(cache_fp, _Text, _make_text(payload))
+        assert was_cached is False
+        assert written.text == payload
+
+        # hit: reads it back — must decode identically
+        read_back, _, was_cached = await read_or_run(cache_fp, _Text, _make_text("unused"))
+        assert was_cached is True
+        assert read_back.text == payload
+
+    async def test_cache_file_is_utf8_on_disk(self, tmp_path: Path):
+        cache_fp = tmp_path / "entry.json"
+        await read_or_run(cache_fp, _Text, _make_text("café — 你好"))
+
+        # explicit utf-8 read must succeed (fails if written as cp1252)
+        raw = cache_fp.read_text(encoding="utf-8")
+        assert "café — 你好" in raw
+
+
+async def _make_text(text: str) -> _Text:
+    return _Text(text=text)
 
 
 class TestReadOrRun:

@@ -87,6 +87,7 @@ class TestLogEvalRunMetadata:
                 run_id="run-1",
                 harness="identification",
                 gate_passed=True,
+                harness_passed=True,
                 corpus_dir=Path("/data/corpus"),
                 corpus_examples=[ex1, ex2],
             )
@@ -95,12 +96,39 @@ class TestLogEvalRunMetadata:
         params_arg = mock_params.call_args[0][0]
         assert params_arg["corpus.size"] == "2"
 
-        mock_metrics.assert_called_once_with({"gate.passed": 1.0}, run_id="run-1")
+        mock_metrics.assert_called_once_with({"gate.passed": 1.0, "harness.passed": 1.0}, run_id="run-1")
 
         mock_tags.assert_called_once()
         tags_arg = mock_tags.call_args[0][0]
         assert tags_arg["harness"] == "identification"
         assert tags_arg["gate.passed"] == "true"
+        assert tags_arg["harness.passed"] == "true"
+
+    def test_harness_passed_logged_as_separate_metric_and_tag(self):
+        # harness.passed reflects THIS harness's own block, distinct from the overall gate.passed
+        ex = MagicMock()
+        ex.tags = {}
+        with (
+            patch("seshat.eval.mlflow_logging.mlflow.log_params"),
+            patch("seshat.eval.mlflow_logging.mlflow.log_metrics") as mock_metrics,
+            patch("seshat.eval.mlflow_logging.mlflow.set_tags") as mock_tags,
+        ):
+            log_eval_run_metadata(
+                run_id="run-h",
+                harness="resolution",
+                gate_passed=False,
+                harness_passed=True,
+                corpus_dir=Path("/data"),
+                corpus_examples=[ex],
+            )
+
+        metrics_arg = mock_metrics.call_args[0][0]
+        assert metrics_arg["gate.passed"] == 0.0
+        assert metrics_arg["harness.passed"] == 1.0
+
+        tags_arg = mock_tags.call_args[0][0]
+        assert tags_arg["gate.passed"] == "false"
+        assert tags_arg["harness.passed"] == "true"
 
     def test_cache_hits_included_when_provided(self):
         with (
@@ -112,6 +140,7 @@ class TestLogEvalRunMetadata:
                 run_id="run-2",
                 harness="resolution",
                 gate_passed=False,
+                harness_passed=False,
                 corpus_dir=Path("/data"),
                 corpus_examples=[],  # empty — no tags iteration
                 cache_hits=5,
@@ -132,6 +161,7 @@ class TestLogEvalRunMetadata:
                 run_id="run-3",
                 harness="grouping",
                 gate_passed=True,
+                harness_passed=True,
                 corpus_dir=Path("/data"),
                 corpus_examples=[],
                 breakdown_artifact={"key": "val"},

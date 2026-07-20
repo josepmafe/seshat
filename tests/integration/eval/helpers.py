@@ -8,7 +8,7 @@ from seshat.app.agents.identification.registry import IdentificationAgentRegistr
 from seshat.app.agents.resolution.registry import ResolutionRegistry
 from seshat.app.pipeline.extraction.orchestrator import ExtractionOrchestrator
 from seshat.core.config.eval_settings import EvalConfig
-from seshat.core.config.settings import ExtractionConfig, ObservabilityConfig
+from seshat.core.config.settings import ExtractionConfig
 from seshat.eval.grounding.runner import GroundingEvalRunner
 from seshat.eval.grouping.runner import GroupingEvalRunner
 from seshat.eval.identification.runner import IdentificationEvalRunner
@@ -75,12 +75,8 @@ def make_identification_meta_scorer(config: EvalConfig):
     return IdentificationMetaScorer(orchestrator=_make_eval_orchestrator(extraction_config), config=config, step=0.1)
 
 
-def make_eval_config(tmp_path: Path, experiment_name: str = "seshat-eval-test") -> EvalConfig:
+def make_eval_config(tmp_path: Path) -> EvalConfig:
     return EvalConfig(
         corpus_base_dir=CORPUS_BASE_DIR,
         gate_path=tmp_path / "eval_gate.json",
-        observability=ObservabilityConfig(
-            mlflow_tracking_uri="sqlite:///" + str(tmp_path / "mlflow.db"),
-            mlflow_experiment_name=experiment_name,
-        ),
     )

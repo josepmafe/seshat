@@ -85,7 +85,7 @@ class TestRetrievalMetaScorerIntegration:
     async def test_sweep_end_to_end(self, tmp_path: Path) -> None:
         """Real corpus loader + stub vector store; verifies the full sweep path runs
         without errors and produces one result point per step."""
-        eval_config = make_eval_config(tmp_path, "seshat-retrieval-meta-scorer")
+        eval_config = make_eval_config(tmp_path)
         scorer = _make_scorer(eval_config)
 
         result = await scorer.sweep_threshold()

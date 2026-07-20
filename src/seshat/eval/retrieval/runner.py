@@ -95,6 +95,7 @@ class RetrievalEvalRunner:
             run_id=run_id,
             harness="retrieval",
             gate_passed=gate.passed,
+            harness_passed=gate.harness_passed("retrieval"),
             corpus_dir=self._config.retrieval_corpus_dir,
             corpus_examples=examples,
             breakdown_artifact=_build_breakdown(eval_result, examples, result_cache),

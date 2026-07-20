@@ -82,6 +82,7 @@ def log_eval_run_metadata(
     run_id: str,
     harness: str,
     gate_passed: bool,
+    harness_passed: bool,
     corpus_dir: Path,
     corpus_examples: list,
     breakdown_artifact: dict | None = None,
@@ -91,6 +92,11 @@ def log_eval_run_metadata(
     total_predictions: int | None = None,
 ) -> None:
     """Log standard eval run params, metrics, tags and artifacts to the MLflow run.
+
+    `gate_passed` is the overall gate verdict (AND of every harness block present in the
+    gate file). `harness_passed` is this harness's own block verdict — logged as a separate
+    `harness.passed` metric/tag so a green harness reads as green even when another block
+    drags the overall gate down.
 
     mlflow.set_tags has no run_id param — it targets the currently active run.
     To ensure tags are set on the correct run, this function should be called within the mlflow.start_run context.
@@ -108,13 +114,21 @@ def log_eval_run_metadata(
         params.update(extra_params)
     mlflow.log_params(params, run_id=run_id)
 
-    mlflow.log_metrics({"gate.passed": float(gate_passed)}, run_id=run_id)
+    mlflow.log_metrics(
+        {"gate.passed": float(gate_passed), "harness.passed": float(harness_passed)},
+        run_id=run_id,
+    )
 
     if breakdown_artifact is not None:
         _log_breakdown_artifact(breakdown_artifact, run_id)
 
     tag_summary = corpus_tag_summary(corpus_examples)
-    tags = {"harness": harness, "gate.passed": str(gate_passed).lower(), **tag_summary}
+    tags = {
+        "harness": harness,
+        "gate.passed": str(gate_passed).lower(),
+        "harness.passed": str(harness_passed).lower(),
+        **tag_summary,
+    }
     if cache_hits is not None and total_predictions is not None:
         tags["cached"] = "true" if cache_hits == total_predictions else "false"
     mlflow.set_tags(tags)
@@ -164,5 +178,5 @@ def make_input_redactor(
 def _log_breakdown_artifact(breakdown: dict, run_id: str) -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         breakdown_path = Path(tmp_dir) / "breakdown.json"
-        breakdown_path.write_text(json.dumps(breakdown, indent=2))
+        breakdown_path.write_text(json.dumps(breakdown, indent=2), encoding="utf-8")
         mlflow.log_artifact(str(breakdown_path), artifact_path="eval", run_id=run_id)

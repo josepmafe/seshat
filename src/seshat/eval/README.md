@@ -1,7 +1,7 @@
 # `seshat.eval` — Evaluation Harnesses
 
 Five eval harnesses that measure quality across the pipeline:
-**identification**, **resolution**, **retrieval**, **grouping**, and **verification**.
+**identification**, **resolution**, **retrieval**, **grouping**, and **grounding**.
 All five use [MLflow Evaluate](https://mlflow.org/docs/latest/llms/llm-evaluate/) as the
 evaluation framework and write their results to a shared gate file.
 
@@ -34,17 +34,19 @@ eval/
 │   ├── corpus_loader.py    reads YAML fixtures, builds GroupingCorpusExample
 │   ├── scorers.py          exact_match + group_hit_rate feedback
 │   └── runner.py           GroupingEvalRunner
-├── verification/         # VerificationAgent → quote grounding quality
-│   ├── corpus_loader.py    reads YAML fixtures, builds VerificationCorpusExample
+├── grounding/            # GroundingAgent → quote grounding quality
+│   ├── corpus_loader.py    reads YAML fixtures, builds GroundingCorpusExample
 │   ├── scorers.py          confusion-matrix feedback (TP/FP/FN/TN)
-│   └── runner.py           VerificationEvalRunner
+│   └── runner.py           GroundingEvalRunner
 ├── calibration/
 │   ├── identification_meta_scorer.py   IdentificationMetaScorer
 │   ├── retrieval_meta_scorer.py        RetrievalMetaScorer
 │   └── models.py                       SweepPoint, SweepResult, TypeMetrics, etc.
+├── bootstrap.py          # build_extraction_orchestrator context manager
 ├── cache.py              # read_or_run helper
-├── common.py             # shared helpers (not public API)
+├── corpus_tags.py        # tag-filter helpers
 ├── gate.py               # read/write/upsert gate file
+├── mlflow_logging.py     # run/trace logging helpers
 ├── models.py             # GateResult, corpus Pydantic models
 └── thresholds.py         # pass/fail thresholds (in code, not config)
 ```
@@ -124,18 +126,13 @@ attributed to floating-point non-associativity in parallel GPU kernels and
 provider-side batching strategies (see e.g. Chen et al., 2023; OpenAI's own
 documentation acknowledges this for GPT-4 class models).
 
-Two sources of variance in this harness:
+The dominant source of variance is **LLM sampling** — all runners call live LLM
+endpoints with `temperature=0`. Variance is small (we rarely see a fixture flip
+category), but it is real.
 
-1. **LLM sampling** — all runners call live LLM endpoints with `temperature=0`. This
-   is the dominant source. Variance is small (we rarely see a fixture flip category),
-   but it is real.
-2. **Retrieval UUID assignment** — the retrieval runner generates UUIDs via `uuid4()`
-   (random per call). If a fixture's candidate nodes receive different UUIDs on
-   different runs they will produce different embeddings in the vector store and can
-   yield different recall@5 scores for the same fixture.
-
-The identification and resolution runners use `uuid5` (deterministic from
-`corpus_id + slug`) so their node identities are stable across runs.
+All runners assign node identities via `uuid5` (deterministic from `corpus_id + slug`),
+so node identities — and therefore the embeddings seeded into the vector store — are
+stable across runs. UUID assignment is not a source of variance.
 
 **How we manage variance:**
 
@@ -146,8 +143,9 @@ The identification and resolution runners use `uuid5` (deterministic from
   across runs; the notes record the reasoning so a score change can be diagnosed
   quickly rather than treated as a regression.
 - Use `read_or_run` caching (via `eval/cache.py`) during iterative development to pin
-  predictions and isolate scorer changes from LLM variance. The cache is keyed on the
-  corpus file hash and is cleared automatically at the end of a successful run.
+  predictions and isolate scorer changes from LLM variance. Cache files are keyed on
+  `corpus_id`, agent fingerprint, and input hash, and persist across runs; each run
+  mark-and-sweeps only the stale entries (see `sweep_stale_entries`).
 
 ---
 
@@ -273,13 +271,14 @@ results for a given query node?
 
 1. Loads YAML corpus fixtures from `EvalConfig.retrieval_corpus_dir`.
 2. For each fixture, seeds the `AbstractVectorStore` collection with the candidate
-   nodes, issues a `search(title + description, top_k=5, mode=search_mode)` query,
-   then tears down (delete) the candidates — all within a try/finally to avoid leaving
-   stale data.
-3. `build_kb_nodes` generates UUIDs via `uuid4()` — random per call. It must be called
-   **once** per fixture per run; calling it twice produces different UUIDs and breaks
-   the slug→UUID mapping used to resolve `expected_relevant_ids`.
-4. The `scorer` computes recall@5 and precision@5 against the `expected_relevant_ids`.
+   nodes, issues a `search(title + " " + description, top_k=len(candidates), mode=search_mode)`
+   query, keeps the top-5 results after in-process threshold filtering, then tears down
+   (delete) the candidates — all within a try/finally to avoid leaving stale data.
+3. `build_kb_nodes` generates UUIDs via `uuid5(NAMESPACE_URL, f"{corpus_id}/{slug}")` —
+   deterministic across runs, so the same slug always maps to the same UUID for a given
+   fixture and the slug→UUID mapping used to resolve `expected_relevant_ids` is stable.
+4. The `scorer` computes recall@5, precision@5, and mrr@5 against the
+   `expected_relevant_ids`.
 
 **Search mode** is read from `RAGConfig.search_mode` (env var `RAG__SEARCH_MODE`).
 All three modes are supported: `semantic`, `keyword`, `hybrid`. The cache is scoped
@@ -353,8 +352,8 @@ grouping and makes the fixture's role legible without opening the file:
 |---|---|---|---|
 | `same_type` | 4 | single-type pool, same-type query→candidate pairing | positive |
 | `cross_type` | 9 | single-type pool, cross-type query→candidate pairing | positive |
-| `realistic` | 10 | mixed-type pool (all 4 node types), reflects production distribution | positive |
-| `negative` | 7 | mixed-type pool, `expected_relevant_ids: []` | negative |
+| `realistic` | 17 | mixed-type pool (all 4 node types), reflects production distribution | positive |
+| `negative` | 10 | mixed-type pool, `expected_relevant_ids: []` | negative |
 
 **Limitations:**
 - The caller **must** pass a dedicated, empty collection.  Any pre-existing nodes in
@@ -366,7 +365,7 @@ grouping and makes the fixture's role legible without opening the file:
   post-retrieval filtering.
 - Query is constructed as `title + " " + description`; the production pipeline may
   use a different query strategy.
-- Gate criterion is recall@5 ≥ 0.70; precision@5 is logged but not gated.
+- Gate criteria are recall@5 ≥ 0.70 and mrr@5 ≥ 0.75; precision@5 is logged but not gated.
 - Corpus fixtures use mixed-type candidate pools (decisions, risks, action items, open
   questions in the same pool) to simulate a realistic vector store. Single-type pools
   suppress false positives and produce misleadingly high precision scores.
@@ -388,9 +387,9 @@ Both are order-independent (frozenset comparison).
 
 ---
 
-## Harness 5 — Verification (`VerificationEvalRunner`)
+## Harness 5 — Grounding (`GroundingEvalRunner`)
 
-**What it measures:** Does the `VerificationAgent` correctly judge whether a node's
+**What it measures:** Does the `GroundingAgent` correctly judge whether a node's
 `quote` actually supports its `title`/`description` in the source transcript?
 
 The scorer tallies a confusion matrix (TP/FP/FN/TN) per node; the runner aggregates
@@ -441,8 +440,8 @@ human review, not how much is retained at all.  This has two consequences:
   where precision meets your acceptable false-positive rate; coverage tells you how much
   human review load remains.
 - **The threshold is only meaningful relative to the confidence signal.**  With
-  verification disabled, `final` equals the heuristics score alone.  The calibrated
-  threshold will change once verification is enabled and weights are fitted — treat the
+  grounding disabled, the confidence signal is the heuristics score alone.  The
+  calibrated threshold will change once grounding is enabled — treat the
   heuristics-only threshold as provisional.
 
 #### API
@@ -463,17 +462,17 @@ plus a `per_type: dict[ConceptType, TypePC]` breakdown so per-type thresholds
 
 #### Calibration workflow
 
-Both paths are driven by `calibrate identification` from the CLI.
+Both paths are driven by `seshat eval calibrate identification` from the CLI.
 
 ```bash
 # Optional: inspect the P/C curve and choose p_target
-uv run python -m seshat.cli.eval.calibrate identification --pc-curve
+uv run seshat eval calibrate identification --pc-curve
 
-# Sweep threshold (heuristics signal; works with or without verification)
-uv run python -m seshat.cli.eval.calibrate identification
+# Sweep threshold (heuristics signal; works with or without grounding)
+uv run seshat eval calibrate identification
 
-# Ignore verification gate results when sweeping (treats all nodes as gate-passed)
-uv run python -m seshat.cli.eval.calibrate identification --ignore-verification
+# Ignore grounding gate results when sweeping (treats all nodes as gate-passed)
+uv run seshat eval calibrate identification --ignore-grounding
 ```
 
 `sweep_threshold(p_target)` is the only calibration step. It sweeps
@@ -515,12 +514,13 @@ for inspection and plotting, but they no longer drive threshold selection.
 async def read_or_run(cache_file: Path, model_cls: type[M], coro: Coroutine) -> M
 ```
 
-Used by the eval runners (grouping, verification) and the meta-scorers to avoid
+Used by the eval runners (grouping, grounding) and the meta-scorers to avoid
 re-running LLM calls across development iterations.  If `cache_file` exists it
 deserialises and returns the cached `BaseModel` without awaiting the coroutine
 (closing it cleanly to suppress warnings).  Otherwise it awaits the coroutine and
 writes the result as JSON.
 
-`clear_cache_dir(cache_dir)` deletes all `.json` files in a directory; runners call
-this at the end of a successful run so the next invocation always produces fresh
-predictions.
+`clear_cache_dir(cache_dir)` deletes all `.json` files in a directory (manual use).
+Runners do not call it: instead, each run calls `sweep_stale_entries` to remove only
+the in-scope cache files that were not touched (stale prompt or input hash), so valid
+cached predictions persist and are reused across runs.

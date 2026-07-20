@@ -1,0 +1,46 @@
+corpus_id: null_012_action_items_scope_lookalike
+description: >
+  Same-type action_item↔action_item precision-discipline, hard: the source action and three
+  KB actions all concern the same subsystem (the rate limiter) and read as "improve the rate
+  limiter", so each pair superficially invites an amends/supersedes/blocks label. But they are
+  independent, parallel tasks owned by different people — writing config documentation vs.
+  adding a metrics panel vs. filing a cleanup ticket vs. scheduling a brown-bag talk. None
+  revises, replaces, enables, or orders another; each could be done first or skipped without
+  affecting the rest. The source is evaluated against all three KB actions and the correct
+  answer for every pair is no relationship. Guards the amends/supersedes/blocks
+  over-prediction boundary that regressed on Haiku.
+
+tags:
+  tier: "null"
+  pairing: same_type
+  types: [action_item]
+  relations: []
+  difficulty: hard
+
+source_nodes:
+  - id: action_document_config
+    type: action_item
+    title: Document the rate limiter configuration options
+    description: Priya will write reference documentation describing the rate limiter's configuration options for the developer portal, so other teams understand what each setting does.
+    quote: "Priya, write up the rate limiter config options for the dev portal so other teams know what each setting does."
+
+kb_nodes:
+  - id: action_add_dashboard_panel
+    type: action_item
+    title: Add a Grafana panel for rate-limit metrics
+    description: Marco will add a Grafana dashboard panel visualising rate-limit hit counts and rejection rates, giving the on-call team ongoing visibility into limiter behaviour.
+    quote: "Marco, add a Grafana panel for the rate-limit hit and rejection metrics so on-call has visibility."
+
+  - id: action_file_cleanup_ticket
+    type: action_item
+    title: File a tech-debt ticket to rename the rate limiter's internal metrics
+    description: Dana will open a backlog tech-debt ticket proposing consistent names for the rate limiter's internal metric labels; it is a nice-to-have with no scheduled work attached.
+    quote: "Dana, file a tech-debt ticket to tidy up the rate limiter metric names — just so it's tracked, no rush."
+
+  - id: action_schedule_brownbag
+    type: action_item
+    title: Schedule a brown-bag talk on how the rate limiter works
+    description: Sofia will find a slot on the engineering calendar for a lunch-and-learn walking the wider team through the rate limiter's design and trade-offs.
+    quote: "Sofia, grab a lunch-and-learn slot so we can walk the team through how the rate limiter works."
+
+expected_relations: []

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from datetime import date
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -108,7 +109,10 @@ class IdentificationMetaScorer:
                 result, used, _cached = await read_or_run(
                     cache_fp,
                     IdentificationResult,
-                    self._orchestrator._run_identification(ex.transcript, ex.corpus_id, job_id=ex.corpus_id, hints={}),
+                    # meeting_date is required by PendingNodeBuilder but irrelevant to identification logic
+                    self._orchestrator._run_identification(
+                        ex.transcript, ex.corpus_id, job_id=ex.corpus_id, hints={}, meeting_date=date(2024, 1, 1)
+                    ),
                 )
             cache[ex.corpus_id] = (result, ex)
             return result, used

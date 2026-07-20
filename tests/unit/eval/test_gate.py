@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from seshat.eval.gate import (
     grounding_entries,
@@ -12,7 +13,7 @@ from seshat.eval.gate import (
     upsert_gate,
     write_gate,
 )
-from seshat.eval.models import GateResult
+from seshat.eval.models import GateResult, MetricEntry
 
 
 def _passing_resolution() -> dict[str, float]:
@@ -39,6 +40,51 @@ def _passing_identification() -> dict[str, float]:
         "action_item.precision": 0.90,
         "action_item.recall": 0.88,
     }
+
+
+class TestMetricEntry:
+    def test_gated_entry_carries_passed(self):
+        entry = MetricEntry(value=0.9, passed=True, gated=True)
+        assert entry.gated is True
+        assert entry.passed is True
+
+    def test_non_gated_entry_has_passed_none(self):
+        entry = MetricEntry(value=0.42, gated=False, passed=None)
+        assert entry.gated is False
+        assert entry.passed is None
+
+    def test_gated_true_requires_passed_not_none(self):
+        with pytest.raises(ValidationError, match="passed"):
+            MetricEntry(value=0.9, gated=True, passed=None)
+
+    @pytest.mark.parametrize(
+        ("builder", "gated_key", "non_gated_key"),
+        [
+            (identification_entries, "decision.precision", "decision.f1"),
+            (resolution_entries, "decision.precision", "decision.f1"),
+            (retrieval_entries, "recall_at_5", "precision_at_5"),
+            (grounding_entries, "precision", "accuracy"),
+            (grouping_entries, "group_hit_rate", "exact_match"),
+        ],
+    )
+    def test_builder_labels_gated_vs_non_gated(self, builder, gated_key, non_gated_key):
+        entries = builder({gated_key: 0.9, non_gated_key: 0.9})
+        assert entries[gated_key].gated is True
+        assert entries[gated_key].passed is not None
+        assert entries[non_gated_key].gated is False
+        assert entries[non_gated_key].passed is None
+
+    def test_non_gated_entry_survives_write_read_round_trip(self, tmp_path):
+        # a non-gated entry (passed=None) must serialise and re-validate through the gate file
+        gate_path = tmp_path / "gate.json"
+        result = GateResult(run_id="r", grouping_metrics=grouping_entries({"group_hit_rate": 0.85, "exact_match": 0.0}))
+        write_gate(result, gate_path)
+        loaded = read_gate(gate_path)
+
+        assert loaded.grouping_metrics is not None
+        exact = loaded.grouping_metrics["exact_match"]
+        assert exact.gated is False
+        assert exact.passed is None
 
 
 class TestGateReadWrite:
@@ -203,6 +249,43 @@ class TestGateResultPassed:
             run_id="r", grouping_metrics=grouping_entries({"group_hit_rate": 0.85, "exact_match": 0.0})
         )
         assert gate_result.passed is True
+
+
+class TestGateResultHarnessPassed:
+    def test_passing_block_is_true(self):
+        gate_result = GateResult(run_id="r", identification_metrics=identification_entries(_passing_identification()))
+        assert gate_result.harness_passed("identification") is True
+
+    def test_failing_block_is_false(self):
+        m = _passing_identification()
+        m["decision.precision"] = 0.10
+        gate_result = GateResult(run_id="r", identification_metrics=identification_entries(m))
+        assert gate_result.harness_passed("identification") is False
+
+    def test_absent_block_is_false(self):
+        gate_result = GateResult(run_id="r", identification_metrics=identification_entries(_passing_identification()))
+        assert gate_result.harness_passed("resolution") is False
+
+    def test_harness_can_pass_while_overall_gate_fails(self):
+        # identification passes on its own even though a failing resolution block
+        # drags the overall gate to False — this is the whole point of the per-harness metric.
+        m = _passing_resolution()
+        m["action_item.precision"] = 0.10
+        gate_result = GateResult(
+            run_id="r",
+            identification_metrics=identification_entries(_passing_identification()),
+            resolution_metrics=resolution_entries(m),
+        )
+        assert gate_result.passed is False
+        assert gate_result.harness_passed("identification") is True
+        assert gate_result.harness_passed("resolution") is False
+
+    def test_bad_non_gated_metric_does_not_fail_harness(self):
+        # a terrible non-gated metric (f1) must not drag harness_passed to False
+        m = _passing_identification()
+        m["decision.f1"] = 0.0
+        gate_result = GateResult(run_id="r", identification_metrics=identification_entries(m))
+        assert gate_result.harness_passed("identification") is True
 
 
 class TestUpsertGate:
