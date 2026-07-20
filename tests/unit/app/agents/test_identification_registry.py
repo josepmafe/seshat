@@ -4,14 +4,14 @@ import pytest
 
 from seshat.app.agents.identification.decision import DecisionIdentificationAgent
 from seshat.app.agents.identification.reflective import ReflectiveIdentificationAgent
-from seshat.app.agents.identification.registry import IdentificationAgentRegistry
+from seshat.app.agents.identification.registry import IdentificationRegistry
 from seshat.core.config.settings import ExtractionConfig, ReflectiveLLMConfig
 from seshat.core.models.enums import ConceptType
 
 
-class TestIdentificationAgentRegistry:
-    def _make_registry(self) -> IdentificationAgentRegistry:
-        return IdentificationAgentRegistry(llm=MagicMock(), config=ExtractionConfig())
+class TestIdentificationRegistry:
+    def _make_registry(self) -> IdentificationRegistry:
+        return IdentificationRegistry(llm=MagicMock(), config=ExtractionConfig())
 
     def test_get_returns_correct_agent_for_each_type(self):
         registry = self._make_registry()
@@ -28,7 +28,7 @@ class TestIdentificationAgentRegistry:
 
     def test_returns_reflective_agent_when_self_review_enabled(self):
         config = ExtractionConfig(identification_self_review=ReflectiveLLMConfig(enabled=True))
-        registry = IdentificationAgentRegistry(llm=MagicMock(), config=config, review_llm=MagicMock())
+        registry = IdentificationRegistry(llm=MagicMock(), config=config, review_llm=MagicMock())
 
         assert isinstance(registry.get(ConceptType.DECISION), ReflectiveIdentificationAgent)
 

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from seshat.app.agents.grounding import GroundingAgent
-    from seshat.app.agents.identification.registry import IdentificationAgentRegistry
+    from seshat.app.agents.identification.registry import IdentificationRegistry
     from seshat.app.agents.resolution.base import ResolvedRelationship
     from seshat.app.agents.resolution.registry import ResolutionRegistry
     from seshat.app.pipeline.extraction.node_retriever import NodeRetriever
@@ -43,7 +43,7 @@ class ExtractionOrchestrator:
     def __init__(
         self,
         config: ExtractionConfig,
-        identification_registry: IdentificationAgentRegistry,
+        identification_registry: IdentificationRegistry,
         resolution_registry: ResolutionRegistry,
         node_retriever: NodeRetriever,
         node_repo: NodeRepository,

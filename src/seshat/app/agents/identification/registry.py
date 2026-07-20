@@ -14,7 +14,7 @@ from seshat.core.utils.log import get_logger
 logger = get_logger(__name__)
 
 
-class IdentificationAgentRegistry:
+class IdentificationRegistry:
     def __init__(self, llm: BaseChatModel, config: ExtractionConfig, review_llm: BaseChatModel | None = None) -> None:
         self._agents: dict[ConceptType, _BaseIdentificationAgent] = {
             concept_type: _make_agent(agent_cls, llm, config, review_llm)
