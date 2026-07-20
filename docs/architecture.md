@@ -128,7 +128,7 @@ Both KB and vector stores share the same Postgres instance (different schemas: `
 
 ## Secrets
 
-`AbstractSecretsProvider` with `EnvSecretsProvider` and `AWSSecretsProvider`. Secrets are resolved **once at startup** and cached in-process. If a secret is rotated, the worker must be restarted (acceptable for MVP; v2 adds TTL-based cache). LocalStack emulates AWS Secrets Manager locally.
+`AbstractSecretsProvider` with `EnvSecretsProvider` and `AWSSecretsProvider`. Secrets are resolved **once at startup** and cached in-process. If a secret is rotated, the API process must be restarted (acceptable for MVP; v2 adds TTL-based cache). LocalStack emulates AWS Secrets Manager locally.
 
 ---
 
@@ -139,7 +139,7 @@ Both KB and vector stores share the same Postgres instance (different schemas: `
 - **Idempotency:** `POST /jobs` deduplication via `UNIQUE` constraint on `idempotency_key`. A failed job with the same key starts a fresh run; an in-progress or completed job returns the existing ID.
 - **Review flow:** `AWAITING_REVIEW` pauses the pipeline for human review. `POST /jobs/{id}/approve` accepts bulk-threshold rules (processed first) and per-node decisions (processed second). All-reject is valid — the job transitions to `DONE` with an empty result.
 - **Auto-mode:** `operator` role only; all nodes set to `APPROVED`; audit trail logged in MLflow.
-- **`WRITING` recovery on worker boot:** stranded `WRITING` jobs are detected at startup, marked `FAILED(recoverable=True)`, before the event loop accepts new work.
+- **`WRITING` recovery on API boot:** stranded `WRITING` jobs are detected at startup, marked `FAILED(recoverable=True)`, before the event loop accepts new work.
 
 ---
 
@@ -162,9 +162,9 @@ Prompt/response artifacts are written automatically by autolog and are considere
 
 ## Evaluation & Release Gate
 
-**`seshat eval`** is a first-class CLI command that invokes the extraction pipeline directly in-process (bypasses the API worker — breaks the circular dependency with `eval_gate.json`).
+**`seshat eval`** is a first-class CLI command that invokes the extraction pipeline directly in-process (bypasses the API's job queue — breaks the circular dependency with `eval_gate.json`).
 
-**Release gate:** the worker refuses to accept jobs at startup unless `data/eval_gate.json` is present and `passed=true`. Gate conditions (retrieval performance and per-`ConceptType` precision/recall targets) are defined in the design spec (see �12).
+**Release gate:** the API refuses to start unless `eval_gate.json` is present and `passed=true`. Gate conditions (retrieval performance and per-`ConceptType` precision/recall targets) are defined in the design spec (see �12).
 
 **Threshold calibration** requires a minimum of 15 annotated instances per `ConceptType` in the synthetic corpus before the targets are statistically meaningful.
 
