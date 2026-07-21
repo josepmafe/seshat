@@ -420,11 +420,12 @@ class SeshatConfig(BaseSettings):
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     api: APIConfig = Field(default_factory=lambda: APIConfig())
 
-    disable_ssl_verification: bool = Field(
+    use_os_truststore: bool = Field(
         default=False,
         description=(
-            "Disable httpx TLS certificate verification process-wide. INSECURE escape hatch for a "
-            "corporate proxy whose CA chain Python cannot see; never enable in production."
+            "Source TLS trust anchors from the OS certificate store instead of Python's bundled "
+            "certifi CAs. Verification stays on. For a corporate proxy whose CA is provisioned into "
+            "the OS but not seen by Python."
         ),
     )
 

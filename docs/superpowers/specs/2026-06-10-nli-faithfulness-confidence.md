@@ -158,22 +158,19 @@ proxy). If r is non-trivial, the routing logic above may double-count signal.
 
 **TBD:** deployment option. Start with co-located for simplicity; revisit if memory is a concern.
 
-**Current blocker:** `cross-encoder/nli-deberta-v3-small` cannot be downloaded from HuggingFace in
-the corporate environment (SSL certificate verification failure). Must be resolved before
-implementation. Options, best first:
+**Former blocker (resolved):** `cross-encoder/nli-deberta-v3-small` could not be downloaded from
+HuggingFace in the corporate environment (SSL certificate verification failure). The prior httpx-only
+patch (`disable_httpx_ssl_verification`) did not help here, since `sentence-transformers` →
+`huggingface_hub` downloads go through `requests`/`urllib3`, not `httpx`.
 
-1. **Point `requests` at the corporate CA** via `REQUESTS_CA_BUNDLE` (and `CURL_CA_BUNDLE`) → the
-   proxy's CA `.pem`. Keeps TLS verification *on*; no insecure escape hatch. Preferred.
-2. **Config-gated SSL opt-out for the HF backend.** Note the existing
-   `disable_ssl_verification` patch (`core/utils/http_patch.py`) does **not** help here: it only
-   monkeypatches `httpx.Client` (`http_patch.py:19`), whereas `sentence-transformers` →
-   `huggingface_hub` downloads go through `requests`. The analogous fix is
-   `huggingface_hub.configure_http_backend(...)` to inject a `requests.Session` with a custom CA (or,
-   as a last resort on a trusted network, `verify=False`) — i.e. extend the same
-   `SeshatConfig.disable_ssl_verification`-gated pattern to the `requests`/HF path rather than reuse
-   the httpx patch unchanged.
-3. **Pre-download the weights and bundle them in the container image** — sidesteps the network at
-   runtime entirely; also removes cold-start download latency.
+Resolved by switching to `truststore.inject_into_ssl()` (`SeshatConfig.use_os_truststore`,
+`core/utils/http_patch.inject_os_truststore`): it patches `ssl.SSLContext` itself rather than any one
+HTTP client, so `requests`/`urllib3` (and boto3, aiohttp, ...) pick it up transparently. Verification
+also stays **on** — trust is sourced from the OS store instead of disabled outright.
+
+Fallback if a given machine's OS store still doesn't have the proxy CA: pre-download the weights and
+bundle them in the container image — sidesteps the network at runtime entirely; also removes
+cold-start download latency.
 
 ---
 
