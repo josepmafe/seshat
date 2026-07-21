@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from seshat.app.platform.observability.mlflow_setup import setup_mlflow
 from seshat.core.config.eval_settings import EvalConfig
 from seshat.core.config.settings import GroundingLLMConfig, ObservabilityConfig, SeshatConfig
-from seshat.core.utils.http_patch import disable_httpx_ssl_verification
+from seshat.core.utils.http_patch import inject_os_truststore
 from seshat.core.utils.log import configure_logging, get_logger, set_job_id
 from seshat.eval.mlflow_logging import configure_trace_processors
 
@@ -34,12 +34,12 @@ def bootstrap_eval(harness_type: str) -> tuple[EvalConfig, SeshatConfig, str]:
     """Set up MLflow and configs for an eval or calibration run."""
     load_dotenv()
 
-    # Build config before anything makes an httpx call: the SSL opt-out must be applied first.
+    # Build config before anything makes an httpx call: the truststore injection must apply first.
     seshat_config = SeshatConfig()
     configure_logging(seshat_config.logging)
 
-    if seshat_config.disable_ssl_verification:
-        disable_httpx_ssl_verification()
+    if seshat_config.use_os_truststore:
+        inject_os_truststore()
 
     job_id = f"seshat-eval-{harness_type}"
     run_name = f"seshat-eval-{harness_type}-{datetime.now(tz=UTC).isoformat(timespec='minutes')}"

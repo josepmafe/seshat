@@ -1,40 +1,37 @@
 """Shared HTTP client tweaks.
 
-Home of the SSL-verification opt-out used when running behind a corporate proxy
-whose CA chain httpx cannot see (e.g. a Windows laptop where the cert store is not
-exposed to Python). Gated by config; off by default.
+Home of the OS-truststore injection used when running behind a corporate proxy
+whose CA is not in Python's bundled certifi bundle but IS in the OS trust store
+(e.g. a Windows laptop where IT provisions the proxy's CA into Windows, but
+Python ships its own cert bundle). Gated by config; off by default.
 """
 
 from __future__ import annotations
 
-import httpx
+import truststore
 
 from seshat.core.utils.log import get_logger
 
 logger = get_logger(__name__)
 
-_ssl_verification_disabled = False
+_truststore_injected = False
 
 
-def disable_httpx_ssl_verification() -> None:
-    """Monkeypatch httpx.Client so it defaults to ``verify=False`` process-wide.
+def inject_os_truststore() -> None:
+    """Make ssl.SSLContext source trust from the OS certificate store.
 
-    INSECURE: this disables TLS certificate verification for every httpx.Client
-    that does not pass ``verify`` explicitly. Only call it as a deliberate,
-    config-gated escape hatch for a trusted network (corporate proxy with an
-    un-seen CA); never enable it in production. Callers that pass ``verify=True``
-    explicitly are unaffected. Idempotent — calling twice does not re-wrap.
+    Verification stays ON — this only changes WHERE the trust anchors come from
+    (OS store instead of Python's bundled certifi CAs), fixing
+    'CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate' on a
+    corporate network whose proxy CA is provisioned into the OS but not seen by
+    Python. Affects every consumer of ssl.SSLContext (httpx sync + async,
+    boto3, aiohttp, requests, ...), since it patches the ssl module itself,
+    not any one HTTP client. Idempotent — calling twice does not re-inject.
     """
-    global _ssl_verification_disabled
-    if _ssl_verification_disabled:
+    global _truststore_injected
+    if _truststore_injected:
         return
 
-    _original_init = httpx.Client.__init__
-
-    def _init_no_verify(self: httpx.Client, *args: object, **kwargs: object) -> None:
-        kwargs.setdefault("verify", False)
-        _original_init(self, *args, **kwargs)  # type: ignore[arg-type]
-
-    httpx.Client.__init__ = _init_no_verify  # type: ignore[method-assign]
-    _ssl_verification_disabled = True
-    logger.warning("httpx SSL certificate verification DISABLED process-wide (config opt-in).")
+    truststore.inject_into_ssl()
+    _truststore_injected = True
+    logger.warning("ssl.SSLContext now sources trust from the OS certificate store (config opt-in).")
