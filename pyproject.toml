@@ -152,6 +152,10 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 addopts = '--cov=src/seshat --cov-report=term-missing -m "not llm"'
+filterwarnings = [
+    # assemblyai SDK calls Pydantic's deprecated BaseModel.copy() internally; not fixable from our code.
+    "ignore:The `copy` method is deprecated:pydantic.PydanticDeprecatedSince20",
+]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 asyncio_default_test_loop_scope = "function"
