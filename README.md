@@ -146,3 +146,24 @@ seshat/
 - `docs/architecture.md` → Architecture summary: key design decisions and rationale.
 - `docs/seshat-sdd.md` → Solution Design Document: implementation-oriented system design.
 - `docs/superpowers/specs/2026-04-21-seshat-design.md` → Full design spec and detailed contracts.
+
+## Future work
+
+Condensed from the thesis conclusions (chapter 8) — see there for full rationale per item.
+
+**GenAI core extensions:**
+
+- [ ] Eval harnesses for the remaining retrieval components (keyword extractor, multi-query, reranker)
+- [ ] Agentic retrieval as an alternative to the vector-similarity RAG pipeline
+- [ ] NLI-based confidence signal, complementing the heuristics score — see [`docs/superpowers/specs/2026-06-10-nli-faithfulness-confidence.md`](docs/superpowers/specs/2026-06-10-nli-faithfulness-confidence.md)
+- [ ] PII detection and anonymization in transcripts
+- [ ] Capturing action items with no named assignee (currently discarded)
+
+**Knowledge graph deepening:**
+
+- [ ] Node archiving (reversible soft-delete) — see [`docs/superpowers/specs/2026-07-07-node-archive.md`](docs/superpowers/specs/2026-07-07-node-archive.md)
+- [ ] A node lifecycle axis (open → resolved/mitigated/enacted) orthogonal to node state — see [`docs/superpowers/specs/2026-07-15-node-lifecycle-state-design.md`](docs/superpowers/specs/2026-07-15-node-lifecycle-state-design.md)
+- [ ] Human review for inferred relationships (today written without approval)
+- [ ] A native graph backend (e.g. Neo4j) behind the existing store abstraction
+- [ ] Graph integrity validation (duplicate detection, relationship checks, cycle guards)
+- [ ] Per-relationship-type resolution gate thresholds
