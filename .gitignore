@@ -53,6 +53,7 @@ data/*
 
 # Docker local overrides
 docker-compose.override.yml
+docker/certs/*.crt
 
 # Miscellaneous
 development

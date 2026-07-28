@@ -13,7 +13,9 @@ from seshat.core.utils.log import configure_logging, get_logger, set_job_id
 # and patching the name afterwards causes infinite recursion in ssl.SSLContext.options.
 # Everything below transitively imports boto3/aiobotocore, so it must stay below this guard —
 # no new top-level import may be added above this line unless it is confirmed boto3-free.
-if get_config().use_os_truststore:
+_config = get_config()
+if _config.use_os_truststore:
+    configure_logging(_config.logging)
     inject_os_truststore()
 
 from fastapi import APIRouter, FastAPI, Request

@@ -33,6 +33,7 @@ class _JobIdFilter(logging.Filter):
 
 
 _job_id_filter = _JobIdFilter()
+_logging_configured = False
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -42,8 +43,13 @@ def get_logger(name: str) -> logging.Logger:
 
 
 def configure_logging(config: LoggingConfig | None = None) -> None:
-    """Configure a StreamHandler with job_id in the format. Call once at app startup."""
+    """Configure a StreamHandler with job_id in the format. Idempotent — safe to call more than once."""
     from seshat.core.config.settings import LoggingConfig as _LoggingConfig  # avoid circular import at module load
+
+    global _logging_configured
+
+    if _logging_configured:
+        return
 
     if config is None:
         config = _LoggingConfig()
@@ -52,7 +58,10 @@ def configure_logging(config: LoggingConfig | None = None) -> None:
     handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     handler.addFilter(_job_id_filter)
     logging.root.addHandler(handler)
+
     logging.root.setLevel(config.level)
 
     for name, level in config.noisy_loggers.items():
         logging.getLogger(name).setLevel(level)
+
+    _logging_configured = True
