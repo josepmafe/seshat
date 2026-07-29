@@ -21,8 +21,8 @@ dependencies = [
     "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     "spacy>=3.8",
     "langchain>=1.2",
-    "langchain-anthropic>=1.5.2",
-    "langchain-aws>=1.6.3",
+    "langchain-anthropic>=1.5.3",
+    "langchain-aws>=1.6.4",
     "langchain-openai>=1.4.1",
     "cohere>=7.0.8",
     "voyageai>=0.5.0",
@@ -34,8 +34,8 @@ dependencies = [
     "mlflow[langchain]>=3.14.0",
     # API
     "bcrypt>=5.0",
-    "fastapi>=0.140.8",
-    "uvicorn[standard]>=0.51.0",
+    "fastapi>=0.141.0",
+    "uvicorn[standard]>=0.52.0",
     "python-multipart>=0.0.32",
     "truststore>=0.10.4",
 ]
@@ -48,7 +48,7 @@ dev = [
     "types-pyyaml>=6.0.12.20260724",
 ]
 lint = [
-    "boto3-stubs[secretsmanager]>=1.43.57",  # keep in sync with boto3
+    "boto3-stubs[secretsmanager]>=1.43.58",  # keep in sync with boto3
     "types-aiobotocore-s3>=3.8.0",          # keep in sync with aiobotocore
     "mypy>=2.3.0",
     "pre-commit>=4.6.1",
