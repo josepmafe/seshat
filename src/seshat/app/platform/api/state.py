@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from seshat.app.pipeline.bootstrap import (
     build_extraction_orchestrator,
     build_ingestion_orchestrator,
+    get_search_engine,
 )
 from seshat.app.platform.worker.queue import AsyncioTaskQueue
 from seshat.app.repositories.blob_repository import BlobRepository
@@ -61,7 +62,8 @@ async def build_app_state(config: SeshatConfig) -> AsyncIterator[AppState]:
             blob_config=config.blob_store,
             observability_config=config.observability,
         )
-        graph_service = GraphService(node_repo, extraction_orchestrator)
+        graph_search_engine = get_search_engine(config, vector_store, disable_multi_query=True)
+        graph_service = GraphService(node_repo, extraction_orchestrator, graph_search_engine)
         queue = AsyncioTaskQueue()
         job_service = JobService(
             config,

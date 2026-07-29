@@ -56,7 +56,8 @@ def fake_vector_store():
     vs = MagicMock()
     vs.upsert = AsyncMock()
     vs.delete = AsyncMock()
-    vs.search = AsyncMock(return_value=[])
+    vs.search_dense = AsyncMock(return_value=[])
+    vs.search_sparse = AsyncMock(return_value=[])
     return vs
 
 

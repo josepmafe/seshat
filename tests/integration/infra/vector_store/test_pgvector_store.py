@@ -7,7 +7,7 @@ from langchain_core.embeddings import Embeddings
 
 from seshat.core.config.settings import VectorIndexConfig, VectorStoreConfig
 from seshat.core.models.api_graph import NodeFilter
-from seshat.core.models.enums import ConceptType, SearchMode
+from seshat.core.models.enums import ConceptType
 from seshat.infra.vector_store.pgvector_store import PGVectorStore
 from tests.integration.conftest import SKIP_IF_NO_EMBEDDINGS_API, SKIP_IF_NO_POSTGRES
 
@@ -54,7 +54,7 @@ class TestPGVectorStoreSearch:
             "Use PostgreSQL for session storage",
             {"node_type": "decision", "confidence": 0.9},
         )
-        results = await vector_store.search("PostgreSQL session storage", top_k=5)
+        results = await vector_store.search_dense("PostgreSQL session storage", top_k=5)
         assert any(r.node_id == _TEST_NODE_UUID for r in results)
 
     async def test_with_node_type_filter_matching(self, vector_store: PGVectorStore):
@@ -68,7 +68,7 @@ class TestPGVectorStoreSearch:
             "Risk of data loss during migration",
             {"node_type": "risk", "confidence": 0.8},
         )
-        results = await vector_store.search(
+        results = await vector_store.search_dense(
             "PostgreSQL session storage",
             top_k=5,
             node_filter=NodeFilter(node_type=ConceptType.DECISION),
@@ -83,7 +83,7 @@ class TestPGVectorStoreSearch:
             "Use PostgreSQL for session storage",
             {"node_type": "decision", "confidence": 0.9},
         )
-        results = await vector_store.search(
+        results = await vector_store.search_dense(
             "PostgreSQL session storage",
             top_k=5,
             node_filter=NodeFilter(node_type=ConceptType.RISK),
@@ -101,7 +101,7 @@ class TestPGVectorStoreDelete:
             {"node_type": "decision", "confidence": 0.8},
         )
         await vector_store.delete(_TEST_NODE_ID)
-        results = await vector_store.search("Redis caching", top_k=5)
+        results = await vector_store.search_dense("Redis caching", top_k=5)
         assert not any(r.node_id == _TEST_NODE_UUID for r in results)
 
 
@@ -112,7 +112,7 @@ class TestKeywordSearch:
             f"Decision about {_DISTINCTIVE_TERM} process",
             {"node_type": "decision", "confidence": 0.9},
         )
-        results = await keyword_store.search(_DISTINCTIVE_TERM, top_k=5, mode=SearchMode.KEYWORD)
+        results = await keyword_store.search_sparse(_DISTINCTIVE_TERM, top_k=5)
         assert any(r.node_id == _TEST_NODE_UUID for r in results)
 
     async def test_absent_term_returns_empty(self, keyword_store: PGVectorStore):
@@ -121,7 +121,7 @@ class TestKeywordSearch:
             "Decision about PostgreSQL storage",
             {"node_type": "decision", "confidence": 0.9},
         )
-        results = await keyword_store.search("xylophone quasar", top_k=5, mode=SearchMode.KEYWORD)
+        results = await keyword_store.search_sparse("xylophone quasar", top_k=5)
         assert results == []
 
     async def test_does_not_return_node_missing_the_term(self, keyword_store: PGVectorStore):
@@ -135,7 +135,7 @@ class TestKeywordSearch:
             "Decision about caching strategy",
             {"node_type": "decision", "confidence": 0.9},
         )
-        results = await keyword_store.search(_DISTINCTIVE_TERM, top_k=5, mode=SearchMode.KEYWORD)
+        results = await keyword_store.search_sparse(_DISTINCTIVE_TERM, top_k=5)
         assert any(r.node_id == _TEST_NODE_UUID for r in results)
         assert not any(r.node_id == _NODE_B_UUID for r in results)
 
@@ -145,7 +145,7 @@ class TestKeywordSearch:
             f"Decision about {_DISTINCTIVE_TERM}",
             {"node_type": "decision", "confidence": 0.9},
         )
-        results = await keyword_store.search(_DISTINCTIVE_TERM, top_k=5, mode=SearchMode.KEYWORD)
+        results = await keyword_store.search_sparse(_DISTINCTIVE_TERM, top_k=5)
         assert all(r.score > 0 for r in results)
 
 
@@ -158,7 +158,7 @@ class TestScoreThreshold:
             "Use PostgreSQL for transactional data",
             {"node_type": "decision", "confidence": 0.9},
         )
-        results = await vector_store.search("PostgreSQL transactional", top_k=5, score_threshold=0.0)
+        results = await vector_store.search_dense("PostgreSQL transactional", top_k=5, score_threshold=0.0)
         assert any(r.node_id == _TEST_NODE_UUID for r in results)
 
     async def test_high_threshold_excludes_irrelevant_result(self, vector_store: PGVectorStore):
@@ -167,7 +167,7 @@ class TestScoreThreshold:
             "Use PostgreSQL for transactional data",
             {"node_type": "decision", "confidence": 0.9},
         )
-        results = await vector_store.search("PostgreSQL transactional", top_k=5, score_threshold=0.999)
+        results = await vector_store.search_dense("PostgreSQL transactional", top_k=5, score_threshold=0.999)
         # A threshold of 0.999 is near-impossible to satisfy for real embeddings
         assert not any(r.node_id == _TEST_NODE_UUID for r in results)
 
@@ -189,7 +189,7 @@ class TestPagination:
                 {"node_type": "decision", "confidence": 0.9},
             )
 
-        results = await fresh_keyword_store.search(_DISTINCTIVE_TERM, top_k=3, mode=SearchMode.KEYWORD)
+        results = await fresh_keyword_store.search_sparse(_DISTINCTIVE_TERM, top_k=3)
 
         assert len(results) == 3
 
@@ -203,7 +203,7 @@ async def empty_keyword_store(pg_test_url):
 
 class TestEmptyCollection:
     async def test_search_on_fresh_store_returns_empty_not_error(self, empty_keyword_store: PGVectorStore):
-        results = await empty_keyword_store.search("anything", top_k=5, mode=SearchMode.KEYWORD)
+        results = await empty_keyword_store.search_sparse("anything", top_k=5)
         assert results == []
 
 
@@ -220,10 +220,9 @@ class TestKeywordSearchFilters:
             {"node_type": "risk", "confidence": 0.8, "job_id": "job-1"},
         )
 
-        results = await keyword_store.search(
+        results = await keyword_store.search_sparse(
             _DISTINCTIVE_TERM,
             top_k=5,
-            mode=SearchMode.KEYWORD,
             node_filter=NodeFilter(node_type=ConceptType.DECISION),
         )
 
@@ -243,10 +242,9 @@ class TestKeywordSearchFilters:
             {"node_type": "decision", "confidence": 0.9, "job_id": "job-keep"},
         )
 
-        results = await keyword_store.search(
+        results = await keyword_store.search_sparse(
             _DISTINCTIVE_TERM,
             top_k=5,
-            mode=SearchMode.KEYWORD,
             exclude_job_id="job-exclude",
         )
 
@@ -268,8 +266,8 @@ class TestUpsertOverwrite:
             {"node_type": "decision", "confidence": 0.9},
         )
 
-        results = await keyword_store.search(_DISTINCTIVE_TERM, top_k=5, mode=SearchMode.KEYWORD)
+        results = await keyword_store.search_sparse(_DISTINCTIVE_TERM, top_k=5)
         assert not any(r.node_id == _TEST_NODE_UUID for r in results)
 
-        results = await keyword_store.search("caching", top_k=5, mode=SearchMode.KEYWORD)
+        results = await keyword_store.search_sparse("caching", top_k=5)
         assert any(r.node_id == _TEST_NODE_UUID for r in results)

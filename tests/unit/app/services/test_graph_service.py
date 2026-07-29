@@ -59,7 +59,10 @@ def _make_service(*, node: KBNode | None = None, inbound_count: int = 0, relatio
     extraction_orch = MagicMock()
     extraction_orch.run_resolution = AsyncMock(return_value=ResolutionResult(job_id="job-1", relationships=[]))
 
-    return GraphService(repo, extraction_orch), repo
+    search_engine = MagicMock()
+    search_engine.search = AsyncMock(return_value=[])
+
+    return GraphService(repo, extraction_orch, search_engine), repo
 
 
 def _manual_metadata() -> NodeMetadata:
@@ -606,7 +609,7 @@ class TestSearch:
         result = MagicMock()
         result.node_id = node.id
         svc, repo = _make_service(node=node)
-        repo.search = AsyncMock(return_value=[result])
+        svc._search_engine.search = AsyncMock(return_value=[result])
         repo.get_neighbours = AsyncMock(return_value=[])
 
         from seshat.core.models.api_graph import NodeFilter
@@ -619,8 +622,8 @@ class TestSearch:
     async def test_skips_missing_nodes(self):
         result = MagicMock()
         result.node_id = _UUID_1
-        svc, repo = _make_service(node=None)
-        repo.search = AsyncMock(return_value=[result])
+        svc, _repo = _make_service(node=None)
+        svc._search_engine.search = AsyncMock(return_value=[result])
 
         from seshat.core.models.api_graph import NodeFilter
 
@@ -629,8 +632,7 @@ class TestSearch:
         assert details == []
 
     async def test_returns_empty_for_no_results(self):
-        svc, repo = _make_service()
-        repo.search = AsyncMock(return_value=[])
+        svc, _repo = _make_service()
 
         from seshat.core.models.api_graph import NodeFilter
 
@@ -638,38 +640,45 @@ class TestSearch:
 
         assert details == []
 
-    async def test_mode_forwarded_to_repo(self):
-        svc, repo = _make_service()
-        repo.search = AsyncMock(return_value=[])
+    async def test_mode_forwarded_to_search_engine(self):
+        svc, _repo = _make_service()
 
         from seshat.core.models.api_graph import NodeFilter
 
         await svc.search("q", limit=5, node_filter=NodeFilter(), mode=SearchMode.KEYWORD)
 
-        _, kwargs = repo.search.call_args
+        _, kwargs = svc._search_engine.search.call_args
         assert kwargs["mode"] == SearchMode.KEYWORD
 
-    async def test_score_threshold_forwarded_to_repo(self):
-        svc, repo = _make_service()
-        repo.search = AsyncMock(return_value=[])
+    async def test_score_threshold_forwarded_to_search_engine(self):
+        svc, _repo = _make_service()
 
         from seshat.core.models.api_graph import NodeFilter
 
         await svc.search("q", limit=5, node_filter=NodeFilter(), score_threshold=0.75)
 
-        _, kwargs = repo.search.call_args
+        _, kwargs = svc._search_engine.search.call_args
         assert kwargs["score_threshold"] == 0.75
 
     async def test_score_threshold_none_by_default(self):
-        svc, repo = _make_service()
-        repo.search = AsyncMock(return_value=[])
+        svc, _repo = _make_service()
 
         from seshat.core.models.api_graph import NodeFilter
 
         await svc.search("q", limit=5, node_filter=NodeFilter())
 
-        _, kwargs = repo.search.call_args
+        _, kwargs = svc._search_engine.search.call_args
         assert kwargs["score_threshold"] is None
+
+    async def test_unsupported_mode_raises_unsupported_search_mode_error(self):
+        svc, _repo = _make_service()
+        svc._search_engine.search = AsyncMock(side_effect=ValueError("Unsupported search mode: 'agent'"))
+
+        from seshat.app.services.graph import UnsupportedSearchModeError
+        from seshat.core.models.api_graph import NodeFilter
+
+        with pytest.raises(UnsupportedSearchModeError):
+            await svc.search("q", limit=5, node_filter=NodeFilter(), mode=SearchMode.AGENT)
 
 
 def _make_rel(src_id=_UUID_1, tgt_id=_UUID_2) -> KBRelationship:

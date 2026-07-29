@@ -6,23 +6,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from seshat.core.models.api_graph import NodeFilter
-from seshat.core.models.enums import SearchMode
 from seshat.infra.vector_store.pgvector_store import PGVectorStore
 from tests.unit.infra.helpers import assert_credentials_not_in_error, assert_invalid_scheme_raises
 
 _N1 = "00000000-0000-0000-0000-000000000001"
-
-
-class TestSearchModeGuard:
-    async def test_hybrid_mode_raises(self):
-        store = PGVectorStore.__new__(PGVectorStore)
-        with pytest.raises(ValueError, match="HYBRID"):
-            await store.search("q", top_k=5, mode=SearchMode.HYBRID)
-
-    async def test_agent_mode_raises(self):
-        store = PGVectorStore.__new__(PGVectorStore)
-        with pytest.raises(ValueError, match="AGENT"):
-            await store.search("q", top_k=5, mode=SearchMode.AGENT)
 
 
 class TestSparseSearchGuard:

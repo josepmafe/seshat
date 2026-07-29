@@ -26,6 +26,7 @@ from seshat.core.utils.log import get_logger
 
 if TYPE_CHECKING:
     from seshat.app.pipeline.extraction.orchestrator import ExtractionOrchestrator
+    from seshat.app.pipeline.extraction.search_engine import SearchEngine
     from seshat.app.repositories.node_repository import NodeRepository
     from seshat.core.models.api_graph import (
         ManualNodeCreate,
@@ -54,14 +55,20 @@ class RelationshipConflictError(Exception):
     pass
 
 
+class UnsupportedSearchModeError(Exception):
+    pass
+
+
 class GraphService:
     def __init__(
         self,
         node_repo: NodeRepository,
         extraction_orch: ExtractionOrchestrator,
+        search_engine: SearchEngine,
     ) -> None:
         self._repo = node_repo
         self._extraction_orch = extraction_orch
+        self._search_engine = search_engine
         self._usage_tracker = UsageTracker.uncapped()
 
     # -- Read methods ----------------------------------------------------------
@@ -69,6 +76,7 @@ class GraphService:
     async def query(self, node_filter: NodeFilter) -> list[KBNode]:
         return await self._repo.query(node_filter)
 
+    @track_token_budget("graph_search", uncapped=True, accumulate_to_fn=lambda self: self._usage_tracker)
     async def search(
         self,
         query: str,
@@ -77,9 +85,16 @@ class GraphService:
         mode: SearchMode = SearchMode.SEMANTIC,
         score_threshold: float | None = None,
     ) -> list[NodeSearchResult]:
-        search_results = await self._repo.search(
-            query=query, top_k=limit, node_filter=node_filter, mode=mode, score_threshold=score_threshold
-        )
+        try:
+            # search_engine is called directly rather than through node_repo: it's a
+            # retrieval strategy, not a raw store, the same sibling-dependency shape
+            # NodeRetriever uses (holds node_repo and search_engine independently).
+            search_results = await self._search_engine.search(
+                query, node_filter=node_filter, top_k=limit, score_threshold=score_threshold, mode=mode
+            )
+        except ValueError as exc:
+            raise UnsupportedSearchModeError(str(exc)) from exc
+
         scored = mode in (SearchMode.SEMANTIC, SearchMode.KEYWORD)
         results: list[NodeSearchResult] = []
 

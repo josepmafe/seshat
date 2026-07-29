@@ -9,6 +9,7 @@ from seshat.app.services.graph import (
     NodePreconditionError,
     RelationshipConflictError,
     RelationshipNotFoundError,
+    UnsupportedSearchModeError,
 )
 from seshat.core.models.api_graph import BulkFailure, BulkResult
 from seshat.core.models.api_responses import ImpactNode, ImpactResponse, NodeDetailResponse, NodeSearchResult
@@ -535,6 +536,13 @@ class TestSearchGraph:
         assert resp.status_code == 200
         _, kwargs = state.graph_service.search.call_args
         assert kwargs["mode"] == SearchMode.KEYWORD
+
+    async def test_unsupported_search_mode_returns_422(self, api_client):
+        state = _make_app_state()
+        state.graph_service.search = AsyncMock(side_effect=UnsupportedSearchModeError("Unsupported search mode"))
+        async with api_client(state, make_current_user()) as ac:
+            resp = await ac.get("/graph/search", params={"q": "auth risk", "search_mode": "agent"})
+        assert resp.status_code == 422
 
 
 class TestListRelationships:

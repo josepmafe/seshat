@@ -79,9 +79,22 @@ def build_ingestion_orchestrator(config: SeshatConfig, blob_repo: BlobRepository
     return IngestionOrchestrator(transcriber, blob_repo, config.transcription)
 
 
-def get_search_engine(config: SeshatConfig, vector_store: AbstractVectorStore) -> SearchEngine:
+def get_search_engine(
+    config: SeshatConfig, vector_store: AbstractVectorStore, *, disable_multi_query: bool = False
+) -> SearchEngine:
+    """Build a SearchEngine from RAGConfig.
+
+    disable_multi_query=True skips constructing the multi-query LLM regardless of config,
+    for callers that don't want a search to silently fan out into several LLM-generated
+    query variants — e.g. manual/API browsing via GraphService, until the UI exposes an
+    explicit opt-in for LLM-enhanced search.
+    """
     keyword_llm = _build_llm(config.rag.keyword_extraction_llm, config) if config.rag.keyword_extraction_llm else None
-    multi_query_llm = _build_llm(config.rag.multi_query.llm, config) if config.rag.multi_query.llm else None
+    multi_query_llm = (
+        _build_llm(config.rag.multi_query.llm, config)
+        if config.rag.multi_query.llm and not disable_multi_query
+        else None
+    )
     return SearchEngine(
         rag_config=config.rag,
         vector_store=vector_store,
