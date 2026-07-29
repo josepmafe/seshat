@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from seshat.app.pipeline.ingestion.audio_validator import (
     AudioValidationError,
@@ -22,6 +22,7 @@ from seshat.app.services.job import (
     RateLimitExceededError,
     TranscriptNotFoundError,
 )
+from seshat.core.config.settings import SeshatConfigOverride, get_config, get_request_settings
 from seshat.core.models.api_jobs import ApproveRequest, RateLimitError
 from seshat.core.models.api_responses import JobActionResponse, JobSubmitResponse, TranscriptExcerptResponse
 from seshat.core.models.enums import JobStatus, UserRole
@@ -30,6 +31,10 @@ from seshat.core.models.nodes import ExtractionResult
 from seshat.core.models.submission import JobSubmissionRequest
 
 router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_role(UserRole.VIEWER))])
+
+# Override fields any reviewer may set without operator role. Any other config difference
+# from the base config (in an allowlisted section or elsewhere) still requires operator.
+_REVIEWER_OVERRIDABLE_FIELDS = {"extraction": {"confidence_threshold"}}
 
 
 @router.get(
@@ -90,7 +95,7 @@ async def submit_job(
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.errors()) from exc
 
-    if submission.overrides is not None and not user.role.is_at_least(UserRole.OPERATOR):
+    if not user.role.is_at_least(UserRole.OPERATOR) and _overrides_require_operator_role(submission.overrides):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Config overrides require operator role")
 
     if submission.force and not user.role.is_at_least(UserRole.ADMIN):
@@ -248,3 +253,35 @@ async def retry_job(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except JobStateError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+def _overrides_require_operator_role(overrides: SeshatConfigOverride | None) -> bool:
+    if overrides is None:
+        return False
+
+    base_sections = _as_dict(get_config())
+    effective_sections = _as_dict(get_request_settings(overrides))
+    for section_name in overrides.model_fields_set:
+        base_section = base_sections[section_name]
+        effective_section = effective_sections[section_name]
+
+        # No exempt fields in this section (not allowlisted at all, or allowlisted with an
+        # empty set): any difference anywhere in it requires operator role.
+        allowed_fields = _REVIEWER_OVERRIDABLE_FIELDS.get(section_name, set())
+        if not allowed_fields:
+            if effective_section != base_section:
+                return True
+            continue
+
+        base_fields = _as_dict(base_section)
+        effective_fields = _as_dict(effective_section) | {field: base_fields[field] for field in allowed_fields}
+        if effective_fields != base_fields:
+            return True
+
+    return False
+
+
+def _as_dict(model: BaseModel) -> dict[str, Any]:
+    """Shallow field-name -> value view of a model, without model_dump()'s recursive
+    serialization (mirrors what BaseModel.__eq__ itself compares)."""
+    return model.__dict__
