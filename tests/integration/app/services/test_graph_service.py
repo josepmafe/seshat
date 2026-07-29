@@ -6,9 +6,10 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from seshat.app.pipeline.extraction.search_engine import SearchEngine
 from seshat.app.repositories.node_repository import NodeRepository
 from seshat.app.services.graph import GraphService, NodeNotFoundError, NodePreconditionError
-from seshat.core.config.settings import KBStoreConfig
+from seshat.core.config.settings import KBStoreConfig, RAGConfig
 from seshat.core.models.api_graph import (
     ManualNodeCreate,
     ManualNodeUpdate,
@@ -51,7 +52,8 @@ def fake_vector_store():
     vs = MagicMock()
     vs.upsert = AsyncMock()
     vs.delete = AsyncMock()
-    vs.search = AsyncMock(return_value=[])
+    vs.search_dense = AsyncMock(return_value=[])
+    vs.search_sparse = AsyncMock(return_value=[])
     vs.update_metadata = AsyncMock()
     return vs
 
@@ -64,9 +66,14 @@ def fake_extraction_orch():
 
 
 @pytest.fixture
-def svc(kb_store, fake_vector_store, fake_extraction_orch):
+def search_engine(fake_vector_store):
+    return SearchEngine(rag_config=RAGConfig(), vector_store=fake_vector_store, keyword_llm=None, multi_query_llm=None)
+
+
+@pytest.fixture
+def svc(kb_store, fake_vector_store, fake_extraction_orch, search_engine):
     node_repo = NodeRepository(kb_store, fake_vector_store)
-    return GraphService(node_repo, fake_extraction_orch)
+    return GraphService(node_repo, fake_extraction_orch, search_engine)
 
 
 def _create_payload(
@@ -268,11 +275,12 @@ class TestGraphServiceSearch:
         vs.upsert = AsyncMock(side_effect=lambda nid, text, _meta: store.update({nid: text}))
         vs.delete = AsyncMock()
 
-        async def _search(query, **kwargs):
+        async def _search_sparse(query, **kwargs):
             q = query.lower()
             return [SearchResult(node_id=UUID(nid), score=1.0) for nid, text in store.items() if q in text.lower()]
 
-        vs.search = _search
+        vs.search_sparse = _search_sparse
+        vs.search_dense = AsyncMock(return_value=[])
         vs.update_metadata = AsyncMock()
         return vs
 

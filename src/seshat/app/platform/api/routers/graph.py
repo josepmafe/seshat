@@ -12,6 +12,7 @@ from seshat.app.services.graph import (
     NodePreconditionError,
     RelationshipConflictError,
     RelationshipNotFoundError,
+    UnsupportedSearchModeError,
 )
 from seshat.core.models.api_graph import (
     BulkNodeCreate,
@@ -73,6 +74,7 @@ async def query_graph(
     responses={
         200: {"description": "Matching nodes with neighbours, ordered by relevance"},
         401: {"description": "Missing or invalid API key"},
+        422: {"description": "Unsupported search_mode"},
     },
 )
 async def search_graph(
@@ -83,9 +85,12 @@ async def search_graph(
     search_mode: SearchMode = SearchMode.SEMANTIC,
     score_threshold: Annotated[float | None, Query(ge=0, le=1)] = None,
 ) -> NodeSearchResponse:
-    results = await state.graph_service.search(
-        query=q, limit=limit, node_filter=node_filter, mode=search_mode, score_threshold=score_threshold
-    )
+    try:
+        results = await state.graph_service.search(
+            query=q, limit=limit, node_filter=node_filter, mode=search_mode, score_threshold=score_threshold
+        )
+    except UnsupportedSearchModeError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     return NodeSearchResponse(results=results)
 
 

@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from seshat.core.models.enums import GraphDirection, NodeState, NodeStatus, RelationshipType, SearchMode
+from seshat.core.models.enums import GraphDirection, NodeState, NodeStatus, RelationshipType
 from seshat.core.utils.log import get_logger
 
 if TYPE_CHECKING:
-    from seshat.core.models.api_graph import NodeFilter, SearchResult
+    from seshat.core.models.api_graph import NodeFilter
     from seshat.core.models.nodes import ExtractionResult, KBNode, KBRelationship
     from seshat.infra.knowledge_store.pg_store import PostgresKBStore, _Conn
     from seshat.infra.vector_store.base_store import AbstractVectorStore
@@ -247,25 +247,6 @@ class NodeRepository:
                     )
         else:
             await self._kb.delete_relationship(str(rel.rel_id))
-
-    async def search(
-        self,
-        query: str,
-        *,
-        top_k: int,
-        node_filter: NodeFilter | None = None,
-        exclude_job_id: str | None = None,
-        score_threshold: float | None = None,
-        mode: SearchMode = SearchMode.SEMANTIC,
-    ) -> list[SearchResult]:
-        return await self._vs.search(
-            query,
-            top_k=top_k,
-            node_filter=node_filter,
-            exclude_job_id=exclude_job_id,
-            score_threshold=score_threshold,
-            mode=mode,
-        )
 
 
 def _get_vector_store_metadata(node: KBNode) -> dict:

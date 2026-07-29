@@ -5,12 +5,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from seshat.app.pipeline.extraction.search_engine import SearchEngine
 from seshat.app.platform.api.app import create_app
 from seshat.app.platform.api.dependencies import CurrentUser, _get_current_user, get_app_state
 from seshat.app.platform.api.state import AppState
 from seshat.app.repositories.node_repository import NodeRepository
 from seshat.app.services.graph import GraphService
-from seshat.core.config.settings import KBStoreConfig
+from seshat.core.config.settings import KBStoreConfig, RAGConfig
 from seshat.core.models.enums import NodeStatus, UserRole
 from seshat.infra.knowledge_store.pg_store import PostgresKBStore
 from tests.helpers import make_node
@@ -38,7 +39,8 @@ def fake_vector_store():
     vs = MagicMock()
     vs.upsert = AsyncMock()
     vs.delete = AsyncMock()
-    vs.search = AsyncMock(return_value=[])
+    vs.search_dense = AsyncMock(return_value=[])
+    vs.search_sparse = AsyncMock(return_value=[])
     return vs
 
 
@@ -50,9 +52,14 @@ def fake_extraction_orch():
 
 
 @pytest.fixture
-def graph_svc(kb_store, fake_vector_store, fake_extraction_orch):
+def search_engine(fake_vector_store):
+    return SearchEngine(rag_config=RAGConfig(), vector_store=fake_vector_store, keyword_llm=None, multi_query_llm=None)
+
+
+@pytest.fixture
+def graph_svc(kb_store, fake_vector_store, fake_extraction_orch, search_engine):
     node_repo = NodeRepository(kb_store, fake_vector_store)
-    return GraphService(node_repo, fake_extraction_orch)
+    return GraphService(node_repo, fake_extraction_orch, search_engine)
 
 
 @pytest.fixture

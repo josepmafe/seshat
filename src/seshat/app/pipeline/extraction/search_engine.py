@@ -53,15 +53,24 @@ class SearchEngine:
         exclude_job_id: str | None = None,
         top_k: int | None = None,
         score_threshold: float | None = None,
+        mode: SearchMode | None = None,
     ) -> list[SearchResult]:
-        logger.debug("search: mode=%s query=%r", self.search_mode.value, query[:60])
+        """Search the vector store using the configured retrieval recipe.
+
+        mode overrides the RAGConfig-configured search_mode for this call only,
+        for callers that receive the mode per-request (e.g. the /graph/search API)
+        rather than fixing it at construction time.
+        """
+        effective_mode = mode if mode is not None else self.search_mode
+        filter_repr = node_filter.model_dump(exclude_defaults=True) if node_filter is not None else None
+        logger.info("search: mode=%r query=%r filter=%s", effective_mode.value, query[:60], filter_repr)
         common_search_kwargs = {
             "node_filter": node_filter,
             "exclude_job_id": exclude_job_id,
             "top_k": top_k if top_k is not None else self._rag_config.top_k,
         }
 
-        match self.search_mode:
+        match effective_mode:
             case SearchMode.SEMANTIC:
                 results = await self._semantic_search(query, score_threshold=score_threshold, **common_search_kwargs)
             case SearchMode.KEYWORD:
@@ -69,9 +78,9 @@ class SearchEngine:
             case SearchMode.HYBRID:
                 results = await self._hybrid_search(query, score_threshold=score_threshold, **common_search_kwargs)
             case _:
-                raise ValueError(f"Unsupported search mode: {self.search_mode.value!r}")
+                raise ValueError(f"Unsupported search mode: {effective_mode.value!r}")
 
-        logger.debug("search: returned %d results", len(results))
+        logger.info("search: mode=%r returned %d results", effective_mode.value, len(results))
         return results
 
     async def _semantic_search(self, query: str, **kwargs: Any) -> list[SearchResult]:
