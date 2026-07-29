@@ -499,7 +499,8 @@ def _job_response_from_row(row: Any) -> JobResponse:
     error = json.loads(row["error_payload"]) if row["error_payload"] else None
 
     submission = json.loads(row.get("submission", "{}"))
-    extraction_overrides = submission.get("overrides", {}).get("extraction", {})
+    overrides = submission.get("overrides") or {}
+    extraction_overrides = overrides.get("extraction") or {}
     threshold = extraction_overrides.get("confidence_threshold")
 
     model_kwargs = dict(row) | {"error": error, "confidence_threshold": threshold}
