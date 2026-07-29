@@ -74,7 +74,9 @@ class GraphService:
     # -- Read methods ----------------------------------------------------------
 
     async def query(self, node_filter: NodeFilter) -> list[KBNode]:
-        return await self._repo.query(node_filter)
+        nodes = await self._repo.query(node_filter)
+        logger.debug("KB query: filter=%s -> %d nodes", node_filter.model_dump(exclude_defaults=True), len(nodes))
+        return nodes
 
     @track_token_budget("graph_search", uncapped=True, accumulate_to_fn=lambda self: self._usage_tracker)
     async def search(
@@ -85,6 +87,12 @@ class GraphService:
         mode: SearchMode = SearchMode.SEMANTIC,
         score_threshold: float | None = None,
     ) -> list[NodeSearchResult]:
+        logger.info(
+            "VS search: mode=%r query=%r filter=%s",
+            mode.value,
+            query[:60],
+            node_filter.model_dump(exclude_defaults=True),
+        )
         try:
             # search_engine is called directly rather than through node_repo: it's a
             # retrieval strategy, not a raw store, the same sibling-dependency shape
@@ -102,10 +110,12 @@ class GraphService:
             try:
                 detail = await self.get_node_detail(result.node_id)
             except NodeNotFoundError:
+                logger.warning("VS search: node %s in VS results but missing from KB — skipping", result.node_id)
                 continue
 
             results.append(NodeSearchResult(detail=detail, score=result.score if scored else None))
 
+        logger.info("VS search: %d results (mode=%r)", len(results), mode.value)
         return results
 
     async def get_node(self, node_id: UUID) -> KBNode:
@@ -152,6 +162,14 @@ class GraphService:
                         next_frontier.append(neighbour_node.id)
             frontier = next_frontier
 
+        logger.info(
+            "impact traversal: node=%s depth=%d direction=%s -> %d nodes, %d relationships",
+            node_id,
+            depth,
+            direction.value,
+            len(visited),
+            len(all_rels),
+        )
         return ImpactResponse(
             nodes=[ImpactNode(node=node, traversal_depth=hop) for node, hop in visited.values()],
             relationships=list(all_rels.values()),
@@ -254,6 +272,7 @@ class GraphService:
             raise NodePreconditionError(f"Nodes not in APPROVED status: {not_approved}")
 
         job_id = f"manual_resolve_{uuid4()}"
+        logger.info("manual resolve: job_id=%s nodes=%d", job_id, len(nodes))
         relationships = await self.resolve(nodes, job_id)
         return relationships
 
