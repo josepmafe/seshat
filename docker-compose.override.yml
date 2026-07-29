@@ -1,0 +1,51 @@
+# Local development override — auto-loaded by `docker compose` (no -f needed).
+# Bind-mounts host source into the services built from local code so edits take
+# effect without a rebuild. Gitignored; see docker-compose.override.yml in .gitignore.
+#
+# Container layout (from docker/Dockerfile*): WORKDIR /app, PYTHONPATH=/app/src,
+# source lives at /app/src. Mounting ./src over it shadows the COPYed source.
+
+services:
+  migrate:
+    volumes:
+      # Re-run migrations from working-tree code: `docker compose run --rm migrate`
+      - ./src:/app/src
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+
+  seshat-api:
+    # update-ca-certificates runs first so the corporate proxy's root CA (mounted below)
+    # lands in the container's own Debian trust store — USE_OS_TRUSTSTORE only sources
+    # trust from the OS the process runs on, which inside the container is Debian, not
+    # the Windows host where IT actually provisioned the CA.
+    # --reload makes uvicorn restart on edits to the mounted source (dev only).
+    entrypoint: ["sh", "-c"]
+    command: ["update-ca-certificates && uv run --no-sync seshat api --reload"]
+    environment:
+      # Real Bedrock creds via the mounted host profile. The base compose sets dummy
+      # AWS_* env vars for LocalStack; boto3's env chain outranks the profile file, so
+      # they must be blanked here or Bedrock authenticates as 'dummy_id' and fails.
+      # LocalStack ignores credential values (endpoint_url routes to it), so the real
+      # profile works for secrets/S3 too.
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      AWS_PROFILE: ${AWS_PROFILE}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      # can't enable it via the `.env` file without breaking the tests, so we add it
+      # here, which is the only place we really need it
+      USE_OS_TRUSTSTORE: true
+    volumes:
+      - ./src:/app/src
+      # Host AWS profile (SSO/STS temporary creds); re-run host SSO refresh on expiry.
+      # `~` is expanded by compose itself (shell-independent); ${HOME} is unset in
+      # Windows cmd/PowerShell and would mount an empty /.aws.
+      - ~/.aws:/root/.aws:ro
+      # Corporate proxy root CA(s), exported from the Windows host's trust store — see
+      # docker/certs/README.md for how to (re-)generate.
+      - ./docker/certs:/usr/local/share/ca-certificates:ro
+
+  seshat-ui:
+    volumes:
+      - ./src:/app/src
+      # Mask the host-side src/seshat_ui/.venv so it can't shadow the image's venv.
+      - /app/src/seshat_ui/.venv
