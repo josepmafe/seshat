@@ -452,15 +452,34 @@ def get_config() -> SeshatConfig:
 
 
 def get_request_settings(overrides: SeshatConfigOverride | None) -> SeshatConfig:
+    """Return the base config with per-request overrides merged in; base config unchanged."""
     base = get_config()
     if overrides is None:
         return base
 
     logger.info("Overriding configuration...")
-    update = {}
+    update: dict[str, Any] = {}
     for field in overrides.model_fields_set:
-        base_section = getattr(base, field)
         override_section = getattr(overrides, field)
-        update[field] = base_section.model_copy(update=override_section.model_dump(exclude_unset=True))
+        if override_section is None:
+            continue
+
+        base_section = getattr(base, field)
+        update[field] = _merge_override(base_section, override_section)
+
+    return base.model_copy(update=update)
+
+
+def _merge_override(base: BaseModel, override: BaseModel) -> BaseModel:
+    """Recursively apply the fields set on `override` onto `base`, merging nested sub-models
+    field-by-field instead of replacing them outright, so untouched sibling fields survive."""
+    update: dict[str, Any] = {}
+    for field in override.model_fields_set:
+        override_value = getattr(override, field)
+        base_value = getattr(base, field)
+        if isinstance(override_value, BaseModel) and isinstance(base_value, BaseModel):
+            update[field] = _merge_override(base_value, override_value)
+        else:
+            update[field] = override_value
 
     return base.model_copy(update=update)

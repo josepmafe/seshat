@@ -661,6 +661,22 @@ class TestListJobs:
         assert call_kwargs.get("meeting_date_from") == from_date
         assert call_kwargs.get("meeting_date_to") == to_date
 
+    async def test_handles_row_with_null_overrides_in_submission(self):
+        svc, *_ = _make_service()
+        row = {
+            "job_id": "job-1",
+            "status": "done",
+            "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+            "updated_at": datetime(2026, 1, 1, tzinfo=UTC),
+            "error_payload": None,
+            "submission": '{"overrides": null}',
+        }
+        svc._ops.list_jobs = AsyncMock(return_value=[row])
+
+        result = await svc.list_jobs()
+
+        assert result[0].confidence_threshold is None
+
 
 class TestGetTranscriptExcerpt:
     async def test_returns_slice(self):

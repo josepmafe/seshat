@@ -77,3 +77,35 @@ class TestGetRequestSettings:
         assert result.transcription.max_retries == 1
         assert result.extraction.identification.max_output_tokens == 1024
         assert result.api.max_jobs_per_user_per_hour == 5
+
+    def test_explicit_null_section_treated_as_unset(self, monkeypatch, minimal_config: SeshatConfig):
+        """A section present in the payload with value null (as opposed to omitted) must not crash."""
+        monkeypatch.setattr("seshat.core.config.settings._config", minimal_config)
+        overrides = SeshatConfigOverride.model_validate({"extraction": None})
+        assert overrides.model_fields_set == {"extraction"}
+
+        assert get_request_settings(overrides) == minimal_config
+
+    def test_nested_submodel_override_preserves_type_and_sibling_fields(self, monkeypatch):
+        """Overriding a nested sub-model field (e.g. extraction.identification) must merge it
+        field-by-field rather than replacing it with a plain dict, so its type and untouched
+        sibling fields (both on the sub-model and on the section that holds it) survive."""
+        monkeypatch.setenv("postgres_url", "postgresql://seshat:seshat@localhost:5432/seshat")
+        base = SeshatConfig(
+            _env_file=None,  # type: ignore[call-arg]
+            secrets=SecretsConfig(provider=SecretsProvider.ENV),
+            extraction=ExtractionConfig(identification=IdentificationLLMConfig(max_output_tokens=1024)),
+        )
+        monkeypatch.setattr("seshat.core.config.settings._config", base)
+
+        overrides = SeshatConfigOverride(
+            extraction=ExtractionConfig(identification=IdentificationLLMConfig(temperature=0.9))
+        )
+        result = get_request_settings(overrides)
+
+        assert isinstance(result.extraction.identification, IdentificationLLMConfig)
+        assert result.extraction.identification.temperature == 0.9
+        # sibling field on the same sub-model must survive, not revert to its default
+        assert result.extraction.identification.max_output_tokens == 1024
+        # sibling field on the section holding the sub-model must survive unchanged
+        assert result.extraction.confidence_threshold == base.extraction.confidence_threshold
