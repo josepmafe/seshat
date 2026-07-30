@@ -274,7 +274,7 @@ class JobService:
         user_id: str | None = None,
     ) -> IdentificationResult | None:
         with mlflow.start_run(
-            run_name=job_id,
+            run_name=f"pipeline-run-{job_id}",
             tags={"job_id": job_id, "phase": "starting", "source": "pipeline"},
         ) as run:
             await self._ops.set_job_mlflow_run_id(job_id, run.info.run_id)
@@ -340,7 +340,9 @@ class JobService:
         if existing_run_id:
             active_run = mlflow.start_run(run_id=existing_run_id)
         else:
-            active_run = mlflow.start_run(run_name=job_id, tags={"job_id": job_id, "source": "pipeline"})
+            active_run = mlflow.start_run(
+                run_name=f"pipeline-run-{job_id}", tags={"job_id": job_id, "source": "pipeline"}
+            )
 
         with active_run:
             set_phase_tag("resolution")

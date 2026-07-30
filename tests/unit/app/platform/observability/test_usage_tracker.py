@@ -176,6 +176,33 @@ class TestTrackTokenBudget:
         assert len(trackers) == 2
         assert trackers[0] is not trackers[1]
 
+    async def test_run_id_fn_logs_to_run_instead_of_active_run(self):
+        class _Obj:
+            def __init__(self):
+                self.run_id = "run-abc"
+
+            @track_token_budget(label="graph_search", uncapped=True, run_id_fn=lambda self: self.run_id)
+            async def run(self):
+                cb = get_run_tracker()
+                await cb._tracker.add(input_tokens=10, output_tokens=5)
+
+        with patch("seshat.app.platform.observability.usage_tracker.log_token_metrics") as mock_log_token_metrics:
+            await _Obj().run()
+
+        mock_log_token_metrics.assert_called_once()
+        assert mock_log_token_metrics.call_args.kwargs["run_id"] == "run-abc"
+
+    async def test_run_id_fn_returning_none_falls_back_to_active_run(self):
+        class _Obj:
+            @track_token_budget(label="graph_search", uncapped=True, run_id_fn=lambda self: None)
+            async def run(self):
+                pass
+
+        with patch("seshat.app.platform.observability.usage_tracker.log_token_metrics") as mock_log_token_metrics:
+            await _Obj().run()
+
+        assert mock_log_token_metrics.call_args.kwargs["run_id"] is None
+
 
 class TestLogTotals:
     async def test_only_non_zero_fields_logged(self, caplog):

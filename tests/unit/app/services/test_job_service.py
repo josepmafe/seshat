@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, date, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import asyncpg
@@ -125,6 +125,16 @@ class TestPreApproval:
         ops.fail_job.assert_called_once()
         assert "job-1" not in svc._results
 
+    async def test_mlflow_run_name_has_pipeline_run_prefix(self):
+        import mlflow
+
+        svc, _, _, _, _, _ = _make_service()
+
+        with patch("seshat.app.services.job.mlflow.start_run", wraps=mlflow.start_run) as mock_start_run:
+            await svc._run_pre_approval("job-1", b"data", _make_submission())
+
+        assert mock_start_run.call_args.kwargs["run_name"] == "pipeline-run-job-1"
+
 
 _JOB_ROW = {"meeting_date": date(2026, 1, 1), "status": JobStatus.WRITING}
 
@@ -179,6 +189,34 @@ class TestPostApproval:
         ops.fail_job.assert_called_once()
         call_kwargs = ops.fail_job.call_args
         assert "post_approval" in call_kwargs[0]
+
+    async def test_mlflow_run_name_has_pipeline_run_prefix_when_no_existing_run(self):
+        import mlflow
+
+        svc, _, _, _, ops, _ = _make_service()
+        ops.get_job = AsyncMock(return_value=_JOB_ROW)
+        svc._results["job-1"] = ExtractionResult(job_id="job-1", nodes=[], relationships=[])
+
+        with patch("seshat.app.services.job.mlflow.start_run", wraps=mlflow.start_run) as mock_start_run:
+            await svc._run_post_approval("job-1")
+
+        assert mock_start_run.call_args.kwargs["run_name"] == "pipeline-run-job-1"
+
+    async def test_resumes_existing_run_by_id_without_renaming(self):
+        import mlflow
+
+        with mlflow.start_run() as existing_run:
+            existing_run_id = existing_run.info.run_id
+
+        svc, _, _, _, ops, _ = _make_service()
+        job_row = {**_JOB_ROW, "mlflow_run_id": existing_run_id}
+        ops.get_job = AsyncMock(return_value=job_row)
+        svc._results["job-1"] = ExtractionResult(job_id="job-1", nodes=[], relationships=[])
+
+        with patch("seshat.app.services.job.mlflow.start_run", wraps=mlflow.start_run) as mock_start_run:
+            await svc._run_post_approval("job-1")
+
+        mock_start_run.assert_called_once_with(run_id=existing_run_id)
 
 
 def _make_service_real_queue(nodes=None):

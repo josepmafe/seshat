@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import asyncpg
+import mlflow
 
 from seshat.app.platform.observability.latency_tracker import track_latency_profile
 from seshat.app.platform.observability.usage_tracker import UsageTracker, track_token_budget
@@ -65,19 +66,55 @@ class GraphService:
         node_repo: NodeRepository,
         extraction_orch: ExtractionOrchestrator,
         search_engine: SearchEngine,
+        search_run_id: str | None = None,
     ) -> None:
         self._repo = node_repo
         self._extraction_orch = extraction_orch
         self._search_engine = search_engine
         self._usage_tracker = UsageTracker.uncapped()
+        self._search_run_id = search_run_id
 
     # -- Read methods ----------------------------------------------------------
 
     async def query(self, node_filter: NodeFilter) -> list[KBNode]:
-        return await self._repo.query(node_filter)
+        nodes = await self._repo.query(node_filter)
+        logger.debug("KB query: filter=%s -> %d nodes", node_filter.model_dump(exclude_defaults=True), len(nodes))
+        return nodes
 
-    @track_token_budget("graph_search", uncapped=True, accumulate_to_fn=lambda self: self._usage_tracker)
+    @track_token_budget(
+        "graph_search",
+        uncapped=True,
+        accumulate_to_fn=lambda self: self._usage_tracker,
+        run_id_fn=lambda self: self._search_run_id,
+    )
     async def search(
+        self,
+        query: str,
+        limit: int,
+        node_filter: NodeFilter,
+        mode: SearchMode = SearchMode.SEMANTIC,
+        score_threshold: float | None = None,
+    ) -> list[NodeSearchResult]:
+        # TODO: verified experimentally that mlflow.start_span(run_id=...) without an active
+        # experiment or explicit trace_destination stores the trace under the "Default"
+        # experiment ("0"), not the run's own experiment — contradicting start_span's
+        # docstring. Traces from this call likely aren't showing up under the configured
+        # seshat experiment in the MLflow UI. Investigate passing trace_destination=
+        # MlflowExperimentLocation(experiment_id=...) explicitly, or re-verify against the
+        # actual deployed MLflow version.
+        with mlflow.start_span(name="graph_search", run_id=self._search_run_id):
+            logger.info(
+                "VS search: mode=%r query=%r filter=%s",
+                mode.value,
+                query[:60],
+                node_filter.model_dump(exclude_defaults=True),
+            )
+            results = await self._search(query, limit, node_filter, mode, score_threshold)
+
+            logger.info("VS search: %d results (mode=%r)", len(results), mode.value)
+            return results
+
+    async def _search(
         self,
         query: str,
         limit: int,
@@ -95,16 +132,15 @@ class GraphService:
         except ValueError as exc:
             raise UnsupportedSearchModeError(str(exc)) from exc
 
-        scored = mode in (SearchMode.SEMANTIC, SearchMode.KEYWORD)
+        scored_search = mode.is_scored
         results: list[NodeSearchResult] = []
-
         for result in search_results:
             try:
                 detail = await self.get_node_detail(result.node_id)
             except NodeNotFoundError:
-                continue
-
-            results.append(NodeSearchResult(detail=detail, score=result.score if scored else None))
+                logger.warning("VS search: node %s in VS results but missing from KB — skipping", result.node_id)
+            else:
+                results.append(NodeSearchResult(detail=detail, score=result.score if scored_search else None))
 
         return results
 
@@ -152,6 +188,14 @@ class GraphService:
                         next_frontier.append(neighbour_node.id)
             frontier = next_frontier
 
+        logger.info(
+            "impact traversal: node=%s depth=%d direction=%s -> %d nodes, %d relationships",
+            node_id,
+            depth,
+            direction.value,
+            len(visited),
+            len(all_rels),
+        )
         return ImpactResponse(
             nodes=[ImpactNode(node=node, traversal_depth=hop) for node, hop in visited.values()],
             relationships=list(all_rels.values()),
@@ -254,7 +298,9 @@ class GraphService:
             raise NodePreconditionError(f"Nodes not in APPROVED status: {not_approved}")
 
         job_id = f"manual_resolve_{uuid4()}"
-        relationships = await self.resolve(nodes, job_id)
+        logger.info("manual resolve: job_id=%s nodes=%d", job_id, len(nodes))
+        with mlflow.start_run(run_name=job_id, tags={"job_id": job_id, "source": "manual_resolve"}):
+            relationships = await self.resolve(nodes, job_id)
         return relationships
 
     @track_token_budget("manual_node_resolve", uncapped=True, accumulate_to_fn=lambda self: self._usage_tracker)

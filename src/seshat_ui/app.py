@@ -69,6 +69,8 @@ def main() -> None:
             _render_sidebar_health(client)
         with st.sidebar.expander("Recent Jobs"):
             _render_sidebar_jobs(client)
+        with st.sidebar.expander("Observability"):
+            _render_sidebar_observability()
 
     # ── Root / admin section ───────────────────────────────────────────────────
     st.sidebar.divider()
@@ -108,6 +110,13 @@ def main() -> None:
         _render_kb(client)
     elif screen == "manual":
         _render_manual_actions(client)
+
+
+def _render_sidebar_observability() -> None:
+    if MLFLOW_UI_BASE:
+        st.markdown(f"[Open MLflow UI]({MLFLOW_UI_BASE})")
+    else:
+        st.caption("MLFLOW_UI_URL is not configured.")
 
 
 @st.fragment
