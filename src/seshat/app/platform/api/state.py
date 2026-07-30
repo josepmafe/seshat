@@ -95,7 +95,7 @@ async def build_app_state(config: SeshatConfig) -> AsyncGenerator[AppState]:
         await ops_store.close()
 
 
-def _get_search_run_id(mlflow_client: MlflowClient, config: ObservabilityConfig):
+def _get_search_run_id(mlflow_client: MlflowClient, config: ObservabilityConfig) -> str:
     """Create one long-lived MLflow run for all GraphService.search() calls.
 
     Created via MlflowClient so it never touches mlflow's thread-local active-run stack,

@@ -34,5 +34,5 @@ def mlflow_run_url(tracking_uri: str, experiment_id: str, run_id: str) -> str:
     return f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
 
 
-def _disable_mlflow_git_warnings():
+def _disable_mlflow_git_warnings() -> None:
     os.environ["GIT_PYTHON_REFRESH"] = "quiet"
