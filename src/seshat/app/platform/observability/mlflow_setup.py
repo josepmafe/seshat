@@ -1,4 +1,5 @@
 import logging
+import os
 
 import mlflow
 
@@ -14,6 +15,8 @@ def setup_mlflow(config: ObservabilityConfig, *, disable_autolog: bool = False) 
     too, so the agent LLM-call traces are captured in the MLflow UI; ``disable_autolog`` is
     retained as an escape hatch but no caller currently sets it.
     """
+    _disable_mlflow_git_warnings()
+
     mlflow.set_tracking_uri(config.mlflow_tracking_uri)
     mlflow.langchain.autolog(disable=disable_autolog)  # type: ignore[attr-defined]
 
@@ -29,3 +32,7 @@ def setup_mlflow(config: ObservabilityConfig, *, disable_autolog: bool = False) 
 
 def mlflow_run_url(tracking_uri: str, experiment_id: str, run_id: str) -> str:
     return f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
+
+
+def _disable_mlflow_git_warnings():
+    os.environ["GIT_PYTHON_REFRESH"] = "quiet"
