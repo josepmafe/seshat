@@ -95,6 +95,13 @@ class GraphService:
         mode: SearchMode = SearchMode.SEMANTIC,
         score_threshold: float | None = None,
     ) -> list[NodeSearchResult]:
+        # TODO: verified experimentally that mlflow.start_span(run_id=...) without an active
+        # experiment or explicit trace_destination stores the trace under the "Default"
+        # experiment ("0"), not the run's own experiment — contradicting start_span's
+        # docstring. Traces from this call likely aren't showing up under the configured
+        # seshat experiment in the MLflow UI. Investigate passing trace_destination=
+        # MlflowExperimentLocation(experiment_id=...) explicitly, or re-verify against the
+        # actual deployed MLflow version.
         with mlflow.start_span(name="graph_search", run_id=self._search_run_id):
             logger.info(
                 "VS search: mode=%r query=%r filter=%s",
