@@ -202,6 +202,22 @@ class TestPostApproval:
 
         assert mock_start_run.call_args.kwargs["run_name"] == "pipeline-run-job-1"
 
+    async def test_resumes_existing_run_by_id_without_renaming(self):
+        import mlflow
+
+        with mlflow.start_run() as existing_run:
+            existing_run_id = existing_run.info.run_id
+
+        svc, _, _, _, ops, _ = _make_service()
+        job_row = {**_JOB_ROW, "mlflow_run_id": existing_run_id}
+        ops.get_job = AsyncMock(return_value=job_row)
+        svc._results["job-1"] = ExtractionResult(job_id="job-1", nodes=[], relationships=[])
+
+        with patch("seshat.app.services.job.mlflow.start_run", wraps=mlflow.start_run) as mock_start_run:
+            await svc._run_post_approval("job-1")
+
+        mock_start_run.assert_called_once_with(run_id=existing_run_id)
+
 
 def _make_service_real_queue(nodes=None):
     """Like _make_service but with a real AsyncioTaskQueue so enqueued tasks actually run."""

@@ -191,6 +191,44 @@ class TestSearchEngineHybrid:
 
         assert len(results) == 10
 
+    async def test_truncation_keeps_highest_fused_scores(self):
+        # dense-only hit ranked 1st in its leg beats a sparse-only hit ranked last in
+        # its leg under RRF — truncation must drop the lowest-scored union member, not
+        # an arbitrary one.
+        best_id = "00000000-0000-0000-0000-000000000001"
+        worst_id = "00000000-0000-0000-0000-000000000002"
+        dense_mock = AsyncMock(return_value=[_search_result(best_id)])
+        filler_ids = [f"00000000-0000-0000-0000-{i:012d}" for i in range(3, 3 + 20)]
+        sparse_mock = AsyncMock(return_value=[_search_result(uid) for uid in filler_ids] + [_search_result(worst_id)])
+        engine = _make_engine(dense_mock=dense_mock, sparse_mock=sparse_mock, search_mode=SearchMode.HYBRID)
+
+        results = await engine.search("query", top_k=1)
+
+        assert results[0].node_id == UUID(best_id)
+
+    async def test_no_truncation_when_union_at_top_k_boundary(self):
+        # 5 disjoint dense hits + 5 disjoint sparse hits = exactly top_k=10; no truncation needed.
+        dense_ids = [f"00000000-0000-0000-0000-00000000000{i}" for i in range(5)]
+        sparse_ids = [f"00000000-0000-0000-0000-0000000000{10 + i}" for i in range(5)]
+        dense_mock = AsyncMock(return_value=[_search_result(uid) for uid in dense_ids])
+        sparse_mock = AsyncMock(return_value=[_search_result(uid) for uid in sparse_ids])
+        engine = _make_engine(dense_mock=dense_mock, sparse_mock=sparse_mock, search_mode=SearchMode.HYBRID)
+
+        results = await engine.search("query", top_k=10)
+
+        assert len(results) == 10
+
+
+class TestSearchEngineSemanticNoMultiQuery:
+    async def test_single_leg_result_below_top_k_is_unaffected_by_truncation(self):
+        # No multi-query configured: single dense leg, fewer hits than top_k.
+        dense_mock = AsyncMock(return_value=[_search_result(_N1)])
+        engine = _make_engine(dense_mock=dense_mock, search_mode=SearchMode.SEMANTIC)
+
+        results = await engine.search("query", top_k=10)
+
+        assert results == [_search_result(_N1)]
+
 
 class TestSearchEngineAgentMode:
     async def test_agent_mode_raises_value_error(self):

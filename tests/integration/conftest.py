@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import mlflow
 import pytest
 import pytest_asyncio
 from aiobotocore.session import get_session
@@ -227,6 +228,23 @@ def short_audio_path():
 @pytest.fixture(scope="session")
 def short_audio_bytes(short_audio_path) -> bytes:
     return short_audio_path.read_bytes()
+
+
+@pytest.fixture
+def isolated_mlflow_tracking(tmp_path):
+    """Point MLflow at a disposable per-test sqlite db, then restore the prior tracking URI.
+
+    Tests using this fixture must call mlflow.create_experiment(...) rather than
+    mlflow.set_experiment(...) — the latter mutates process-global state (fluent.
+    _active_experiment_id and the MLFLOW_EXPERIMENT_ID env var) that would outlive this
+    test's tmp_path, leaking into later tests that rely on the ambient default.
+    """
+    original_uri = mlflow.get_tracking_uri()
+    mlflow.set_tracking_uri(f"sqlite:///{tmp_path}/mlflow.db")
+    try:
+        yield
+    finally:
+        mlflow.set_tracking_uri(original_uri)
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")

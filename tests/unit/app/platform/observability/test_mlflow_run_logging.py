@@ -182,3 +182,21 @@ def test__log_metrics_to_run_does_not_touch_active_run():
         _log_metrics_to_run("run-123", {"a": 1.0})
 
     mock_active_run.assert_not_called()
+
+
+def test__log_metrics_to_run_empty_metrics_calls_log_batch_with_empty_list():
+    mock_client = MagicMock()
+    with patch("seshat.app.platform.observability.mlflow_run_logging.MlflowClient", return_value=mock_client):
+        _log_metrics_to_run("run-123", {})
+
+    mock_client.log_batch.assert_called_once()
+    assert mock_client.log_batch.call_args.kwargs["metrics"] == []
+
+
+def test__log_metrics_to_run_empty_metrics_does_not_raise_against_real_mlflow():
+    """log_batch tolerates an empty metrics list — verifies the real MLflow contract this
+    helper relies on when log_token_metrics filters all-zero metrics down to {}."""
+    import mlflow
+
+    with mlflow.start_run() as run:
+        _log_metrics_to_run(run.info.run_id, {})  # must not raise
