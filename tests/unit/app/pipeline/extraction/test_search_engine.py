@@ -135,6 +135,28 @@ class TestSearchEngineMultiQuery:
         assert UUID(_N1) in node_ids
         assert UUID(_N2) in node_ids
 
+    async def test_disjoint_variants_truncated_to_top_k(self):
+        # original + 3 variants each return 3 disjoint hits = 12 unique nodes, but top_k=10.
+        multi_query_llm = make_structured_llm(
+            return_value=_QueryVariants(variants=["variant 1", "variant 2", "variant 3"])
+        )
+        leg_ids = [
+            [f"00000000-0000-0000-0000-0000000000{i:02d}" for i in range(3 * leg, 3 * leg + 3)] for leg in range(4)
+        ]
+        dense_mock = AsyncMock(side_effect=[[_search_result(uid) for uid in ids] for ids in leg_ids])
+        rag = RAGConfig(
+            search_mode=SearchMode.SEMANTIC,
+            multi_query=MultiQueryConfig(llm=_LLM_CFG, num_variants=3),
+        )
+        engine = SearchEngine(
+            rag_config=rag,
+            vector_store=_make_vs(dense_mock=dense_mock),
+            keyword_llm=None,
+            multi_query_llm=multi_query_llm,
+        )
+        results = await engine.search("query about caching", top_k=10)
+        assert len(results) == 10
+
     async def test_multi_query_llm_failure_falls_back_to_single_query(self, caplog):
         multi_query_llm = make_structured_llm(side_effect=RuntimeError("llm down"))
         dense_mock = AsyncMock(return_value=[_search_result(_N1)])
@@ -154,6 +176,20 @@ class TestSearchEngineMultiQuery:
         assert dense_mock.call_count == 1
         assert any("multi" in r.message.lower() or "fallback" in r.message.lower() for r in caplog.records)
         assert results == [_search_result(_N1)]
+
+
+class TestSearchEngineHybrid:
+    async def test_disjoint_legs_truncated_to_top_k(self):
+        # 6 disjoint dense hits + 6 disjoint sparse hits = 12 unique nodes, but top_k=10.
+        dense_ids = [f"00000000-0000-0000-0000-00000000000{i}" for i in range(6)]
+        sparse_ids = [f"00000000-0000-0000-0000-0000000000{10 + i}" for i in range(6)]
+        dense_mock = AsyncMock(return_value=[_search_result(uid) for uid in dense_ids])
+        sparse_mock = AsyncMock(return_value=[_search_result(uid) for uid in sparse_ids])
+        engine = _make_engine(dense_mock=dense_mock, sparse_mock=sparse_mock, search_mode=SearchMode.HYBRID)
+
+        results = await engine.search("query", top_k=10)
+
+        assert len(results) == 10
 
 
 class TestSearchEngineAgentMode:

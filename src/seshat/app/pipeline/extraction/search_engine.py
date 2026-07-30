@@ -62,12 +62,13 @@ class SearchEngine:
         rather than fixing it at construction time.
         """
         effective_mode = mode if mode is not None else self.search_mode
+        effective_top_k = top_k if top_k is not None else self._rag_config.top_k
         filter_repr = node_filter.model_dump(exclude_defaults=True) if node_filter is not None else None
         logger.info("search: mode=%r query=%r filter=%s", effective_mode.value, query[:60], filter_repr)
         common_search_kwargs = {
             "node_filter": node_filter,
             "exclude_job_id": exclude_job_id,
-            "top_k": top_k if top_k is not None else self._rag_config.top_k,
+            "top_k": effective_top_k,
         }
 
         match effective_mode:
@@ -79,6 +80,10 @@ class SearchEngine:
                 results = await self._hybrid_search(query, score_threshold=score_threshold, **common_search_kwargs)
             case _:
                 raise ValueError(f"Unsupported search mode: {effective_mode.value!r}")
+
+        # _semantic_search's multi-query fan-out and _hybrid_search both fuse multiple
+        # independently-capped legs via _rrf; disjoint legs can push the union past top_k.
+        results = results[:effective_top_k]
 
         logger.info("search: mode=%r returned %d results", effective_mode.value, len(results))
         return results
