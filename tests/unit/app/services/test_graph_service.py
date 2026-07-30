@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from unittest.mock import AsyncMock, MagicMock
+from contextlib import contextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import asyncpg
@@ -529,6 +530,31 @@ class TestResolveByIds:
         assert repo.write_relationship.call_count == 2
         repo.write_relationship.assert_any_call(rel_a)
 
+    async def test_wraps_resolve_in_mlflow_run(self):
+        node = make_node()
+        svc, _repo = _make_service(node=node)
+
+        @contextmanager
+        def _fake_run(*, run_name, tags):
+            _fake_run.run_name = run_name
+            _fake_run.tags = tags
+            yield MagicMock()
+
+        with patch("seshat.app.services.graph.mlflow.start_run", side_effect=_fake_run) as mock_start_run:
+            await svc.resolve_by_ids([node.id])
+
+        mock_start_run.assert_called_once()
+        assert _fake_run.tags["source"] == "manual_resolve"
+        assert _fake_run.run_name == _fake_run.tags["job_id"]
+
+    async def test_does_not_open_run_when_node_not_found(self):
+        svc, _repo = _make_service(node=None)
+
+        with patch("seshat.app.services.graph.mlflow.start_run") as mock_start_run, pytest.raises(NodeNotFoundError):
+            await svc.resolve_by_ids([_UUID_1])
+
+        mock_start_run.assert_not_called()
+
 
 class TestGetNodeDetailNeighbourFiltering:
     async def test_superseded_source_node_excludes_all_neighbours(self):
@@ -679,6 +705,34 @@ class TestSearch:
 
         with pytest.raises(UnsupportedSearchModeError):
             await svc.search("q", limit=5, node_filter=NodeFilter(), mode=SearchMode.AGENT)
+
+    async def test_search_run_id_defaults_to_none(self):
+        svc, _repo = _make_service()
+        assert svc._search_run_id is None
+
+    async def test_wraps_search_in_mlflow_span_scoped_to_search_run_id(self):
+        svc, _repo = _make_service()
+        svc._search_run_id = "run-abc"
+
+        from seshat.core.models.api_graph import NodeFilter
+
+        with patch("seshat.app.services.graph.mlflow.start_span") as mock_start_span:
+            mock_start_span.return_value.__enter__ = MagicMock()
+            mock_start_span.return_value.__exit__ = MagicMock(return_value=False)
+            await svc.search("q", limit=5, node_filter=NodeFilter())
+
+        mock_start_span.assert_called_once_with(name="graph_search", run_id="run-abc")
+
+    async def test_search_logs_token_metrics_to_search_run_id(self):
+        svc, _repo = _make_service()
+        svc._search_run_id = "run-abc"
+
+        from seshat.core.models.api_graph import NodeFilter
+
+        with patch("seshat.app.platform.observability.usage_tracker.log_token_metrics") as mock_log_token_metrics:
+            await svc.search("q", limit=5, node_filter=NodeFilter())
+
+        assert mock_log_token_metrics.call_args.kwargs["run_id"] == "run-abc"
 
 
 def _make_rel(src_id=_UUID_1, tgt_id=_UUID_2) -> KBRelationship:

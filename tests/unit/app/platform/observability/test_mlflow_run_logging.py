@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from seshat.app.platform.observability.mlflow_run_logging import (
+    _log_metrics_to_run,
     log_identification_failures,
     log_resolution_failures,
     log_token_metrics,
@@ -123,6 +124,22 @@ def test_log_token_metrics_empty_stage_omits_stage_segment():
         assert ".." not in key
 
 
+def test_log_token_metrics_with_run_id_bypasses_active_run_check():
+    with (
+        patch("seshat.app.platform.observability.mlflow_run_logging.mlflow.active_run") as mock_active_run,
+        patch("seshat.app.platform.observability.mlflow_run_logging._log_metrics_to_run") as mock_log_to_run,
+        patch("seshat.app.platform.observability.mlflow_run_logging.mlflow.log_metrics") as mock_log_metrics,
+    ):
+        log_token_metrics("graph_search", input_tokens=10, output_tokens=5, run_id="run-123")
+
+    mock_active_run.assert_not_called()
+    mock_log_metrics.assert_not_called()
+    mock_log_to_run.assert_called_once_with(
+        "run-123",
+        {"usage.graph_search.llm_input": 10.0, "usage.graph_search.llm_output": 5.0},
+    )
+
+
 def test_set_error_tag_truncates_to_250_chars():
     with patch("seshat.app.platform.observability.mlflow_run_logging.mlflow.set_tag") as mock_set_tag:
         set_error_tag(ValueError("x" * 300))
@@ -137,3 +154,31 @@ def test_set_phase_tag_sets_phase_tag():
         set_phase_tag("resolution")
 
     mock_set_tag.assert_called_once_with("phase", "resolution")
+
+
+def test__log_metrics_to_run_logs_batch_with_explicit_run_id():
+    mock_client = MagicMock()
+    with patch("seshat.app.platform.observability.mlflow_run_logging.MlflowClient", return_value=mock_client):
+        _log_metrics_to_run("run-123", {"usage.graph_search.llm_input": 10.0})
+
+    mock_client.log_batch.assert_called_once()
+    call_kwargs = mock_client.log_batch.call_args
+    assert call_kwargs.args[0] == "run-123"
+    logged_metrics = call_kwargs.kwargs["metrics"]
+    assert len(logged_metrics) == 1
+    assert logged_metrics[0].key == "usage.graph_search.llm_input"
+    assert logged_metrics[0].value == 10.0
+    assert logged_metrics[0].step == 0
+
+
+def test__log_metrics_to_run_does_not_touch_active_run():
+    """_log_metrics_to_run must never call mlflow.active_run() — that's the thread-local
+    global this helper exists to bypass for concurrency safety."""
+    mock_client = MagicMock()
+    with (
+        patch("seshat.app.platform.observability.mlflow_run_logging.MlflowClient", return_value=mock_client),
+        patch("seshat.app.platform.observability.mlflow_run_logging.mlflow.active_run") as mock_active_run,
+    ):
+        _log_metrics_to_run("run-123", {"a": 1.0})
+
+    mock_active_run.assert_not_called()

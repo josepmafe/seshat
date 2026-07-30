@@ -141,6 +141,14 @@ class SearchMode(StrEnum):
     HYBRID = auto()
     AGENT = auto()
 
+    @classmethod
+    def scored_search_modes(cls) -> tuple:
+        return (cls.SEMANTIC, cls.KEYWORD)
+
+    @property
+    def is_scored(self) -> bool:
+        return self in self.__class__.scored_search_modes()
+
 
 class UserRole(StrEnum):
     # Ordered lowest to highest — definition order determines rank.

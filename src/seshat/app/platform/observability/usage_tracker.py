@@ -277,6 +277,7 @@ def track_token_budget(
     max_output_fn: Callable[[Any], int] | None = None,
     max_embedding_fn: Callable[[Any], int] | None = None,
     accumulate_to_fn: Callable[[Any], UsageTracker] | None = None,
+    run_id_fn: Callable[[Any], str | None] | None = None,
 ) -> Callable:
     """Decorator for async instance methods that tracks token usage via UsageTracker.
 
@@ -288,7 +289,13 @@ def track_token_budget(
     at call time so config changes are always respected.
 
     If accumulate_to_fn is provided, stage totals are rolled up into that tracker (typically
-    a job-level uncapped tracker on self)."""
+    a job-level uncapped tracker on self).
+
+    If run_id_fn is provided and returns a non-None run ID for the instance, metrics are
+    logged directly to that run (via log_token_metrics' run_id param) instead of relying on
+    mlflow.active_run(). Use this for high-frequency call sites sharing one long-lived run,
+    where concurrent calls can't safely share the active-run global. If run_id_fn is absent
+    or returns None, behavior is unchanged: metrics go through the active run."""
 
     if not uncapped and (max_input_fn is None or max_output_fn is None):
         raise ValueError("track_token_budget requires max_input_fn and max_output_fn unless uncapped=True")
@@ -321,6 +328,7 @@ def track_token_budget(
                     cache_creation_tokens=tracker.cache_creation_tokens,
                     embedding_input_tokens=tracker.embedding_input_tokens,
                     audio_seconds=tracker.audio_seconds,
+                    run_id=run_id_fn(self) if run_id_fn is not None else None,
                 )
 
                 if accumulate_to_fn is not None:

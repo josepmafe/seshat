@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import asyncpg
+import mlflow
 
 from seshat.app.platform.observability.latency_tracker import track_latency_profile
 from seshat.app.platform.observability.usage_tracker import UsageTracker, track_token_budget
@@ -65,11 +66,13 @@ class GraphService:
         node_repo: NodeRepository,
         extraction_orch: ExtractionOrchestrator,
         search_engine: SearchEngine,
+        search_run_id: str | None = None,
     ) -> None:
         self._repo = node_repo
         self._extraction_orch = extraction_orch
         self._search_engine = search_engine
         self._usage_tracker = UsageTracker.uncapped()
+        self._search_run_id = search_run_id
 
     # -- Read methods ----------------------------------------------------------
 
@@ -78,7 +81,12 @@ class GraphService:
         logger.debug("KB query: filter=%s -> %d nodes", node_filter.model_dump(exclude_defaults=True), len(nodes))
         return nodes
 
-    @track_token_budget("graph_search", uncapped=True, accumulate_to_fn=lambda self: self._usage_tracker)
+    @track_token_budget(
+        "graph_search",
+        uncapped=True,
+        accumulate_to_fn=lambda self: self._usage_tracker,
+        run_id_fn=lambda self: self._search_run_id,
+    )
     async def search(
         self,
         query: str,
@@ -87,12 +95,26 @@ class GraphService:
         mode: SearchMode = SearchMode.SEMANTIC,
         score_threshold: float | None = None,
     ) -> list[NodeSearchResult]:
-        logger.info(
-            "VS search: mode=%r query=%r filter=%s",
-            mode.value,
-            query[:60],
-            node_filter.model_dump(exclude_defaults=True),
-        )
+        with mlflow.start_span(name="graph_search", run_id=self._search_run_id):
+            logger.info(
+                "VS search: mode=%r query=%r filter=%s",
+                mode.value,
+                query[:60],
+                node_filter.model_dump(exclude_defaults=True),
+            )
+            results = await self._search(query, limit, node_filter, mode, score_threshold)
+
+            logger.info("VS search: %d results (mode=%r)", len(results), mode.value)
+            return results
+
+    async def _search(
+        self,
+        query: str,
+        limit: int,
+        node_filter: NodeFilter,
+        mode: SearchMode = SearchMode.SEMANTIC,
+        score_threshold: float | None = None,
+    ) -> list[NodeSearchResult]:
         try:
             # search_engine is called directly rather than through node_repo: it's a
             # retrieval strategy, not a raw store, the same sibling-dependency shape
@@ -103,19 +125,16 @@ class GraphService:
         except ValueError as exc:
             raise UnsupportedSearchModeError(str(exc)) from exc
 
-        scored = mode in (SearchMode.SEMANTIC, SearchMode.KEYWORD)
+        scored_search = mode.is_scored
         results: list[NodeSearchResult] = []
-
         for result in search_results:
             try:
                 detail = await self.get_node_detail(result.node_id)
             except NodeNotFoundError:
                 logger.warning("VS search: node %s in VS results but missing from KB — skipping", result.node_id)
-                continue
+            else:
+                results.append(NodeSearchResult(detail=detail, score=result.score if scored_search else None))
 
-            results.append(NodeSearchResult(detail=detail, score=result.score if scored else None))
-
-        logger.info("VS search: %d results (mode=%r)", len(results), mode.value)
         return results
 
     async def get_node(self, node_id: UUID) -> KBNode:
@@ -273,7 +292,8 @@ class GraphService:
 
         job_id = f"manual_resolve_{uuid4()}"
         logger.info("manual resolve: job_id=%s nodes=%d", job_id, len(nodes))
-        relationships = await self.resolve(nodes, job_id)
+        with mlflow.start_run(run_name=job_id, tags={"job_id": job_id, "source": "manual_resolve"}):
+            relationships = await self.resolve(nodes, job_id)
         return relationships
 
     @track_token_budget("manual_node_resolve", uncapped=True, accumulate_to_fn=lambda self: self._usage_tracker)

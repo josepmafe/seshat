@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+
+import mlflow
+from mlflow import MlflowClient
 
 from seshat.app.pipeline.bootstrap import (
     build_extraction_orchestrator,
@@ -23,9 +27,9 @@ from seshat.infra.ops_store.factory import get_ops_store
 from seshat.infra.vector_store.factory import get_vector_store
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
-    from seshat.core.config.settings import SeshatConfig
+    from seshat.core.config.settings import ObservabilityConfig, SeshatConfig
 
 
 @dataclass
@@ -38,7 +42,7 @@ class AppState:
 
 
 @asynccontextmanager
-async def build_app_state(config: SeshatConfig) -> AsyncIterator[AppState]:
+async def build_app_state(config: SeshatConfig) -> AsyncGenerator[AppState]:
     ops_store = get_ops_store(config)
     await ops_store.connect()
 
@@ -47,6 +51,9 @@ async def build_app_state(config: SeshatConfig) -> AsyncIterator[AppState]:
 
     blob_store = get_blob_store(config)
     await blob_store.connect()
+
+    mlflow_client = MlflowClient()
+    search_run_id = _get_search_run_id(mlflow_client, config.observability)
 
     try:
         vector_store = get_vector_store(config)
@@ -63,7 +70,7 @@ async def build_app_state(config: SeshatConfig) -> AsyncIterator[AppState]:
             observability_config=config.observability,
         )
         graph_search_engine = get_search_engine(config, vector_store, disable_multi_query=True)
-        graph_service = GraphService(node_repo, extraction_orchestrator, graph_search_engine)
+        graph_service = GraphService(node_repo, extraction_orchestrator, graph_search_engine, search_run_id)
         queue = AsyncioTaskQueue()
         job_service = JobService(
             config,
@@ -82,6 +89,21 @@ async def build_app_state(config: SeshatConfig) -> AsyncIterator[AppState]:
             job_service=job_service,
         )
     finally:
+        mlflow_client.set_terminated(search_run_id)
         await kb_store.close()
         await blob_store.close()
         await ops_store.close()
+
+
+def _get_search_run_id(mlflow_client: MlflowClient, config: ObservabilityConfig):
+    """Create one long-lived MLflow run for all GraphService.search() calls.
+
+    Created via MlflowClient so it never touches mlflow's thread-local active-run stack,
+    unlike `mlflow.start_run()`. Note that `setup_mlflow()` has already run by this point
+    (API startup, before build_app_state), so the experiment exists.
+    """
+    experiment = mlflow.get_experiment_by_name(config.mlflow_experiment_name)
+    assert experiment is not None
+    run_name = f"search-run-{datetime.now(tz=UTC).isoformat(timespec='minutes')}"
+    search_run = mlflow_client.create_run(experiment.experiment_id, tags={"source": "graph_search"}, run_name=run_name)
+    return search_run.info.run_id

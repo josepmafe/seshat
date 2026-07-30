@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import statistics
+import time
 from typing import TYPE_CHECKING
 
 import mlflow
+from mlflow import MlflowClient
+from mlflow.entities import Metric
 
 from seshat.core.utils.log import get_logger
 
@@ -79,13 +82,17 @@ def log_token_metrics(
     embedding_input_tokens: int = 0,
     audio_seconds: int = 0,
     metrics_prefix: str = "usage.",
+    run_id: str | None = None,
 ) -> None:
-    """Log LLM and embedding token counts as MLflow metrics to the active run.
+    """Log LLM and embedding token counts as MLflow metrics.
 
-    No-ops when no run is active so it is safe to call from the production pipeline
-    before MLflow is wired there.
+    Without ``run_id``, logs to the active run via ``mlflow.log_metrics`` and no-ops when no
+    run is active, so it is safe to call from the production pipeline before MLflow is wired
+    there. With ``run_id``, logs directly to that run via ``_log_metrics_to_run`` instead,
+    which bypasses the active-run check entirely for callers (e.g. concurrent request handlers)
+    that share one long-lived run and can't rely on the active-run global.
     """
-    if not mlflow.active_run():
+    if run_id is None and not mlflow.active_run():
         logger.debug("No active MLflow run: skipping log_token_metrics for stage %s", stage)
         return
 
@@ -101,7 +108,28 @@ def log_token_metrics(
         f"{metrics_prefix}embedding_input": float(embedding_input_tokens),
         f"{metrics_prefix}audio_seconds": float(audio_seconds),
     }
-    mlflow.log_metrics({k: v for k, v in metrics.items() if v != 0.0})
+    metrics = {k: v for k, v in metrics.items() if v != 0.0}
+
+    if run_id is not None:
+        _log_metrics_to_run(run_id, metrics)
+    else:
+        mlflow.log_metrics(metrics)
+
+
+def _log_metrics_to_run(run_id: str, metrics: dict[str, float]) -> None:
+    """Log metrics directly to a run via MlflowClient, bypassing the active-run global.
+
+    Unlike mlflow.log_metrics(), this never touches the thread-local active-run stack, so
+    it's safe to call from concurrent asyncio tasks sharing one long-lived run. Every call
+    logs at step=0 — points are ordered by timestamp instead, since search's call volume
+    makes a meaningful step sequence not worth the bookkeeping.
+    """
+    now = int(time.time() * 1000)
+    MlflowClient().log_batch(
+        run_id,
+        metrics=[Metric(key, value, now, 0) for key, value in metrics.items()],
+        synchronous=False,
+    )
 
 
 def set_error_tag(exc: Exception) -> None:
