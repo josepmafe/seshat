@@ -57,6 +57,14 @@ class EvalConfig(BaseSettings):
             "isolated from keyword extraction, multi-query, and reranking."
         ),
     )
+    run_sparse_search: bool = Field(
+        default=True,
+        description=(
+            "Run the sparse_search eval pass, i.e., "
+            "check if pure full-text (ts_rank_cd) similarity surfaces the right nodes, "
+            "isolated from keyword extraction."
+        ),
+    )
     run_grounding: bool = Field(
         default=True,
         description=(
@@ -92,6 +100,14 @@ class EvalConfig(BaseSettings):
         default_factory=dict,
         description="Per-mode minimum cosine-similarity thresholds [0, 1] applied during vector_search eval.",
     )
+    # Sparse-leg score thresholds calibrated by the sparse_search meta-scorer (argmax macro-F2).
+    # ts_rank_cd has its own score scale distinct from cosine similarity, so this is calibrated
+    # independently from vector_search_score_thresholds. sparse_search always runs in KEYWORD mode.
+    # Set via EVAL__SPARSE_SEARCH_SCORE_THRESHOLDS__KEYWORD=0.05 etc.
+    sparse_search_score_thresholds: dict[SearchMode, float] = Field(
+        default_factory=dict,
+        description="Per-mode minimum ts_rank_cd thresholds [0, 1] applied during sparse_search eval.",
+    )
 
     # a hidden folder in the project root for caching intermediate results during eval runs; not intended for manual use
     _cache_dir: ClassVar[Path] = PROJECT_ROOT / ".seshat" / "eval_cache"
@@ -112,6 +128,7 @@ class EvalConfig(BaseSettings):
             EvalHarness.IDENTIFICATION: self.run_identification,
             EvalHarness.RESOLUTION: self.run_resolution,
             EvalHarness.VECTOR_SEARCH: self.run_vector_search,
+            EvalHarness.SPARSE_SEARCH: self.run_sparse_search,
             EvalHarness.RETRIEVAL: self.run_retrieval,
             EvalHarness.GROUNDING: self.run_grounding,
             EvalHarness.GROUPING: self.run_grouping,

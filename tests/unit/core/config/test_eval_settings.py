@@ -28,6 +28,7 @@ class TestEnabledHarnesses:
             "identification",
             "resolution",
             "vector_search",
+            "sparse_search",
             "retrieval",
             "grounding",
             "grouping",
@@ -35,15 +36,10 @@ class TestEnabledHarnesses:
 
     def test_disabled_harness_is_excluded(self) -> None:
         cfg = EvalConfig(run_resolution=False, run_grounding=False)
-        assert cfg.enabled_harnesses == ["identification", "vector_search", "retrieval", "grouping"]
+        assert cfg.enabled_harnesses == [
+            h for h in EvalHarness if h not in (EvalHarness.RESOLUTION, EvalHarness.GROUNDING)
+        ]
 
     def test_none_enabled_returns_empty(self) -> None:
-        cfg = EvalConfig(
-            run_identification=False,
-            run_resolution=False,
-            run_retrieval=False,
-            run_vector_search=False,
-            run_grounding=False,
-            run_grouping=False,
-        )
+        cfg = EvalConfig(**{f"run_{h.value}": False for h in EvalHarness})
         assert cfg.enabled_harnesses == []

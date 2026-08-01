@@ -1,0 +1,100 @@
+corpus_id: risk-pagerduty-routing-gap-sparse
+description: >
+  Sparse-saves positive: a very operational risk about PagerDuty routing rules never being
+  migrated from OpsGenie for the payments service should surface the high-level PagerDuty
+  architectural decision and the superseded evaluation action item. The pagerduty-decision
+  candidate has high semantic distance from this risk — it is a platform-level architectural
+  choice with no mention of routing rules, OpsGenie migration, or payments service coverage
+  — so a semantic-only retriever may miss it; keyword signal ("PagerDuty") is the path that
+  saves it in a hybrid retriever.
+
+tags:
+  tier: realistic
+  source_type: risk
+  polarity: positive
+  difficulty: hard
+  keyword_signal: strong
+  pool_size: small
+  sparse_saves: true
+
+query_node:
+  id: pagerduty-routing-gap-risk
+  type: risk
+  title: "PagerDuty alert routing rules for the payments service were never migrated from OpsGenie, leaving an on-call coverage gap"
+  description: "When the team migrated from OpsGenie to PagerDuty, the alert routing rules specific to the payments service were never recreated. Payments incidents currently have no on-call routing in PagerDuty, meaning alerts may go unrouted and unacknowledged until someone notices manually."
+  quote: "Nobody migrated the payments service routing rules from OpsGenie to PagerDuty — right now a payments incident has nowhere to route in PagerDuty. That's a live gap."
+
+candidate_nodes:
+  # --- Sparse-saves positive: high-level architectural decision, high framing divergence from this operational risk ---
+  - id: pagerduty-decision
+    type: decision
+    title: "PagerDuty is the single alerting and on-call management tool for all teams"
+    description: "The team standardised on PagerDuty as the sole alerting and on-call rotation management tool, replacing the mix of OpsGenie and homegrown scripts."
+    quote: "PagerDuty is it — one tool, all teams. OpsGenie is out, the scripts are out. Agreed."
+
+  # --- Weak positive: superseded evaluation action that shares PagerDuty and OpsGenie keywords ---
+  - id: evaluate-tools-action
+    type: action_item
+    title: "Evaluate PagerDuty and OpsGenie and recommend an alerting tool"
+    description: "The platform lead was asked to evaluate both PagerDuty and OpsGenie and produce a recommendation before the next planning cycle. This action has since been closed by the pagerduty-decision."
+    quote: "Platform lead, evaluate PagerDuty vs OpsGenie and give us a recommendation next cycle."
+
+  # --- Hard negatives: same on-call/alerting domain, not linked to this risk ---
+  - id: alert-fatigue-risk
+    type: risk
+    title: "Alert fatigue from low-fidelity alerts reduces on-call responsiveness"
+    description: "A high volume of low-priority or duplicate alerts desensitises on-call engineers, increasing the risk that critical alerts are missed or responded to slowly."
+    quote: "Too many noisy alerts and on-call starts ignoring them — that's how critical pages get missed."
+
+  - id: audit-alert-rules-action
+    type: action_item
+    title: "Audit and prune low-fidelity alert rules"
+    description: "Many alert rules fire too frequently on transient conditions; an audit to remove or raise thresholds on low-fidelity rules is needed."
+    quote: "Audit the alert rules and kill the noisy ones."
+
+  - id: oncall-ownership-oq
+    type: open_question
+    title: "Should the backend on-call rotation absorb the data team on-call responsibilities?"
+    description: "The team has been debating whether to consolidate on-call ownership by merging the data team rotation into the backend rotation."
+    quote: "Do we merge the data team into the backend on-call rota, or keep them separate?"
+
+  - id: mttr-undocumented-risk
+    type: risk
+    title: "Undocumented services in the on-call rotation increase mean time to resolution"
+    description: "Services added to the on-call rotation without runbooks increase the risk of prolonged incidents because on-call engineers have no structured guidance."
+    quote: "Every undocumented service we add to on-call is a liability — the on-call engineer is flying blind."
+
+  - id: configure-rotations-action
+    type: action_item
+    title: "Configure PagerDuty on-call rotations for all backend services"
+    description: "The platform team needs to configure the on-call rotation schedules in PagerDuty for all backend services."
+    quote: "Platform team, configure the backend on-call rotations in PagerDuty before next sprint ends."
+
+  - id: no-slo-risk
+    type: risk
+    title: "No SLOs defined for the public API"
+    description: "Without agreed service-level objectives for availability and latency, there is no objective basis for measuring whether the service meets user expectations."
+    quote: "We don't have SLOs, so we don't know if we're actually meeting customer expectations."
+
+  # --- Easy negatives: completely different domain ---
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: crm-migration-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team will migrate from the legacy CRM to Salesforce over the next two quarters."
+    quote: "We're moving to Salesforce — the legacy CRM is holding the sales team back."
+
+  - id: office-lease-oq
+    type: open_question
+    title: "Should we renew the downtown office lease or relocate?"
+    description: "The current downtown office lease expires in eight months and no decision has been made."
+    quote: "The lease is up soon — do we renew or start looking for a new space?"
+
+expected_relevant_ids:
+  - pagerduty-decision
+  - evaluate-tools-action

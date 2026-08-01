@@ -41,6 +41,13 @@ RESOLUTION_RECALL: dict[ConceptType, float] = {
 VECTOR_SEARCH_RECALL_AT_5: float = 0.70
 VECTOR_SEARCH_MRR_AT_5: float = 0.75
 
+# Starting points, not calibrated values — ts_rank_cd has no semantic understanding, so this
+# corpus's keyword_signal:absent cases are close to a coin flip for this leg by construction.
+# Expect to revisit both after a first real run (see docs/superpowers/specs/
+# 2026-07-31-eval-harness-expansion-design.md §2's known-risk note).
+SPARSE_SEARCH_RECALL_AT_5: float = 0.50
+SPARSE_SEARCH_MRR_AT_5: float = 0.55
+
 RETRIEVAL_RECALL_AT_5: float = 0.70
 RETRIEVAL_MRR_AT_5: float = 0.75
 

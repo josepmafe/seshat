@@ -7,6 +7,7 @@ class EvalHarness(StrEnum):
     IDENTIFICATION = auto()
     RESOLUTION = auto()
     VECTOR_SEARCH = auto()
+    SPARSE_SEARCH = auto()
     RETRIEVAL = auto()
     GROUNDING = auto()
     GROUPING = auto()
@@ -14,7 +15,7 @@ class EvalHarness(StrEnum):
     @classmethod
     def calibratable(cls) -> tuple["EvalHarness", ...]:
         """Harnesses with a `seshat eval calibrate` entrypoint, i.e., a raw-score threshold to sweep."""
-        return (cls.IDENTIFICATION, cls.VECTOR_SEARCH)
+        return (cls.IDENTIFICATION, cls.VECTOR_SEARCH, cls.SPARSE_SEARCH)
 
 
 class ConceptType(StrEnum):

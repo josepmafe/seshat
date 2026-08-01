@@ -17,6 +17,8 @@ from seshat.eval.thresholds import (
     RESOLUTION_RECALL,
     RETRIEVAL_MRR_AT_5,
     RETRIEVAL_RECALL_AT_5,
+    SPARSE_SEARCH_MRR_AT_5,
+    SPARSE_SEARCH_RECALL_AT_5,
     VECTOR_SEARCH_MRR_AT_5,
     VECTOR_SEARCH_RECALL_AT_5,
 )
@@ -48,6 +50,7 @@ def upsert_gate(
     resolution_metrics: dict[str, float] | None = None,
     retrieval_metrics: dict[str, float] | None = None,
     vector_search_metrics: dict[str, float] | None = None,
+    sparse_search_metrics: dict[str, float] | None = None,
     grounding_metrics: dict[str, float] | None = None,
     grouping_metrics: dict[str, float] | None = None,
 ) -> GateResult:
@@ -56,6 +59,7 @@ def upsert_gate(
     res_entries = resolution_entries(resolution_metrics) if resolution_metrics is not None else None
     ret_entries = retrieval_entries(retrieval_metrics) if retrieval_metrics is not None else None
     vs_entries = vector_search_entries(vector_search_metrics) if vector_search_metrics is not None else None
+    ss_entries = sparse_search_entries(sparse_search_metrics) if sparse_search_metrics is not None else None
     grd_entries = grounding_entries(grounding_metrics) if grounding_metrics is not None else None
     grp_entries = grouping_entries(grouping_metrics) if grouping_metrics is not None else None
 
@@ -69,6 +73,8 @@ def upsert_gate(
             ret_entries = existing.retrieval_metrics
         if vs_entries is None:
             vs_entries = existing.vector_search_metrics
+        if ss_entries is None:
+            ss_entries = existing.sparse_search_metrics
         if grd_entries is None:
             grd_entries = existing.grounding_metrics
         if grp_entries is None:
@@ -80,6 +86,7 @@ def upsert_gate(
         resolution_metrics=res_entries,
         retrieval_metrics=ret_entries,
         vector_search_metrics=vs_entries,
+        sparse_search_metrics=ss_entries,
         grounding_metrics=grd_entries,
         grouping_metrics=grp_entries,
     )
@@ -146,6 +153,19 @@ def vector_search_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:
                 return None
 
     return _harness_entries(metrics, vector_search_gate_judge)
+
+
+def sparse_search_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:
+    def sparse_search_gate_judge(key: str, value: float) -> bool | None:
+        match key:
+            case "recall_at_5":
+                return value >= SPARSE_SEARCH_RECALL_AT_5
+            case "mrr_at_5":
+                return value >= SPARSE_SEARCH_MRR_AT_5
+            case _:
+                return None
+
+    return _harness_entries(metrics, sparse_search_gate_judge)
 
 
 def grounding_entries(metrics: dict[str, float]) -> dict[str, MetricEntry]:

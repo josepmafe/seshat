@@ -104,16 +104,25 @@ def _run_single_harness(harness: EvalHarness, tags: list[str] | None) -> None:
         match harness:
             case EvalHarness.GROUPING:
                 from seshat.eval.grouping.entrypoint import run
+
             case EvalHarness.IDENTIFICATION:
                 from seshat.eval.identification.entrypoint import run
+
             case EvalHarness.RESOLUTION:
                 from seshat.eval.resolution.entrypoint import run
+
             case EvalHarness.RETRIEVAL:
                 from seshat.eval.retrieval.entrypoint import run
+
             case EvalHarness.VECTOR_SEARCH:
                 from seshat.eval.vector_search.entrypoint import run
+
+            case EvalHarness.SPARSE_SEARCH:
+                from seshat.eval.sparse_search.entrypoint import run
+
             case EvalHarness.GROUNDING:
                 from seshat.eval.grounding.entrypoint import run
+
             case _:
                 raise ValueError(f"no entrypoint wired for harness {harness!r}")
 
@@ -168,6 +177,9 @@ def calibrate_cmd(
         match component:
             case EvalHarness.VECTOR_SEARCH:
                 from seshat.eval.calibration.vector_search_entrypoint import run
+
+            case EvalHarness.SPARSE_SEARCH:
+                from seshat.eval.calibration.sparse_search_entrypoint import run
 
             case EvalHarness.IDENTIFICATION:
                 from seshat.eval.calibration.identification_entrypoint import run

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from seshat.core.models.enums import EvalHarness
 from tests.integration.conftest import SKIP_IF_NO_LLM_API
 from tests.integration.eval.helpers import make_eval_config, make_identification_meta_scorer
 
@@ -22,7 +23,7 @@ class TestIdentificationMetaScorerIntegration:
 
         result = await scorer.sweep_threshold()
 
-        corpus_files = list(config.identification_corpus_dir.glob("*.yaml"))
+        corpus_files = list(config.corpus_dir(EvalHarness.IDENTIFICATION).glob("*.yaml"))
         assert len(result.points) == 11  # step=0.1 → 0.0, 0.1, …, 1.0
         assert len(corpus_files) > 0
         assert result.suggested_threshold is not None

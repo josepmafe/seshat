@@ -1,0 +1,183 @@
+corpus_id: negative-decision-redis-cache-cross-domain
+description: >
+  Negative case with a cross-domain contamination pool. The query is a decision to adopt
+  Redis as the distributed caching layer. The 25 candidates split into two groups: an
+  infra/DB group (including two hard Redis-topic negatives about HA topology and hosting
+  model that share the Redis keyword but address entirely different concerns) and a
+  completely unrelated HR/finance/legal/sales group. Neither group contains anything
+  relevant to the Redis adoption decision. A correct retrieval system must return nothing
+  above threshold via either keyword or semantic paths.
+
+tags:
+  tier: negative
+  source_type: decision
+  polarity: negative
+  difficulty: hard
+  keyword_signal: strong
+  pool_size: large
+  sparse_saves: false
+
+query_node:
+  id: redis-cache-decision
+  type: decision
+  title: "Adopt Redis as the distributed caching layer for all session data and high-frequency lookup tables"
+  description: "Redis is adopted as the shared distributed caching layer for session data and high-frequency lookup tables across all services, replacing in-process caches. All services must access the shared Redis cluster via the internal cache client library rather than managing their own cache instances."
+  quote: "We're going with Redis — shared cluster, all session data and hot lookup tables run through it. Everyone uses the cache client library, no more in-process caches. Agreed."
+
+candidate_nodes:
+  # --- GROUP A: Infra/DB domain — mentions Redis, cache, database, or infra vocabulary but addresses different concerns ---
+
+  - id: postgres-decision
+    type: decision
+    title: "Use PostgreSQL as the primary relational database"
+    description: "PostgreSQL is selected as the sole relational persistence layer for all services. No other relational database may be introduced without a formal architecture review."
+    quote: "We're standardising on PostgreSQL, no more mixed database landscape."
+
+  - id: adopt-kubernetes
+    type: decision
+    title: "Adopt Kubernetes for container orchestration"
+    description: "The team decided to use Kubernetes as the container orchestration platform for all production workloads, replacing the current manually-managed VM fleet."
+    quote: "We're going with Kubernetes, it's the right choice for our scale."
+
+  - id: flyway-adoption-decision
+    type: decision
+    title: "Adopt Flyway for all database migrations going forward"
+    description: "The team standardised on Flyway as the migration toolchain for all database schema changes, replacing ad-hoc SQL scripts applied manually per service."
+    quote: "We're standardising on Flyway — the per-service ad-hoc scripts are unmanageable."
+
+  - id: alpine-base-image
+    type: decision
+    title: "Standardise on a minimal Alpine-based container image for all services"
+    description: "All service container images must use a minimal Alpine Linux base image to reduce image size and attack surface."
+    quote: "Alpine base for everything — smaller images, smaller attack surface."
+
+  - id: api-gateway-decision
+    type: decision
+    title: "Introduce an API gateway for all external traffic"
+    description: "All inbound external requests must route through a centralised API gateway responsible for authentication, rate-limiting, and routing."
+    quote: "Everything from outside goes through the gateway first."
+
+  - id: connection-pool-risk
+    type: risk
+    title: "Blue-green deploy cutover may cause brief connection pool exhaustion"
+    description: "During blue-green cutovers, the connection pool may momentarily be saturated if both old and new instances are draining simultaneously."
+    quote: "We've seen the pool spike during cutover — old and new instances both holding connections."
+
+  - id: vendor-lock-in-risk
+    type: risk
+    title: "Deep vendor lock-in to a single cloud provider limits negotiating leverage"
+    description: "The architecture relies on several provider-specific managed services; switching providers would require a full rebuild of significant platform components."
+    quote: "We're so deep into one cloud provider they can charge us whatever they want."
+
+  - id: missing-index-risk
+    type: risk
+    title: "Missing composite indexes may cause further reporting dashboard outages"
+    description: "The composite index backfill on the events table is incomplete; further incidents blocking the reporting dashboard are possible before the fix is applied."
+    quote: "The underlying risk is still open — we don't know the full extent of the missing indexes yet."
+
+  - id: metrics-schema-risk
+    type: risk
+    title: "Metrics pipeline has no schema validation, allowing silent data corruption"
+    description: "The metrics ingestion pipeline accepts any payload without validation; malformed events are silently dropped or stored with wrong types, corrupting downstream analytics."
+    quote: "The metrics pipeline will accept anything — bad payloads corrupt the data with no warning."
+
+  - id: scan-partitions-action
+    type: action_item
+    title: "Scan partitions for missing indexes and draft remediation plan"
+    description: "Lena will scan all events table partitions to identify missing composite index coverage and produce a remediation plan by Thursday."
+    quote: "Lena, can you run that scan and put together a remediation plan by Thursday? Sure, I'll take that."
+
+  - id: provision-staging-action
+    type: action_item
+    title: "Provision a dedicated staging environment for Flyway onboarding tests"
+    description: "The platform team needs to provision a staging environment before any service can be onboarded to the Flyway migration toolchain."
+    quote: "Platform team, provision staging first — services can't onboard to Flyway without it."
+
+  - id: deploy-strategy-oq
+    type: open_question
+    title: "Should we adopt blue-green or canary deploys for stateful services?"
+    description: "The team has not chosen between blue-green and canary deployment strategies for stateful services that require database migrations alongside deployment."
+    quote: "Blue-green or canary for stateful services? We need a call on this before the next release."
+
+  - id: rollback-strategy-oq
+    type: open_question
+    title: "What is the rollback strategy if a Flyway migration fails mid-deployment?"
+    description: "The team has not defined a rollback procedure for failed Flyway migrations in production. A failed migration may leave the schema in a partially-applied state."
+    quote: "If a migration fails halfway, what do we do? We haven't defined that yet."
+
+  # --- Hard negatives: same Redis topic, different concern (hosting model and HA topology) ---
+  - id: redis-managed-oq
+    type: open_question
+    title: "Should we use a managed Redis service or self-host the Redis cluster?"
+    description: "The team has not decided whether to use a cloud-managed Redis service or self-host the Redis cluster on existing Kubernetes infrastructure. Managed Redis reduces operational burden but adds per-instance cost."
+    quote: "Managed Redis or self-hosted on Kubernetes? Managed is easier to run but costs more — we haven't decided."
+
+  - id: redis-ha-oq
+    type: open_question
+    title: "Should Redis Cluster or Redis Sentinel be used for high availability?"
+    description: "The team needs to decide between Redis Cluster and Redis Sentinel for the high-availability configuration of the shared Redis deployment. Cluster offers horizontal scaling; Sentinel provides simpler failover for a single primary."
+    quote: "Redis Cluster or Sentinel for HA? Cluster scales horizontally but Sentinel is simpler for a single primary setup."
+
+  # --- GROUP B: Completely unrelated HR/finance/legal/sales domain ---
+
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles, delaying the roadmap by at least one quarter."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: budget-overrun-risk
+    type: risk
+    title: "Project is tracking 20% over budget with no approved contingency"
+    description: "Current spend trajectory puts the project 20% over the approved budget by end of Q3 and no contingency has been approved by finance."
+    quote: "We're going to blow the budget by Q3 and there's no contingency approved."
+
+  - id: crm-migration-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team will migrate from the legacy CRM to Salesforce over the next two quarters. All customer data must be migrated and validated before the legacy CRM is decommissioned."
+    quote: "We're moving to Salesforce — the legacy CRM is holding the sales team back."
+
+  - id: renew-office-lease-downtown
+    type: decision
+    title: "Renew downtown office lease for three more years"
+    description: "The executive team decided to renew the downtown office lease for a further three-year term. Negotiation of revised lease terms will be led by the office manager."
+    quote: "We're renewing the downtown lease for three more years — office manager, take the lead on the negotiation."
+
+  - id: freeze-external-hiring
+    type: decision
+    title: "Freeze external hiring for the remainder of the fiscal year"
+    description: "No new external hires will be made for the remainder of the fiscal year. Open roles may be filled by internal transfers only. The freeze will be reviewed at the start of the next fiscal year."
+    quote: "External hiring is frozen for the rest of the fiscal year. Internal transfers only — we'll revisit at the start of next year."
+
+  - id: logo-redesign-action
+    type: action_item
+    title: "Commission external agency for company logo redesign"
+    description: "The executive team approved an external brand agency commission for a full company logo and visual identity redesign."
+    quote: "Get an agency brief together for the rebrand by end of next week."
+
+  - id: dpia-update-action
+    type: action_item
+    title: "Update DPIA to include the consent service and new PII fields before go-live"
+    description: "The Data Protection Impact Assessment must be updated to cover the consent service and any newly classified PII fields before the feature can receive sign-off for production deployment."
+    quote: "Someone needs to update the DPIA to include the consent service before we can go live."
+
+  - id: office-lease-oq
+    type: open_question
+    title: "Should we renew the downtown office lease or relocate?"
+    description: "The current downtown office lease expires in eight months. No decision has been made on whether to renew, negotiate a shorter term, or begin a relocation search."
+    quote: "The lease is up soon — do we renew or start looking for a new space?"
+
+  - id: oncall-ownership-oq
+    type: open_question
+    title: "Should the backend on-call rotation absorb the data team on-call responsibilities?"
+    description: "The team has been debating whether to consolidate on-call ownership by merging the data team rotation into the backend rotation to reduce the number of separate rotations."
+    quote: "Do we merge the data team into the backend on-call rota, or keep them separate?"
+
+  - id: four-day-week-oq
+    type: open_question
+    title: "Should the company adopt a four-day work week for engineering teams?"
+    description: "Following internal surveys showing strong interest, the question of whether to trial a four-day work week for engineering has been raised at the leadership level but not yet formally evaluated."
+    quote: "The survey results were pretty clear — a lot of engineers want a four-day week. Are we willing to actually evaluate it?"
+
+expected_relevant_ids: []

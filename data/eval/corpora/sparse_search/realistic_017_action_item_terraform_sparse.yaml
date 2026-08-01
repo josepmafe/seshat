@@ -1,0 +1,94 @@
+corpus_id: action-item-terraform-state-migration-sparse
+description: >
+  Sparse-saves positive: a specific operational action item about migrating Terraform state
+  files to an S3 backend with DynamoDB locking should surface the broad architectural
+  Terraform adoption decision and the state-locking risk it directly addresses. The
+  terraform-adoption-decision candidate has high semantic distance from this operational
+  task — it focuses on module registry governance, not state backends or DynamoDB locking
+  — so a semantic-only retriever may miss it; keyword signal ("Terraform") is the path
+  that saves it in a hybrid retriever.
+
+tags:
+  tier: realistic
+  source_type: action_item
+  polarity: positive
+  difficulty: hard
+  keyword_signal: strong
+  pool_size: small
+  sparse_saves: true
+
+query_node:
+  id: terraform-state-migration-action
+  type: action_item
+  title: "Migrate Terraform state files from local developer machines to the shared S3 backend with DynamoDB locking"
+  description: "All Terraform state files currently stored on individual developer machines must be migrated to the shared S3 backend before the next sprint planning session. DynamoDB locking must be enabled on the backend configuration to prevent concurrent apply conflicts."
+  quote: "Everyone's got Terraform state on their laptops right now — we need those migrated to the S3 backend with DynamoDB locking before sprint planning next week."
+
+candidate_nodes:
+  # --- Sparse-saves positive: architectural standard, high framing divergence from this operational migration task ---
+  - id: terraform-adoption-decision
+    type: decision
+    title: "Standardise on Terraform v1.5 with mandatory module registry for all infrastructure provisioning"
+    description: "All infrastructure provisioning must use Terraform v1.5 with modules sourced exclusively from the internal module registry. Ad-hoc Ansible playbooks and manual ClickOps console changes are no longer permitted."
+    quote: "We're standardising on Terraform v1.5, module registry is mandatory. Ansible playbooks and ClickOps are out — full stop."
+
+  # --- Weak positive: closer semantic match; shares Terraform state files, S3, locking; this action directly addresses this risk ---
+  - id: terraform-state-locking-risk
+    type: risk
+    title: "Unversioned Terraform state files stored in S3 without locking cause concurrent apply conflicts"
+    description: "If multiple engineers run terraform apply against the same state file simultaneously, the last write wins and earlier changes are silently lost. DynamoDB locking is not yet configured on the S3 state backend."
+    quote: "Two people running apply at the same time against the same state file — that's how you get silent overwrites. We need locking sorted."
+
+  # --- Hard negatives: same IaC/infra domain, not linked to this action ---
+  - id: provision-staging-action
+    type: action_item
+    title: "Provision a dedicated staging environment for Flyway onboarding tests"
+    description: "The platform team needs to provision a staging environment before any service can be onboarded to the Flyway migration toolchain."
+    quote: "Platform team, provision staging first — services can't onboard to Flyway without a proper staging environment."
+
+  - id: adopt-kubernetes
+    type: decision
+    title: "Adopt Kubernetes for container orchestration"
+    description: "The team decided to use Kubernetes as the container orchestration platform for all production workloads, replacing the current manually-managed VM fleet."
+    quote: "We're going with Kubernetes, it's the right choice for our scale."
+
+  - id: vendor-lock-in-risk
+    type: risk
+    title: "Deep vendor lock-in to a single cloud provider limits negotiating leverage"
+    description: "The architecture relies on several provider-specific managed services; switching providers would require a full rebuild of significant platform components."
+    quote: "We're so deep into one cloud provider they can charge us whatever they want."
+
+  - id: deploy-strategy-oq
+    type: open_question
+    title: "Should we adopt blue-green or canary deploys for stateful services?"
+    description: "The team has not chosen between blue-green and canary deployment strategies for stateful services that require database migrations."
+    quote: "Blue-green or canary for stateful services? We need a call on this before the next release."
+
+  - id: api-gateway-decision
+    type: decision
+    title: "Introduce an API gateway for all external traffic"
+    description: "All inbound external requests must route through a centralised API gateway responsible for auth, rate-limiting, and routing."
+    quote: "Everything from outside goes through the gateway first."
+
+  # --- Easy negatives: completely different domain ---
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: logo-redesign-action
+    type: action_item
+    title: "Commission external agency for company logo redesign"
+    description: "The executive team approved an external brand agency commission for a full logo redesign."
+    quote: "Get an agency brief together for the rebrand by end of next week."
+
+  - id: crm-migration-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team will migrate from the legacy CRM to Salesforce over the next two quarters."
+    quote: "We're moving to Salesforce — the legacy CRM is holding the sales team back."
+
+expected_relevant_ids:
+  - terraform-adoption-decision
+  - terraform-state-locking-risk

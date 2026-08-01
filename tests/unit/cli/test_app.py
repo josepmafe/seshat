@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from seshat.cli import _eval_support as support
 from seshat.cli.app import app
 from seshat.core.config.eval_settings import EvalConfig
+from seshat.core.models.enums import EvalHarness
 
 # `seshat.cli.__init__` binds the name `app` to the Typer object, shadowing the
 # `seshat.cli.app` submodule on attribute access; fetch the real module from sys.modules.
@@ -24,7 +25,7 @@ runner = CliRunner()
 def cache_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point EvalConfig's cache dir at a tmp tree with one seeded file per harness."""
     monkeypatch.setattr(EvalConfig, "_cache_dir", tmp_path)
-    for harness in ("identification", "resolution", "retrieval", "vector_search", "grounding", "grouping"):
+    for harness in EvalHarness:
         subdir = tmp_path / harness
         subdir.mkdir()
         (subdir / "seed.json").write_text("{}")
@@ -44,7 +45,7 @@ class TestClearCacheCommand:
         result = runner.invoke(app, ["eval", "clear-cache"])
 
         assert result.exit_code == 0
-        for harness in ("identification", "resolution", "retrieval", "vector_search", "grounding", "grouping"):
+        for harness in EvalHarness:
             assert list((cache_root / harness).glob("*.json")) == []
 
     def test_unknown_harness_exits_nonzero(self, cache_root: Path) -> None:
@@ -77,8 +78,8 @@ class TestHarnessAllFlag:
     @pytest.fixture(autouse=True)
     def _all_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Pin every run_<harness> flag so tests do not depend on a local .env.
-        for flag in ("IDENTIFICATION", "RESOLUTION", "RETRIEVAL", "VECTOR_SEARCH", "GROUNDING", "GROUPING"):
-            monkeypatch.setenv(f"EVAL__RUN_{flag}", "true")
+        for harness in EvalHarness:
+            monkeypatch.setenv(f"EVAL__RUN_{harness.name}", "true")
 
     def test_all_runs_each_enabled_harness(self, cache_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         ran: list[str] = []
@@ -87,7 +88,7 @@ class TestHarnessAllFlag:
         result = runner.invoke(app, ["eval", "harness", "--all"])
 
         assert result.exit_code == 0
-        assert ran == ["identification", "resolution", "vector_search", "retrieval", "grounding", "grouping"]
+        assert ran == list(EvalHarness)
 
     def test_all_respects_disabled_flags(self, cache_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("EVAL__RUN_RESOLUTION", "false")
@@ -98,7 +99,7 @@ class TestHarnessAllFlag:
         result = runner.invoke(app, ["eval", "harness", "--all"])
 
         assert result.exit_code == 0
-        assert ran == ["identification", "vector_search", "retrieval", "grouping"]
+        assert ran == [h for h in EvalHarness if h not in (EvalHarness.RESOLUTION, EvalHarness.GROUNDING)]
 
     def test_all_with_clear_cache_clears_each_run_harness(
         self, cache_root: Path, monkeypatch: pytest.MonkeyPatch
@@ -125,8 +126,8 @@ class TestHarnessAllFlag:
         assert result.exit_code == 1
 
     def test_all_with_nothing_enabled_errors(self, cache_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        for flag in ("IDENTIFICATION", "RESOLUTION", "RETRIEVAL", "VECTOR_SEARCH", "GROUNDING", "GROUPING"):
-            monkeypatch.setenv(f"EVAL__RUN_{flag}", "false")
+        for harness in EvalHarness:
+            monkeypatch.setenv(f"EVAL__RUN_{harness.name}", "false")
 
         result = runner.invoke(app, ["eval", "harness", "--all"])
 
@@ -145,7 +146,7 @@ class TestHarnessAllFlag:
         result = runner.invoke(app, ["eval", "harness", "--all"])
 
         # every harness is attempted despite resolution raising
-        assert ran == ["identification", "resolution", "vector_search", "retrieval", "grounding", "grouping"]
+        assert ran == list(EvalHarness)
         # a failure makes the overall run exit non-zero
         assert result.exit_code == 1
         # the failed harness is named in the summary

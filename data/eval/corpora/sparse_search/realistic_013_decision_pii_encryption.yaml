@@ -1,0 +1,104 @@
+corpus_id: decision-pii-field-encryption-mixed-pool
+description: >
+  Realistic mixed-pool positive: a decision to apply field-level AES-256 encryption to PII
+  fields citing GDPR Article 32 should surface the GDPR erasure open question, the PII
+  logging risk it mitigates, and the DPIA update action item it triggers. Keyword signal
+  is strong — "PII" and "GDPR" anchor all three positives.
+
+tags:
+  tier: realistic
+  source_type: decision
+  polarity: positive
+  difficulty: hard
+  keyword_signal: strong
+  pool_size: small
+  sparse_saves: false
+
+query_node:
+  id: pii-field-encryption-decision
+  type: decision
+  title: "Classify customer PII fields and apply field-level AES-256 encryption before persistence"
+  description: "All customer email addresses, phone numbers, and billing addresses are classified as PII under GDPR Article 32. Field-level AES-256 encryption must be applied before any persistence layer write. Existing unencrypted records will be backfilled in the next maintenance window."
+  quote: "Email, phone, billing address — all PII, all encrypted at the field level with AES-256 before we write anything. That's a GDPR Article 32 obligation and we need to be compliant."
+
+candidate_nodes:
+  # --- Strong positives: OQ and risk directly related to PII and GDPR ---
+  - id: gdpr-erasure-oq
+    type: open_question
+    title: "Which customer data fields are in scope for GDPR Article 17 right-to-erasure?"
+    description: "Legal has not produced a definitive list of customer data fields that must be deleted on erasure requests under GDPR Article 17. Without this, engineering cannot build a compliant deletion pipeline."
+    quote: "We need legal to tell us exactly which fields are in scope for right-to-erasure — we can't build the deletion pipeline without that list."
+
+  - id: pii-logging-risk
+    type: risk
+    title: "Logging pipeline emits raw PII fields in structured log events, creating a GDPR exposure"
+    description: "Structured log events from the user service include raw email addresses and phone numbers in plaintext. These logs are shipped to the centralised log aggregator without any PII scrubbing, creating a GDPR data minimisation and exposure risk."
+    quote: "The user service logs are shipping raw email and phone numbers to the log aggregator. That's a GDPR exposure sitting right there."
+
+  # --- Weak positive: action item triggered by the governance footprint of this decision ---
+  - id: dpia-update-action
+    type: action_item
+    title: "Update DPIA to include the consent service and new PII fields before go-live"
+    description: "The Data Protection Impact Assessment must be updated to reflect the consent service and any newly classified PII fields before the feature can receive sign-off for production deployment."
+    quote: "Someone needs to update the DPIA to include the consent service and the new PII fields before we can go live."
+
+  # --- Hard negatives: same compliance/data domain, not linked to this decision ---
+  - id: schema-version-risk
+    type: risk
+    title: "Missing consent schema version field will cause compliance gaps on policy updates"
+    description: "Without a version field on consent records, the service cannot determine which consent wording version a user accepted, making GDPR policy update handling unreliable."
+    quote: "If we update the consent wording, we won't know which version a user accepted — that's a compliance gap."
+
+  - id: consent-storage-decision
+    type: decision
+    title: "Use Postgres for consent record storage until data platform migration"
+    description: "The team chose Postgres over a document store as the consent record store, deferring the move to the centralised data platform."
+    quote: "Let's go with Postgres for consent records for now, until we move to the centralised data platform."
+
+  - id: audit-trail-oq
+    type: open_question
+    title: "Must export job logs be included in the customer-facing audit trail?"
+    description: "Legal has not confirmed whether export job logs are required in the customer-facing audit trail for compliance purposes."
+    quote: "We haven't confirmed whether export job logs need to be in the audit trail — legal needs to weigh in."
+
+  - id: pentest-action
+    type: action_item
+    title: "Commission external penetration test before public beta launch"
+    description: "The security team has been asked to procure an external penetration test covering the authentication, payments, and API gateway surfaces before the public beta launch."
+    quote: "We need an external pentest before beta goes public — auth, payments, and the gateway at minimum."
+
+  - id: key-rotation-risk
+    type: risk
+    title: "Encryption key rotation period exceeds company security policy of 90 days"
+    description: "The current KMS key rotation schedule is set to 365 days. Company security policy requires rotation at least every 90 days for keys protecting customer data."
+    quote: "Our KMS keys are rotating annually, but the security policy says 90 days for anything touching customer data. That's a gap."
+
+  # --- Easy negatives: completely different domain ---
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: office-lease-oq
+    type: open_question
+    title: "Should we renew the downtown office lease or relocate?"
+    description: "The current downtown office lease expires in eight months and no decision has been made."
+    quote: "The lease is up soon — do we renew or start looking for a new space?"
+
+  - id: adopt-kubernetes
+    type: decision
+    title: "Adopt Kubernetes for container orchestration"
+    description: "The team decided to use Kubernetes as the container orchestration platform for all production workloads, replacing the current manually-managed VM fleet."
+    quote: "We're going with Kubernetes, it's the right choice for our scale."
+
+  - id: configure-rotations-action
+    type: action_item
+    title: "Configure PagerDuty on-call rotations for all backend services"
+    description: "The platform team needs to configure the on-call rotation schedules in PagerDuty for all backend services."
+    quote: "Platform team, configure the backend on-call rotations in PagerDuty before next sprint ends."
+
+expected_relevant_ids:
+  - gdpr-erasure-oq
+  - pii-logging-risk
+  - dpia-update-action
