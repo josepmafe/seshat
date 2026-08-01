@@ -11,12 +11,7 @@ if TYPE_CHECKING:
 
 import typer
 
-from seshat.cli._eval_support import (
-    CALIBRATION_TYPES,
-    HARNESS_TYPES,
-    bootstrap_eval,
-    parse_tags,
-)
+from seshat.cli._eval_support import bootstrap_eval, parse_tags
 from seshat.core.config.eval_settings import EvalConfig
 from seshat.core.models.enums import EvalHarness
 from seshat.core.utils.log import get_logger
@@ -40,8 +35,8 @@ app.add_typer(eval_app, name="eval")
 @eval_app.command("harness")
 def eval_cmd(
     harness: Annotated[
-        str | None,
-        typer.Argument(help=f"Harness to run: {' | '.join(HARNESS_TYPES)}. Omit with --all to run all enabled."),
+        EvalHarness | None,
+        typer.Argument(help="Harness to run. Omit with --all to run all enabled."),
     ] = None,
     tags: Annotated[
         list[str] | None,
@@ -80,7 +75,7 @@ def eval_cmd(
 
     # A single harness failing (transient provider error, a bad fixture) should not throw away
     # the spend on the others — run them all, collect failures, and report at the end.
-    failed: list[str] = []
+    failed: list[EvalHarness] = []
     for h in harnesses:
         if clear_cache:
             _clear_cache(h)
@@ -99,7 +94,7 @@ def eval_cmd(
     typer.echo(f"\nAll {len(harnesses)} harnesses completed: {', '.join(harnesses)}")
 
 
-def _run_single_harness(harness: str, tags: list[str] | None) -> None:
+def _run_single_harness(harness: EvalHarness, tags: list[str] | None) -> None:
     """Bootstrap MLflow and run a single named harness against the labelled corpus."""
     import mlflow
 
@@ -107,21 +102,20 @@ def _run_single_harness(harness: str, tags: list[str] | None) -> None:
         eval_config, seshat_config, run_name = bootstrap_eval(harness)
 
         match harness:
-            case "grouping":
+            case EvalHarness.GROUPING:
                 from seshat.eval.grouping.entrypoint import run
-            case "identification":
+            case EvalHarness.IDENTIFICATION:
                 from seshat.eval.identification.entrypoint import run
-            case "resolution":
+            case EvalHarness.RESOLUTION:
                 from seshat.eval.resolution.entrypoint import run
-            case "retrieval":
+            case EvalHarness.RETRIEVAL:
                 from seshat.eval.retrieval.entrypoint import run
-            case "vector_search":
+            case EvalHarness.VECTOR_SEARCH:
                 from seshat.eval.vector_search.entrypoint import run
-            case "grounding":
+            case EvalHarness.GROUNDING:
                 from seshat.eval.grounding.entrypoint import run
             case _:
-                typer.echo(f"Unknown harness '{harness}'. Choose from: {', '.join(HARNESS_TYPES)}", err=True)
-                raise typer.Exit(code=1)
+                raise ValueError(f"no entrypoint wired for harness {harness!r}")
 
         tag_filter = parse_tags(tags) if tags is not None else None
         with mlflow.start_run(run_name=run_name):
@@ -133,13 +127,13 @@ def _run_single_harness(harness: str, tags: list[str] | None) -> None:
 @eval_app.command("clear-cache")
 def clear_cache_cmd(
     harness: Annotated[
-        str | None,
-        typer.Argument(help=f"Harness cache to clear: {' | '.join(HARNESS_TYPES)}. Omit to clear all."),
+        EvalHarness | None,
+        typer.Argument(help="Harness cache to clear. Omit to clear all."),
     ] = None,
 ) -> None:
     """Clear cached eval predictions for one harness, or all harnesses when none is given."""
     if harness is None:
-        for h in HARNESS_TYPES:
+        for h in EvalHarness:
             _clear_cache(h)
     else:
         _clear_cache(harness)
@@ -147,7 +141,7 @@ def clear_cache_cmd(
 
 @eval_app.command("calibrate")
 def calibrate_cmd(
-    component: Annotated[str, typer.Argument(help=f"Component to calibrate: {' | '.join(CALIBRATION_TYPES)}")],
+    component: Annotated[EvalHarness, typer.Argument(help="Harness to calibrate.")],
     pc_curve: bool = typer.Option(False, "--pc-curve", help="Plot precision-coverage curve (identification only)"),
     p_target: float = typer.Option(0.95, "--p-target", help="Precision target for threshold sweep"),
     ignore_grounding: bool = typer.Option(False, "--ignore-grounding", help="Ignore grounding signal in calibration"),
@@ -159,6 +153,11 @@ def calibrate_cmd(
     """Calibrate eval thresholds and weights for the given component."""
     import mlflow
 
+    if component not in EvalHarness.calibratable():
+        calibratable_names = ", ".join(EvalHarness.calibratable())
+        typer.echo(f"'{component}' has no calibration entrypoint. Choose from: {calibratable_names}", err=True)
+        raise typer.Exit(code=1)
+
     if clear_cache:
         _clear_cache(component)
 
@@ -167,18 +166,18 @@ def calibrate_cmd(
 
         _kwargs: dict[str, Any] = {"eval_config": eval_config, "seshat_config": seshat_config}
         match component:
-            case "vector_search":
+            case EvalHarness.VECTOR_SEARCH:
                 from seshat.eval.calibration.vector_search_entrypoint import run
 
-            case "identification":
+            case EvalHarness.IDENTIFICATION:
                 from seshat.eval.calibration.identification_entrypoint import run
 
                 mode = "precision_coverage_curve" if pc_curve else "sweep_threshold"
                 _kwargs.update({"mode": mode, "p_target": p_target, "ignore_grounding": ignore_grounding})
 
             case _:
-                typer.echo(f"Unknown component '{component}'. Choose from: {', '.join(CALIBRATION_TYPES)}", err=True)
-                raise typer.Exit(code=1)
+                # Unreachable: the calibratable() guard above already rejected any other harness.
+                raise ValueError(f"no calibration entrypoint wired for harness {component!r}")
 
         with mlflow.start_run(run_name=run_name):
             await run(**_kwargs)
@@ -238,15 +237,11 @@ def migrate_cmd(
     raise typer.Exit(code=result.returncode)
 
 
-def _clear_cache(harness: str) -> None:
+def _clear_cache(harness: EvalHarness) -> None:
     """Clear the prediction cache directory for a single harness."""
     from seshat.eval.cache import clear_cache_dir
 
-    if harness not in HARNESS_TYPES:
-        typer.echo(f"Unknown harness '{harness}'. Choose from: {', '.join(HARNESS_TYPES)}", err=True)
-        raise typer.Exit(code=1)
-
-    cache_dir = EvalConfig.cache_dir(EvalHarness(harness))
+    cache_dir = EvalConfig.cache_dir(harness)
     clear_cache_dir(cache_dir)
     typer.echo(f"Cleared eval cache for '{harness}': {cache_dir}")
 

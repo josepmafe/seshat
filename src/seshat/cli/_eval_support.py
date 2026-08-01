@@ -17,7 +17,6 @@ from dotenv import load_dotenv
 from seshat.app.platform.observability.mlflow_setup import setup_mlflow
 from seshat.core.config.eval_settings import EvalConfig
 from seshat.core.config.settings import GroundingLLMConfig, ObservabilityConfig, SeshatConfig
-from seshat.core.models.enums import EvalHarness
 from seshat.core.utils.http_patch import inject_os_truststore
 from seshat.core.utils.log import configure_logging, get_logger, set_job_id
 from seshat.eval.mlflow_logging import configure_trace_processors
@@ -26,9 +25,6 @@ if TYPE_CHECKING:
     from seshat.eval.corpus_tags import CorpusTagFilter
 
 logger = get_logger(__name__)
-
-HARNESS_TYPES = list(EvalHarness)
-CALIBRATION_TYPES = list(EvalHarness.calibratable())
 
 
 def bootstrap_eval(harness_type: str) -> tuple[EvalConfig, SeshatConfig, str]:

@@ -50,8 +50,9 @@ class TestClearCacheCommand:
     def test_unknown_harness_exits_nonzero(self, cache_root: Path) -> None:
         result = runner.invoke(app, ["eval", "clear-cache", "bogus"])
 
-        assert result.exit_code == 1
-        assert "Unknown harness" in result.output
+        # Typer's own enum validation rejects the value (exit code 2), before our code runs.
+        assert result.exit_code == 2
+        assert "Invalid value" in result.output
 
 
 class TestHarnessClearCacheFlag:
@@ -183,12 +184,19 @@ class TestCalibrateClearCacheFlag:
 
         monkeypatch.setattr(cli_app, "_run_async", _fake_run_async)
 
-        result = runner.invoke(app, ["eval", "calibrate", "retrieval", "--clear-cache"])
+        result = runner.invoke(app, ["eval", "calibrate", "vector_search", "--clear-cache"])
 
         assert result.exit_code == 0
-        assert list((cache_root / "retrieval").glob("*.json")) == []
+        assert list((cache_root / "vector_search").glob("*.json")) == []
         assert list((cache_root / "grouping").glob("*.json")) != []
         assert ran
+
+    def test_non_calibratable_harness_exits_nonzero(self, cache_root: Path) -> None:
+        # "retrieval" is a valid EvalHarness but has no calibration entrypoint.
+        result = runner.invoke(app, ["eval", "calibrate", "retrieval"])
+
+        assert result.exit_code == 1
+        assert "no calibration entrypoint" in result.output
 
 
 class TestBoundMlflowRetries:
