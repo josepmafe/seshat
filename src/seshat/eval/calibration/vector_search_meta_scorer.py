@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from seshat.app.platform.observability.usage_tracker import track_eval_usage
+from seshat.core.models.enums import EvalHarness
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.calibration.models import RetrievalSweepPoint, RetrievalSweepResult
 from seshat.eval.models import RetrievalScoredResult
@@ -41,6 +42,8 @@ class VectorSearchMetaScorer:
         self._search_engine = search_engine
         self._vs = vector_store
         self._config = config
+        self._corpus_dir = config.corpus_dir(EvalHarness.VECTOR_SEARCH)
+        self._cache_dir = config.cache_dir(EvalHarness.VECTOR_SEARCH)
         self._rag_config = rag_config
         self._search_mode = rag_config.search_mode
         self._search_mode_hash = search_engine.fingerprint()
@@ -82,7 +85,7 @@ class VectorSearchMetaScorer:
         """Load scored results from the shared vector_search file cache; run vector store on miss."""
         from seshat.eval.vector_search.runner import VectorSearchEvalRunner
 
-        examples = load_corpus(self._config.vector_search_corpus_dir)
+        examples = load_corpus(self._corpus_dir)
         runner = VectorSearchEvalRunner(
             search_engine=self._search_engine,
             vector_store=self._vs,
@@ -93,7 +96,7 @@ class VectorSearchMetaScorer:
         touched = set()
 
         for ex in examples:
-            cache_fp = build_cache_fp(self._config.vector_search_cache_dir, ex, agent_hash=self._search_mode_hash)
+            cache_fp = build_cache_fp(self._cache_dir, ex, agent_hash=self._search_mode_hash)
             scored, used, _cached = await read_or_run(
                 cache_fp,
                 RetrievalScoredResult,
@@ -103,7 +106,7 @@ class VectorSearchMetaScorer:
             touched.add(used)
 
         sweep_stale_entries(
-            self._config.vector_search_cache_dir,
+            self._cache_dir,
             corpus_ids=[ex.corpus_id for ex in examples],
             touched=touched,
             agent_hash=self._search_mode_hash,

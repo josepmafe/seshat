@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from seshat.app.agents.identification.base import AnchoredConcept, ConceptModel
 from seshat.app.platform.observability.latency_tracker import track_eval_latency
 from seshat.app.platform.observability.usage_tracker import track_eval_usage
-from seshat.core.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType, EvalHarness
 from seshat.core.utils.log import set_task_num
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.gate import upsert_gate
@@ -45,9 +45,11 @@ class GroupingEvalRunner:
     def __init__(self, agent: GroupingAgent, config: EvalConfig) -> None:
         self._agent = agent
         self._config = config
+        self._corpus_dir = config.corpus_dir(EvalHarness.GROUPING)
+        self._cache_dir = config.cache_dir(EvalHarness.GROUPING)
 
     async def run(self, tag_filter: CorpusTagFilter | None = None, model_id: str | None = None) -> GateResult:
-        examples = load_corpus(self._config.grouping_corpus_dir, tag_filter=tag_filter)
+        examples = load_corpus(self._corpus_dir, tag_filter=tag_filter)
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="grouping-no-corpus")
 
@@ -83,7 +85,7 @@ class GroupingEvalRunner:
             harness="grouping",
             gate_passed=gate.passed,
             harness_passed=gate.harness_passed("grouping"),
-            corpus_dir=self._config.grouping_corpus_dir,
+            corpus_dir=self._corpus_dir,
             corpus_examples=examples,
             breakdown_artifact=_build_breakdown(eval_result, examples, result_cache),
             tag_filter=tag_filter,
@@ -92,7 +94,7 @@ class GroupingEvalRunner:
         )
 
         sweep_stale_entries(
-            self._config.grouping_cache_dir,
+            self._cache_dir,
             corpus_ids=[ex.corpus_id for ex in examples],
             touched=touched,
         )
@@ -108,7 +110,7 @@ class GroupingEvalRunner:
 
         async def _run_one(task_idx: int, ex: GroupingCorpusExample) -> tuple[str, _GroupingCacheEntry, Path, bool]:
             set_task_num(task_idx)
-            cache_fp = build_cache_fp(self._config.grouping_cache_dir, ex, agent_hash=agent_hash)
+            cache_fp = build_cache_fp(self._cache_dir, ex, agent_hash=agent_hash)
             async with sem:
                 result, used, was_cached = await read_or_run(
                     cache_fp, _GroupingCacheEntry, _run_grouping(self._agent, ex)

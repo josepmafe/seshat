@@ -1,13 +1,14 @@
 import pytest
 
 from seshat.core.config.eval_settings import EvalConfig
+from seshat.core.models.enums import EvalHarness
 from seshat.eval.vector_search.corpus_loader import build_kb_nodes, load_corpus
 from tests.unit.eval.conftest import TagFilterContractTests
 
 
 @pytest.fixture(scope="class")
 def examples(eval_test_corpus: EvalConfig):
-    return load_corpus(eval_test_corpus.vector_search_corpus_dir)
+    return load_corpus(eval_test_corpus.corpus_dir(EvalHarness.VECTOR_SEARCH))
 
 
 class TestCorpusLoader:
@@ -17,11 +18,11 @@ class TestCorpusLoader:
 
 class TestProductionCorpus(TagFilterContractTests):
     load_corpus = staticmethod(load_corpus)
-    corpus_dir_attr = "vector_search_corpus_dir"
+    harness = EvalHarness.VECTOR_SEARCH
     tag_key = "tier"
 
     def test_all_files_load_and_ids_resolve(self, eval_corpus: EvalConfig):
-        examples = load_corpus(eval_corpus.vector_search_corpus_dir)
+        examples = load_corpus(eval_corpus.corpus_dir(EvalHarness.VECTOR_SEARCH))
         assert len(examples) > 0
 
         for ex in examples:
@@ -35,6 +36,6 @@ class TestProductionCorpus(TagFilterContractTests):
         """vector_search's corpus must exclude sparse_saves=true cases — those are constructed so a
         semantic-only retriever misses them by design; including them would misattribute a by-design
         miss as a regression (see docs/superpowers/specs/2026-07-31-eval-harness-expansion-design.md §1)."""
-        examples = load_corpus(eval_corpus.vector_search_corpus_dir)
+        examples = load_corpus(eval_corpus.corpus_dir(EvalHarness.VECTOR_SEARCH))
         sparse_saves = [ex.corpus_id for ex in examples if ex.tags.get("sparse_saves") is True]
         assert sparse_saves == [], f"unexpected sparse_saves=true cases in vector_search corpus: {sparse_saves}"

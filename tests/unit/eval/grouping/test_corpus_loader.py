@@ -1,13 +1,14 @@
 import pytest
 
 from seshat.core.config.eval_settings import EvalConfig
+from seshat.core.models.enums import EvalHarness
 from seshat.eval.grouping.corpus_loader import load_corpus
 from tests.unit.eval.conftest import TagFilterContractTests
 
 
 @pytest.fixture(scope="class")
 def examples(eval_test_corpus: EvalConfig):
-    return load_corpus(eval_test_corpus.grouping_corpus_dir)
+    return load_corpus(eval_test_corpus.corpus_dir(EvalHarness.GROUPING))
 
 
 class TestCorpusLoader:
@@ -33,11 +34,11 @@ class TestCorpusLoader:
 
 class TestProductionCorpus(TagFilterContractTests):
     load_corpus = staticmethod(load_corpus)
-    corpus_dir_attr = "grouping_corpus_dir"
+    harness = EvalHarness.GROUPING
     tag_key = "concept_type"
 
     def test_all_files_load_and_have_valid_content(self, eval_corpus: EvalConfig):
-        examples = load_corpus(eval_corpus.grouping_corpus_dir)
+        examples = load_corpus(eval_corpus.corpus_dir(EvalHarness.GROUPING))
         assert len(examples) > 0
 
         for ex in examples:

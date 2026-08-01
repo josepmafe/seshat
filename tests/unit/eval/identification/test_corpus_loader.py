@@ -1,14 +1,14 @@
 import pytest
 
 from seshat.core.config.eval_settings import EvalConfig
-from seshat.core.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType, EvalHarness
 from seshat.eval.identification.corpus_loader import load_corpus
 from tests.unit.eval.conftest import TagFilterContractTests
 
 
 @pytest.fixture(scope="class")
 def examples(eval_test_corpus: EvalConfig):
-    return load_corpus(eval_test_corpus.identification_corpus_dir)
+    return load_corpus(eval_test_corpus.corpus_dir(EvalHarness.IDENTIFICATION))
 
 
 class TestCorpusLoader:
@@ -25,11 +25,11 @@ class TestCorpusLoader:
 
 class TestProductionCorpus(TagFilterContractTests):
     load_corpus = staticmethod(load_corpus)
-    corpus_dir_attr = "identification_corpus_dir"
+    harness = EvalHarness.IDENTIFICATION
     tag_key = "tier"
 
     def test_all_files_load_and_have_valid_content(self, eval_corpus: EvalConfig):
-        examples = load_corpus(eval_corpus.identification_corpus_dir)
+        examples = load_corpus(eval_corpus.corpus_dir(EvalHarness.IDENTIFICATION))
         assert len(examples) > 0
 
         for ex in examples:

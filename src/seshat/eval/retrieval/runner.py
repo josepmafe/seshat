@@ -11,7 +11,7 @@ import pandas as pd
 
 from seshat.app.platform.observability.usage_tracker import track_eval_usage
 from seshat.core.models.api_graph import NodeFilter
-from seshat.core.models.enums import SearchMode
+from seshat.core.models.enums import EvalHarness, SearchMode
 from seshat.core.utils.log import get_logger, set_task_num
 from seshat.core.utils.retry import async_retry
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
@@ -55,12 +55,14 @@ class RetrievalEvalRunner:
         self._search_engine = search_engine
         self._vs = vector_store
         self._config = config
+        self._corpus_dir = config.corpus_dir(EvalHarness.RETRIEVAL)
+        self._cache_dir = config.cache_dir(EvalHarness.RETRIEVAL)
         self._rag_config = rag_config
         self._search_mode = rag_config.search_mode
         self._search_mode_hash = search_engine.fingerprint()
 
     async def run(self, tag_filter: CorpusTagFilter | None = None, model_id: str | None = None) -> GateResult:
-        examples = load_corpus(self._config.retrieval_corpus_dir, tag_filter=tag_filter)
+        examples = load_corpus(self._corpus_dir, tag_filter=tag_filter)
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="retrieval-no-corpus")
 
@@ -96,7 +98,7 @@ class RetrievalEvalRunner:
             harness="retrieval",
             gate_passed=gate.passed,
             harness_passed=gate.harness_passed("retrieval"),
-            corpus_dir=self._config.retrieval_corpus_dir,
+            corpus_dir=self._corpus_dir,
             corpus_examples=examples,
             breakdown_artifact=_build_breakdown(eval_result, examples, result_cache),
             tag_filter=tag_filter,
@@ -130,7 +132,7 @@ class RetrievalEvalRunner:
         )
 
         sweep_stale_entries(
-            self._config.retrieval_cache_dir,
+            self._cache_dir,
             corpus_ids=[ex.corpus_id for ex in examples],
             touched=touched,
             agent_hash=self._search_mode_hash,
@@ -148,7 +150,7 @@ class RetrievalEvalRunner:
         cache_hits = 0
         for task_idx, ex in enumerate(examples):
             set_task_num(task_idx)
-            cache_fp = build_cache_fp(self._config.retrieval_cache_dir, ex, agent_hash=self._search_mode_hash)
+            cache_fp = build_cache_fp(self._cache_dir, ex, agent_hash=self._search_mode_hash)
             scored, used, was_cached = await read_or_run(cache_fp, RetrievalScoredResult, self._fetch_example(ex))
             if was_cached:
                 cache_hits += 1

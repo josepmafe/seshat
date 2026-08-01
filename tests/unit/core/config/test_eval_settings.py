@@ -3,27 +3,22 @@ from __future__ import annotations
 import pytest
 
 from seshat.core.config.eval_settings import EvalConfig
+from seshat.core.models.enums import EvalHarness
 
 
 class TestCacheDirFor:
-    @pytest.mark.parametrize(
-        ("harness", "subdir"),
-        [
-            ("identification", "identification"),
-            ("resolution", "resolution"),
-            ("retrieval", "retrieval"),
-            ("vector_search", "vector_search"),
-            ("grounding", "grounding"),
-            ("grouping", "grouping"),
-        ],
-    )
-    def test_maps_each_harness_to_its_cache_subdir(self, harness: str, subdir: str) -> None:
-        result = EvalConfig.cache_dir_for(harness)
-        assert result == EvalConfig._cache_dir / subdir
+    @pytest.mark.parametrize("harness", list(EvalHarness))
+    def test_maps_each_harness_to_its_cache_subdir(self, harness: EvalHarness) -> None:
+        result = EvalConfig.cache_dir(harness)
+        assert result == EvalConfig._cache_dir / harness.value
 
-    def test_unknown_harness_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="bogus"):
-            EvalConfig.cache_dir_for("bogus")
+
+class TestCorpusDirFor:
+    @pytest.mark.parametrize("harness", list(EvalHarness))
+    def test_maps_each_harness_to_its_corpus_subdir(self, harness: EvalHarness) -> None:
+        cfg = EvalConfig()
+        result = cfg.corpus_dir(harness)
+        assert result == cfg.corpus_base_dir / harness.value
 
 
 class TestEnabledHarnesses:

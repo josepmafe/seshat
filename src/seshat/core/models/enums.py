@@ -1,6 +1,22 @@
 from enum import StrEnum, auto
 
 
+class EvalHarness(StrEnum):
+    """Every eval harness name — the single source of truth for EvalConfig, gate.py, and the CLI."""
+
+    IDENTIFICATION = auto()
+    RESOLUTION = auto()
+    VECTOR_SEARCH = auto()
+    RETRIEVAL = auto()
+    GROUNDING = auto()
+    GROUPING = auto()
+
+    @classmethod
+    def calibratable(cls) -> tuple["EvalHarness", ...]:
+        """Harnesses with a `seshat eval calibrate` entrypoint, i.e., a raw-score threshold to sweep."""
+        return (cls.IDENTIFICATION, cls.VECTOR_SEARCH)
+
+
 class ConceptType(StrEnum):
     DECISION = auto()
     RISK = auto()

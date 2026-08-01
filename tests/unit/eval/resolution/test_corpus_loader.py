@@ -3,13 +3,14 @@ import uuid
 import pytest
 
 from seshat.core.config.eval_settings import EvalConfig
+from seshat.core.models.enums import EvalHarness
 from seshat.eval.resolution.corpus_loader import build_kb_nodes, load_corpus
 from tests.unit.eval.conftest import TagFilterContractTests
 
 
 @pytest.fixture(scope="class")
 def examples(eval_test_corpus: EvalConfig):
-    return load_corpus(eval_test_corpus.resolution_corpus_dir)
+    return load_corpus(eval_test_corpus.corpus_dir(EvalHarness.RESOLUTION))
 
 
 class TestCorpusLoader:
@@ -31,11 +32,11 @@ class TestCorpusLoader:
 
 class TestProductionCorpus(TagFilterContractTests):
     load_corpus = staticmethod(load_corpus)
-    corpus_dir_attr = "resolution_corpus_dir"
+    harness = EvalHarness.RESOLUTION
     tag_key = "tier"
 
     def test_all_files_load_and_slugs_resolve(self, eval_corpus: EvalConfig):
-        examples = load_corpus(eval_corpus.resolution_corpus_dir)
+        examples = load_corpus(eval_corpus.corpus_dir(EvalHarness.RESOLUTION))
         assert len(examples) > 0
 
         for ex in examples:

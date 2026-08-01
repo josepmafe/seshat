@@ -18,6 +18,7 @@ from seshat.cli._eval_support import (
     parse_tags,
 )
 from seshat.core.config.eval_settings import EvalConfig
+from seshat.core.models.enums import EvalHarness
 from seshat.core.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -245,7 +246,7 @@ def _clear_cache(harness: str) -> None:
         typer.echo(f"Unknown harness '{harness}'. Choose from: {', '.join(HARNESS_TYPES)}", err=True)
         raise typer.Exit(code=1)
 
-    cache_dir = EvalConfig.cache_dir_for(harness)
+    cache_dir = EvalConfig.cache_dir(EvalHarness(harness))
     clear_cache_dir(cache_dir)
     typer.echo(f"Cleared eval cache for '{harness}': {cache_dir}")
 

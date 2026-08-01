@@ -5,7 +5,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from seshat.core.config.settings import DEFAULT_EVAL_GATE_PATH, PROJECT_ROOT
-from seshat.core.models.enums import SearchMode
+from seshat.core.models.enums import EvalHarness, SearchMode
 
 _DEFAULT_CORPUS_BASE_DIR: Path = PROJECT_ROOT / "data" / "eval" / "corpora"
 
@@ -93,92 +93,30 @@ class EvalConfig(BaseSettings):
         description="Per-mode minimum cosine-similarity thresholds [0, 1] applied during vector_search eval.",
     )
 
-    _identification_subdir: ClassVar[str] = "identification"
-    _resolution_subdir: ClassVar[str] = "resolution"
-    _retrieval_subdir: ClassVar[str] = "retrieval"
-    _vector_search_subdir: ClassVar[str] = "vector_search"
-    _grounding_subdir: ClassVar[str] = "grounding"
-    _grouping_subdir: ClassVar[str] = "grouping"
     # a hidden folder in the project root for caching intermediate results during eval runs; not intended for manual use
     _cache_dir: ClassVar[Path] = PROJECT_ROOT / ".seshat" / "eval_cache"
 
-    def corpus_dir_for(self, harness: str) -> Path:
-        """Return the corpus directory for a harness name (relative to the configured corpus_base_dir)."""
-        subdir = getattr(self, f"_{harness}_subdir", None)
-        if subdir is None:
-            raise ValueError(f"unknown harness: {harness!r}")
-
-        return self.corpus_base_dir / subdir
-
-    @property
-    def identification_corpus_dir(self) -> Path:
-        return self.corpus_dir_for("identification")
-
-    @property
-    def grouping_corpus_dir(self) -> Path:
-        return self.corpus_dir_for("grouping")
-
-    @property
-    def grounding_corpus_dir(self) -> Path:
-        return self.corpus_dir_for("grounding")
-
-    @property
-    def resolution_corpus_dir(self) -> Path:
-        return self.corpus_dir_for("resolution")
-
-    @property
-    def retrieval_corpus_dir(self) -> Path:
-        return self.corpus_dir_for("retrieval")
-
-    @property
-    def vector_search_corpus_dir(self) -> Path:
-        return self.corpus_dir_for("vector_search")
+    def corpus_dir(self, harness: EvalHarness) -> Path:
+        """Return the corpus directory for a harness (relative to the configured corpus_base_dir)."""
+        return self.corpus_base_dir / harness
 
     @classmethod
-    def cache_dir_for(cls, harness: str) -> Path:
-        """Return the cache directory for a harness name, without constructing an instance."""
-        subdir = getattr(cls, f"_{harness}_subdir", None)
-        if subdir is None:
-            raise ValueError(f"unknown harness: {harness!r}")
-
-        return cls._cache_dir / subdir
+    def cache_dir(cls, harness: EvalHarness) -> Path:
+        """Return the cache directory for a harness, without constructing an instance."""
+        return cls._cache_dir / harness
 
     @property
-    def identification_cache_dir(self) -> Path:
-        return self.cache_dir_for("identification")
-
-    @property
-    def grouping_cache_dir(self) -> Path:
-        return self.cache_dir_for("grouping")
-
-    @property
-    def grounding_cache_dir(self) -> Path:
-        return self.cache_dir_for("grounding")
-
-    @property
-    def resolution_cache_dir(self) -> Path:
-        return self.cache_dir_for("resolution")
-
-    @property
-    def retrieval_cache_dir(self) -> Path:
-        return self.cache_dir_for("retrieval")
-
-    @property
-    def vector_search_cache_dir(self) -> Path:
-        return self.cache_dir_for("vector_search")
-
-    @property
-    def enabled_harnesses(self) -> list[str]:
-        """Harness names whose run_<harness> flag is enabled, in canonical order."""
-        flags = [
-            (self.run_identification, "identification"),
-            (self.run_resolution, "resolution"),
-            (self.run_vector_search, "vector_search"),
-            (self.run_retrieval, "retrieval"),
-            (self.run_grounding, "grounding"),
-            (self.run_grouping, "grouping"),
-        ]
-        return [name for enabled, name in flags if enabled]
+    def enabled_harnesses(self) -> list[EvalHarness]:
+        """Harnesses whose run_<harness> flag is enabled, in canonical EvalHarness declaration order."""
+        flags = {
+            EvalHarness.IDENTIFICATION: self.run_identification,
+            EvalHarness.RESOLUTION: self.run_resolution,
+            EvalHarness.VECTOR_SEARCH: self.run_vector_search,
+            EvalHarness.RETRIEVAL: self.run_retrieval,
+            EvalHarness.GROUNDING: self.run_grounding,
+            EvalHarness.GROUPING: self.run_grouping,
+        }
+        return [h for h in EvalHarness if flags[h]]
 
     @field_validator("gate_path", mode="after")
     @classmethod
@@ -191,20 +129,13 @@ class EvalConfig(BaseSettings):
     @model_validator(mode="after")
     def _validate_corpus_dirs(self) -> "EvalConfig":
         for harness in self.enabled_harnesses:
-            path = self.corpus_dir_for(harness)
+            path = self.corpus_dir(harness)
             if not path.is_dir():
                 raise ValueError(f"corpus dir does not exist: {path}")
         return self
 
     @model_validator(mode="after")
     def _create_cache_dirs(self) -> "EvalConfig":
-        for path in (
-            self.identification_cache_dir,
-            self.resolution_cache_dir,
-            self.retrieval_cache_dir,
-            self.vector_search_cache_dir,
-            self.grounding_cache_dir,
-            self.grouping_cache_dir,
-        ):
-            path.mkdir(parents=True, exist_ok=True)
+        for harness in EvalHarness:
+            self.cache_dir(harness).mkdir(parents=True, exist_ok=True)
         return self

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from seshat.app.platform.observability.usage_tracker import track_eval_usage
-from seshat.core.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType, EvalHarness
 from seshat.core.models.nodes import IdentificationResult
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.calibration.models import (
@@ -41,6 +41,8 @@ class IdentificationMetaScorer:
     ) -> None:
         self._orchestrator = orchestrator
         self._config = config
+        self._corpus_dir = config.corpus_dir(EvalHarness.IDENTIFICATION)
+        self._cache_dir = config.cache_dir(EvalHarness.IDENTIFICATION)
         self._step = step
 
     async def sweep_threshold(
@@ -98,13 +100,13 @@ class IdentificationMetaScorer:
     @track_eval_usage("identification")
     async def _build_cache(self) -> _Cache:
         """Run identification pipeline once per corpus example; use file cache when available."""
-        examples = load_corpus(self._config.identification_corpus_dir)
+        examples = load_corpus(self._corpus_dir)
         cache: _Cache = {}
         sem = asyncio.Semaphore(self._config.max_concurrent_predictions)
         agent_hash = self._orchestrator._identification_registry.fingerprint()
 
         async def _run_one(ex: IdentificationCorpusExample) -> tuple[IdentificationResult, Path]:
-            cache_fp = build_cache_fp(self._config.identification_cache_dir, ex, agent_hash=agent_hash)
+            cache_fp = build_cache_fp(self._cache_dir, ex, agent_hash=agent_hash)
             async with sem:
                 result, used, _cached = await read_or_run(
                     cache_fp,
@@ -120,7 +122,7 @@ class IdentificationMetaScorer:
         pairs = await asyncio.gather(*(_run_one(ex) for ex in examples))
         touched = {used for _, used in pairs}
         sweep_stale_entries(
-            self._config.identification_cache_dir,
+            self._cache_dir,
             corpus_ids=[ex.corpus_id for ex in examples],
             touched=touched,
         )
