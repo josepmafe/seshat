@@ -1,11 +1,11 @@
 import pytest
 
-from seshat.eval.retrieval.scorers import scorer as retrieval_scorer
+from seshat.eval.rank_metrics import scorer as rank_scorer
 
 
-class TestRetrievalScorer:
+class TestRankMetricsScorer:
     def test_perfect_recall(self):
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": ["id-1", "id-2"]},
             expectations={"expected_relevant_ids": ["id-1", "id-2"]},
@@ -14,7 +14,7 @@ class TestRetrievalScorer:
         assert by_name["recall_at_5"] == pytest.approx(1.0)
 
     def test_missed_relevant_node(self):
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": ["id-2"]},
             expectations={"expected_relevant_ids": ["id-1", "id-2"]},
@@ -23,7 +23,7 @@ class TestRetrievalScorer:
         assert by_name["recall_at_5"] == pytest.approx(0.5)
 
     def test_no_relevant_nodes_retrieved(self):
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": ["id-3"]},
             expectations={"expected_relevant_ids": ["id-1"]},
@@ -32,7 +32,7 @@ class TestRetrievalScorer:
         assert by_name["recall_at_5"] == pytest.approx(0.0)
 
     def test_precision_at_5(self):
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": ["id-1", "id-2", "id-3"]},
             expectations={"expected_relevant_ids": ["id-1"]},
@@ -42,7 +42,7 @@ class TestRetrievalScorer:
 
     def test_empty_retrieved_ids_gives_zero_scores(self):
         # retrieved_ids=[] with non-empty expected → recall=0, precision=0, no error
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": []},
             expectations={"expected_relevant_ids": ["id-1"]},
@@ -52,7 +52,7 @@ class TestRetrievalScorer:
         assert by_name["precision_at_5"] == pytest.approx(0.0)
 
     def test_negative_case_nothing_retrieved(self):
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": []},
             expectations={"expected_relevant_ids": []},
@@ -62,7 +62,7 @@ class TestRetrievalScorer:
         assert "precision_at_5" not in by_name
 
     def test_negative_case_spurious_result(self):
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": ["id-1"]},
             expectations={"expected_relevant_ids": []},
@@ -71,7 +71,7 @@ class TestRetrievalScorer:
         assert by_name["recall_at_5"] == pytest.approx(0.0)
 
     def test_mrr_first_hit_at_rank_1(self):
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": ["id-1", "id-2"]},
             expectations={"expected_relevant_ids": ["id-1"]},
@@ -80,7 +80,7 @@ class TestRetrievalScorer:
         assert by_name["mrr_at_5"] == pytest.approx(1.0)
 
     def test_mrr_first_hit_at_rank_2(self):
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": ["id-x", "id-1"]},
             expectations={"expected_relevant_ids": ["id-1"]},
@@ -89,7 +89,7 @@ class TestRetrievalScorer:
         assert by_name["mrr_at_5"] == pytest.approx(0.5)
 
     def test_mrr_zero_when_no_hit_in_top_k(self):
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": ["id-x", "id-y", "id-z", "id-w", "id-v", "id-1"]},
             expectations={"expected_relevant_ids": ["id-1"]},
@@ -99,7 +99,7 @@ class TestRetrievalScorer:
 
     def test_mrr_uses_first_hit_when_multiple_relevant(self):
         # id-2 is at rank 1, id-1 at rank 2 — MRR should use rank 1
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": ["id-2", "id-1"]},
             expectations={"expected_relevant_ids": ["id-1", "id-2"]},
@@ -108,7 +108,7 @@ class TestRetrievalScorer:
         assert by_name["mrr_at_5"] == pytest.approx(1.0)
 
     def test_mrr_not_emitted_for_negative_case(self):
-        feedbacks = retrieval_scorer(
+        feedbacks = rank_scorer(
             inputs={},
             outputs={"retrieved_ids": []},
             expectations={"expected_relevant_ids": []},
