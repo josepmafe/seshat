@@ -12,6 +12,7 @@ class TestCacheDirFor:
             ("identification", "identification"),
             ("resolution", "resolution"),
             ("retrieval", "retrieval"),
+            ("vector_search", "vector_search"),
             ("grounding", "grounding"),
             ("grouping", "grouping"),
         ],
@@ -28,17 +29,25 @@ class TestCacheDirFor:
 class TestEnabledHarnesses:
     def test_all_enabled_by_default(self) -> None:
         cfg = EvalConfig()
-        assert cfg.enabled_harnesses == ["identification", "resolution", "retrieval", "grounding", "grouping"]
+        assert cfg.enabled_harnesses == [
+            "identification",
+            "resolution",
+            "vector_search",
+            "retrieval",
+            "grounding",
+            "grouping",
+        ]
 
     def test_disabled_harness_is_excluded(self) -> None:
         cfg = EvalConfig(run_resolution=False, run_grounding=False)
-        assert cfg.enabled_harnesses == ["identification", "retrieval", "grouping"]
+        assert cfg.enabled_harnesses == ["identification", "vector_search", "retrieval", "grouping"]
 
     def test_none_enabled_returns_empty(self) -> None:
         cfg = EvalConfig(
             run_identification=False,
             run_resolution=False,
             run_retrieval=False,
+            run_vector_search=False,
             run_grounding=False,
             run_grouping=False,
         )

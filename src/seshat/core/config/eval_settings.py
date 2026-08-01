@@ -45,7 +45,16 @@ class EvalConfig(BaseSettings):
         default=True,
         description=(
             "Run the retrieval eval pass, i.e., "
-            "check if vector search surfaces the right nodes (similar and related neighbors)."
+            "check if the fully assembled retrieval pipeline (search + rerank, as configured) "
+            "surfaces the right nodes (similar and related neighbors)."
+        ),
+    )
+    run_vector_search: bool = Field(
+        default=True,
+        description=(
+            "Run the vector_search eval pass, i.e., "
+            "check if pure dense-embedding similarity surfaces the right nodes, "
+            "isolated from keyword extraction, multi-query, and reranking."
         ),
     )
     run_grounding: bool = Field(
@@ -67,18 +76,27 @@ class EvalConfig(BaseSettings):
         gt=0,
         description="Maximum number of prediction coroutines that may run in parallel during eval.",
     )
-    # Per-mode score thresholds calibrated by the retrieval meta-scorer (argmax macro-F2).
-    # Absent keys default to 0.0 (no filtering). Each mode has its own score scale
-    # (cosine similarity for SEMANTIC, ts_rank_cd for KEYWORD, RRF for HYBRID), so thresholds
-    # must be calibrated independently. Set via EVAL__RETRIEVAL_SCORE_THRESHOLDS__SEMANTIC=0.77 etc.
+    # TODO(Tier 3): remove once the composite retrieval harness is rewritten around
+    # NodeRetriever.retrieve() (no raw scores to threshold-filter) — see docs/superpowers/specs/
+    # 2026-07-31-eval-harness-expansion-design.md §3. Until then, eval/retrieval/runner.py still
+    # uses this field as-is.
     retrieval_score_thresholds: dict[SearchMode, float] = Field(
         default_factory=dict,
         description="Per-mode minimum score thresholds [0, 1] applied during retrieval eval.",
+    )
+    # Dense-leg score thresholds calibrated by the vector_search meta-scorer (argmax macro-F2).
+    # Absent keys default to 0.0 (no filtering). Keyed by SearchMode for forward-compat with the
+    # meta-scorer's mode-agnostic sweep logic, but vector_search always runs in SEMANTIC mode.
+    # Set via EVAL__VECTOR_SEARCH_SCORE_THRESHOLDS__SEMANTIC=0.77 etc.
+    vector_search_score_thresholds: dict[SearchMode, float] = Field(
+        default_factory=dict,
+        description="Per-mode minimum cosine-similarity thresholds [0, 1] applied during vector_search eval.",
     )
 
     _identification_subdir: ClassVar[str] = "identification"
     _resolution_subdir: ClassVar[str] = "resolution"
     _retrieval_subdir: ClassVar[str] = "retrieval"
+    _vector_search_subdir: ClassVar[str] = "vector_search"
     _grounding_subdir: ClassVar[str] = "grounding"
     _grouping_subdir: ClassVar[str] = "grouping"
     # a hidden folder in the project root for caching intermediate results during eval runs; not intended for manual use
@@ -112,6 +130,10 @@ class EvalConfig(BaseSettings):
     def retrieval_corpus_dir(self) -> Path:
         return self.corpus_dir_for("retrieval")
 
+    @property
+    def vector_search_corpus_dir(self) -> Path:
+        return self.corpus_dir_for("vector_search")
+
     @classmethod
     def cache_dir_for(cls, harness: str) -> Path:
         """Return the cache directory for a harness name, without constructing an instance."""
@@ -142,11 +164,16 @@ class EvalConfig(BaseSettings):
         return self.cache_dir_for("retrieval")
 
     @property
+    def vector_search_cache_dir(self) -> Path:
+        return self.cache_dir_for("vector_search")
+
+    @property
     def enabled_harnesses(self) -> list[str]:
         """Harness names whose run_<harness> flag is enabled, in canonical order."""
         flags = [
             (self.run_identification, "identification"),
             (self.run_resolution, "resolution"),
+            (self.run_vector_search, "vector_search"),
             (self.run_retrieval, "retrieval"),
             (self.run_grounding, "grounding"),
             (self.run_grouping, "grouping"),
@@ -175,6 +202,7 @@ class EvalConfig(BaseSettings):
             self.identification_cache_dir,
             self.resolution_cache_dir,
             self.retrieval_cache_dir,
+            self.vector_search_cache_dir,
             self.grounding_cache_dir,
             self.grouping_cache_dir,
         ):

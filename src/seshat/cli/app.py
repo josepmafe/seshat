@@ -114,6 +114,8 @@ def _run_single_harness(harness: str, tags: list[str] | None) -> None:
                 from seshat.eval.resolution.entrypoint import run
             case "retrieval":
                 from seshat.eval.retrieval.entrypoint import run
+            case "vector_search":
+                from seshat.eval.vector_search.entrypoint import run
             case "grounding":
                 from seshat.eval.grounding.entrypoint import run
             case _:
@@ -164,8 +166,8 @@ def calibrate_cmd(
 
         _kwargs: dict[str, Any] = {"eval_config": eval_config, "seshat_config": seshat_config}
         match component:
-            case "retrieval":
-                from seshat.eval.calibration.retrieval_entrypoint import run
+            case "vector_search":
+                from seshat.eval.calibration.vector_search_entrypoint import run
 
             case "identification":
                 from seshat.eval.calibration.identification_entrypoint import run

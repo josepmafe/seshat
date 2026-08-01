@@ -26,8 +26,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-HARNESS_TYPES = ["grounding", "grouping", "identification", "resolution", "retrieval"]
-CALIBRATION_TYPES = ["retrieval", "identification"]
+HARNESS_TYPES = ["grounding", "grouping", "identification", "resolution", "retrieval", "vector_search"]
+CALIBRATION_TYPES = ["identification", "vector_search"]
 
 
 def bootstrap_eval(harness_type: str) -> tuple[EvalConfig, SeshatConfig, str]:

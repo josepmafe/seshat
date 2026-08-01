@@ -8,8 +8,8 @@ from seshat.app.platform.observability.usage_tracker import track_eval_usage
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.calibration.models import RetrievalSweepPoint, RetrievalSweepResult
 from seshat.eval.models import RetrievalScoredResult
-from seshat.eval.retrieval.corpus_loader import load_corpus
-from seshat.eval.retrieval.scorers import TOP_K
+from seshat.eval.rank_metrics import TOP_K
+from seshat.eval.vector_search.corpus_loader import load_corpus
 
 if TYPE_CHECKING:
     from seshat.app.pipeline.extraction.search_engine import SearchEngine
@@ -23,7 +23,13 @@ type _CacheEntry = tuple[list[_ScoredResult], list[_Slug]]  # (results desc by s
 type _Cache = dict[str, _CacheEntry]  # corpus_id → entry
 
 
-class RetrievalMetaScorer:
+class VectorSearchMetaScorer:
+    """Sweeps the dense-leg cosine-similarity threshold for the vector_search harness.
+
+    The caller is responsible for passing a minimal RAGConfig (SEMANTIC mode, no keyword
+    extraction, no multi-query, no reranker) — same requirement as VectorSearchEvalRunner.
+    """
+
     def __init__(
         self,
         search_engine: SearchEngine,
@@ -71,13 +77,13 @@ class RetrievalMetaScorer:
         best_idx = int(np.argmax([p.macro_f2 for p in points]))
         return RetrievalSweepResult(points=points, suggested_threshold=points[best_idx].threshold)
 
-    @track_eval_usage("retrieval")
+    @track_eval_usage("vector_search")
     async def _build_cache(self) -> _Cache:
-        """Load scored results from the shared retrieval file cache; run vector store on miss."""
-        from seshat.eval.retrieval.runner import RetrievalEvalRunner
+        """Load scored results from the shared vector_search file cache; run vector store on miss."""
+        from seshat.eval.vector_search.runner import VectorSearchEvalRunner
 
-        examples = load_corpus(self._config.retrieval_corpus_dir)
-        runner = RetrievalEvalRunner(
+        examples = load_corpus(self._config.vector_search_corpus_dir)
+        runner = VectorSearchEvalRunner(
             search_engine=self._search_engine,
             vector_store=self._vs,
             config=self._config,
@@ -87,7 +93,7 @@ class RetrievalMetaScorer:
         touched = set()
 
         for ex in examples:
-            cache_fp = build_cache_fp(self._config.retrieval_cache_dir, ex, agent_hash=self._search_mode_hash)
+            cache_fp = build_cache_fp(self._config.vector_search_cache_dir, ex, agent_hash=self._search_mode_hash)
             scored, used, _cached = await read_or_run(
                 cache_fp,
                 RetrievalScoredResult,
@@ -97,7 +103,7 @@ class RetrievalMetaScorer:
             touched.add(used)
 
         sweep_stale_entries(
-            self._config.retrieval_cache_dir,
+            self._config.vector_search_cache_dir,
             corpus_ids=[ex.corpus_id for ex in examples],
             touched=touched,
             agent_hash=self._search_mode_hash,

@@ -38,6 +38,9 @@ RESOLUTION_RECALL: dict[ConceptType, float] = {
     ConceptType.RISK: 0.80,
 }
 
+VECTOR_SEARCH_RECALL_AT_5: float = 0.70
+VECTOR_SEARCH_MRR_AT_5: float = 0.75
+
 RETRIEVAL_RECALL_AT_5: float = 0.70
 RETRIEVAL_MRR_AT_5: float = 0.75
 
