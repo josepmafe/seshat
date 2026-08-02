@@ -11,12 +11,12 @@ class TestMinimalRagConfig:
         result = _minimal_rag_config(rag_config)
         assert result.search_mode == SearchMode.SEMANTIC
 
-    def test_disables_keyword_extraction_llm(self):
+    def test_disables_keyword_extraction(self):
         from seshat.core.config.settings import _LLMConfig
 
-        rag_config = RAGConfig(keyword_extraction_llm=_LLMConfig(provider=LLMProvider.OPENAI, model="gpt-5.4-nano"))
+        rag_config = RAGConfig(keyword_extraction=_LLMConfig(provider=LLMProvider.OPENAI, model="gpt-5.4-nano"))
         result = _minimal_rag_config(rag_config)
-        assert result.keyword_extraction_llm is None
+        assert result.keyword_extraction is None
 
     def test_disables_multi_query_llm(self):
         rag_config = RAGConfig(multi_query=MultiQueryConfig(provider=LLMProvider.OPENAI, model="gpt-5.4-nano"))

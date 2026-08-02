@@ -108,12 +108,10 @@ class RetrievalEvalRunner:
                 "retrieval.search_mode": self._search_mode,
                 "retrieval.score_threshold": str(threshold),
                 "retrieval.keyword_extraction_provider": (
-                    self._rag_config.keyword_extraction_llm.provider
-                    if self._rag_config.keyword_extraction_llm
-                    else "none"
+                    self._rag_config.keyword_extraction.provider if self._rag_config.keyword_extraction else "none"
                 ),
                 "retrieval.keyword_extraction_model": (
-                    self._rag_config.keyword_extraction_llm.model if self._rag_config.keyword_extraction_llm else "none"
+                    self._rag_config.keyword_extraction.model if self._rag_config.keyword_extraction else "none"
                 ),
                 "retrieval.multi_query_model": (
                     self._rag_config.multi_query.model if self._rag_config.multi_query else "none"

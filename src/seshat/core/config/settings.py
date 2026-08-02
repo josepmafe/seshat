@@ -255,7 +255,7 @@ class RAGConfig(BaseConfig):
             "Can be toggled per-request via SeshatConfigOverride."
         ),
     )
-    keyword_extraction_llm: _LLMConfig | None = Field(
+    keyword_extraction: _LLMConfig | None = Field(
         default=None,
         description=(
             "When set, the sparse leg uses an LLM to extract discriminating keywords from the query "

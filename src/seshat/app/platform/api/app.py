@@ -123,7 +123,7 @@ async def _ping_llm_providers(config: SeshatConfig) -> list[str]:
         config.extraction.identification_self_review.llm,
         config.extraction.grounding,
         config.rag.multi_query,
-        config.rag.keyword_extraction_llm,
+        config.rag.keyword_extraction,
         config.extraction.resolution,
         config.extraction.resolution_self_review.llm,
     ]

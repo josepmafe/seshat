@@ -52,7 +52,7 @@ async def run(eval_config: EvalConfig, seshat_config: SeshatConfig, tag_filter: 
 
 def _minimal_rag_config(rag_config: RAGConfig) -> RAGConfig:
     """Force KEYWORD mode with no keyword-extraction LLM (raw query text passed to the sparse leg)."""
-    return rag_config._with(search_mode=SearchMode.KEYWORD, keyword_extraction_llm=None)
+    return rag_config._with(search_mode=SearchMode.KEYWORD, keyword_extraction=None)
 
 
 def _ensure_clean_vector_store(seshat_config: SeshatConfig) -> tuple[AbstractVectorStore, VectorIndexConfig]:

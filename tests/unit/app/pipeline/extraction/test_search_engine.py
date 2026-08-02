@@ -43,7 +43,7 @@ def _make_engine(
     if rag_config is None:
         rag_kwargs: dict = {"search_mode": search_mode}
         if keyword_llm is not None:
-            rag_kwargs["keyword_extraction_llm"] = _LLM_CFG
+            rag_kwargs["keyword_extraction"] = _LLM_CFG
         if multi_query_llm is not None:
             rag_kwargs["multi_query"] = MultiQueryConfig(
                 provider=LLMProvider.OPENAI, model="gpt-4o-mini", num_variants=3

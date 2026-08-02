@@ -89,7 +89,7 @@ def get_search_engine(
     query variants — e.g. manual/API browsing via GraphService, until the UI exposes an
     explicit opt-in for LLM-enhanced search.
     """
-    keyword_llm = _build_llm(config.rag.keyword_extraction_llm, config) if config.rag.keyword_extraction_llm else None
+    keyword_llm = _build_llm(config.rag.keyword_extraction, config) if config.rag.keyword_extraction else None
     multi_query_llm = (
         _build_llm(config.rag.multi_query, config) if config.rag.multi_query and not disable_multi_query else None
     )

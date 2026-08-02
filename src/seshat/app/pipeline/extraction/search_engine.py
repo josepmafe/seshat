@@ -31,8 +31,8 @@ class SearchEngine:
         self._rag_config = rag_config
         self._vs = vector_store
         self._keyword_agent = (
-            KeywordAgent(keyword_llm, rag_config.keyword_extraction_llm)
-            if keyword_llm is not None and rag_config.keyword_extraction_llm is not None
+            KeywordAgent(keyword_llm, rag_config.keyword_extraction)
+            if keyword_llm is not None and rag_config.keyword_extraction is not None
             else None
         )
         self._multi_query_agent = (
