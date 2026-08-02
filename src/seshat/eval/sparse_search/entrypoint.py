@@ -57,6 +57,6 @@ def _minimal_rag_config(rag_config: RAGConfig) -> RAGConfig:
 
 def _ensure_clean_vector_store(seshat_config: SeshatConfig) -> tuple[AbstractVectorStore, VectorIndexConfig]:
     """Ensure the vector store is clean before starting eval, to prevent test contamination from previous runs."""
-    vector_index_cfg = seshat_config.vector_index.model_copy(update={"collection": _EVAL_COLLECTION})
-    eval_config = seshat_config.model_copy(update={"vector_index": vector_index_cfg})
+    vector_index_cfg = seshat_config.vector_index._with(collection=_EVAL_COLLECTION)
+    eval_config = seshat_config._with(vector_index=vector_index_cfg)
     return get_vector_store(eval_config), vector_index_cfg
