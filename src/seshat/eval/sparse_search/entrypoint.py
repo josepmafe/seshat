@@ -26,9 +26,10 @@ _EVAL_COLLECTION = "seshat-sparse-search-eval"
 async def run(eval_config: EvalConfig, seshat_config: SeshatConfig, tag_filter: CorpusTagFilter | None = None) -> None:
     """Run the sparse_search eval pass: pure full-text (ts_rank_cd) similarity, isolated from any LLM component.
 
-    Forces a minimal RAGConfig (KEYWORD mode, no keyword extraction LLM) so SearchEngine falls back
-    to the raw query text and dispatches straight to vector_store.search_sparse() with zero LLM calls —
-    this harness measures full-text ranking quality alone, decoupled from the keyword_extraction harness.
+    Forces a minimal RAGConfig (KEYWORD mode, no keyword extraction LLM, no multi-query, no reranker) so
+    SearchEngine falls back to the raw query text and dispatches straight to vector_store.search_sparse()
+    with zero LLM calls — this harness measures full-text ranking quality alone, decoupled from the
+    keyword_extraction/multi_query/reranker harnesses.
     """
     minimal_rag_config = _minimal_rag_config(seshat_config.rag)
     minimal_config = seshat_config._with(rag=minimal_rag_config)
@@ -51,8 +52,13 @@ async def run(eval_config: EvalConfig, seshat_config: SeshatConfig, tag_filter: 
 
 
 def _minimal_rag_config(rag_config: RAGConfig) -> RAGConfig:
-    """Force KEYWORD mode with no keyword-extraction LLM (raw query text passed to the sparse leg)."""
-    return rag_config._with(search_mode=SearchMode.KEYWORD, keyword_extraction=None)
+    """Force KEYWORD mode with every LLM-backed retrieval component disabled."""
+    return rag_config._with(
+        search_mode=SearchMode.KEYWORD,
+        keyword_extraction=None,
+        multi_query=None,
+        reranker=None,
+    )
 
 
 def _ensure_clean_vector_store(seshat_config: SeshatConfig) -> tuple[AbstractVectorStore, VectorIndexConfig]:

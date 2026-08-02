@@ -54,7 +54,9 @@ def _minimal_rag_config(rag_config: RAGConfig) -> RAGConfig:
     """Force SEMANTIC mode with every LLM-backed retrieval component disabled."""
     return rag_config._with(
         search_mode=SearchMode.SEMANTIC,
+        keyword_extraction=None,
         multi_query=None,
+        reranker=None,
     )
 
 

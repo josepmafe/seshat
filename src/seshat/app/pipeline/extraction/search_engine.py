@@ -133,11 +133,6 @@ class SearchEngine:
             self._rag_config.search_mode,
             self._keyword_agent.fingerprint() if self._keyword_agent else "none",
             self._multi_query_agent.fingerprint() if self._multi_query_agent else "none",
-            (
-                f"{self._rag_config.reranker.provider}:{self._rag_config.reranker.model}"
-                if self._rag_config.reranker
-                else "none"
-            ),
         ]
         return fingerprint(":".join(parts))
 
