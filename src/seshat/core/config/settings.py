@@ -58,8 +58,7 @@ class _LLMConfig(BaseConfig):
         return self
 
 
-class MultiQueryConfig(BaseConfig):
-    llm: _LLMConfig | None = Field(default=None, description="LLM used to generate query variants.")
+class MultiQueryConfig(_LLMConfig):
     num_variants: int = Field(
         default=3,
         ge=1,
@@ -264,8 +263,8 @@ class RAGConfig(BaseConfig):
             "None disables LLM extraction (raw query passed directly)."
         ),
     )
-    multi_query: MultiQueryConfig = Field(
-        default_factory=MultiQueryConfig,
+    multi_query: MultiQueryConfig | None = Field(
+        default=None,
         description=(
             "When set, SearchEngine generates query variants via this LLM and fans them out in parallel "
             "before fusing results with RRF. Applies to SEMANTIC and HYBRID modes. None disables multi-query."

@@ -91,9 +91,7 @@ def get_search_engine(
     """
     keyword_llm = _build_llm(config.rag.keyword_extraction_llm, config) if config.rag.keyword_extraction_llm else None
     multi_query_llm = (
-        _build_llm(config.rag.multi_query.llm, config)
-        if config.rag.multi_query.llm and not disable_multi_query
-        else None
+        _build_llm(config.rag.multi_query, config) if config.rag.multi_query and not disable_multi_query else None
     )
     return SearchEngine(
         rag_config=config.rag,

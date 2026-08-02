@@ -19,13 +19,9 @@ class TestMinimalRagConfig:
         assert result.keyword_extraction_llm is None
 
     def test_disables_multi_query_llm(self):
-        from seshat.core.config.settings import _LLMConfig
-
-        rag_config = RAGConfig(
-            multi_query=MultiQueryConfig(llm=_LLMConfig(provider=LLMProvider.OPENAI, model="gpt-5.4-nano"))
-        )
+        rag_config = RAGConfig(multi_query=MultiQueryConfig(provider=LLMProvider.OPENAI, model="gpt-5.4-nano"))
         result = _minimal_rag_config(rag_config)
-        assert result.multi_query.llm is None
+        assert result.multi_query is None
 
     def test_disables_reranker(self):
         rag_config = RAGConfig(reranker=RerankerConfig(provider=RerankerProvider.COHERE, model="rerank-v3.5"))

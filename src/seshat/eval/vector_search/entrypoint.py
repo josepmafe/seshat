@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from seshat.app.pipeline.bootstrap import get_search_engine
-from seshat.core.config.settings import MultiQueryConfig
 from seshat.core.models.enums import SearchMode
 from seshat.core.utils.log import get_logger
 from seshat.eval.mlflow_logging import log_retrieval_model
@@ -55,7 +54,7 @@ def _minimal_rag_config(rag_config: RAGConfig) -> RAGConfig:
     """Force SEMANTIC mode with every LLM-backed retrieval component disabled."""
     return rag_config._with(
         search_mode=SearchMode.SEMANTIC,
-        multi_query=MultiQueryConfig(llm=None),
+        multi_query=None,
     )
 
 

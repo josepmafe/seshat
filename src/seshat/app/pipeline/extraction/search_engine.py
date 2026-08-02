@@ -36,8 +36,8 @@ class SearchEngine:
             else None
         )
         self._multi_query_agent = (
-            MultiQueryAgent(multi_query_llm, rag_config.multi_query.llm, rag_config.multi_query.num_variants)
-            if multi_query_llm is not None and rag_config.multi_query.llm is not None
+            MultiQueryAgent(multi_query_llm, rag_config.multi_query, rag_config.multi_query.num_variants)
+            if multi_query_llm is not None and rag_config.multi_query is not None
             else None
         )
 
