@@ -4,40 +4,51 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from seshat.app.platform.observability.usage_tracker import track_eval_usage
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.calibration.models import RetrievalSweepPoint, RetrievalSweepResult
 from seshat.eval.models import RetrievalScoredResult
-from seshat.eval.retrieval.corpus_loader import load_corpus
-from seshat.eval.retrieval.scorers import TOP_K
+from seshat.eval.rank_metrics import TOP_K
+from seshat.eval.retrieval_corpus import load_corpus
 
 if TYPE_CHECKING:
-    from seshat.app.pipeline.extraction.search_engine import SearchEngine
+    from collections.abc import Callable
+
     from seshat.core.config.eval_settings import EvalConfig
-    from seshat.core.config.settings import RAGConfig
-    from seshat.infra.vector_store.base_store import AbstractVectorStore
+    from seshat.core.models.enums import EvalHarness
+    from seshat.eval.ranked_search_runner import MinimalConfigSearchEvalRunner
 
 type _Slug = str
-type _ScoredResult = tuple[_Slug, float]  # (corpus slug, similarity score)
+type _ScoredResult = tuple[_Slug, float]  # (corpus slug, similarity/rank score)
 type _CacheEntry = tuple[list[_ScoredResult], list[_Slug]]  # (results desc by score, expected slugs)
 type _Cache = dict[str, _CacheEntry]  # corpus_id → entry
 
 
-class RetrievalMetaScorer:
+class MinimalConfigSearchMetaScorer:
+    """Shared threshold-sweep logic for a single-leg, minimal-config search harness's meta-scorer.
+
+    Subclasses must call `super().__init__(harness=..., runner_factory=..., ...)` and re-declare
+    `_build_cache` with their own `@track_eval_usage(<literal label>)` decorator — the decorator
+    requires a compile-time string, so it cannot be applied once here for every harness:
+
+        @track_eval_usage("vector_search")
+        async def _build_cache(self):
+            return await super()._build_cache()
+    """
+
     def __init__(
         self,
-        search_engine: SearchEngine,
-        vector_store: AbstractVectorStore,
+        harness: EvalHarness,
+        runner_factory: Callable[[], MinimalConfigSearchEvalRunner],
         config: EvalConfig,
-        rag_config: RAGConfig,
+        search_mode_hash: str,
         step: float = 0.005,
     ) -> None:
-        self._search_engine = search_engine
-        self._vs = vector_store
+        self._harness = harness
+        self._runner_factory = runner_factory
         self._config = config
-        self._rag_config = rag_config
-        self._search_mode = rag_config.search_mode
-        self._search_mode_hash = search_engine.fingerprint()
+        self._corpus_dir = config.corpus_dir(harness)
+        self._cache_dir = config.cache_dir(harness)
+        self._search_mode_hash = search_mode_hash
         self._step = step
 
     async def sweep_threshold(self) -> RetrievalSweepResult:
@@ -71,23 +82,15 @@ class RetrievalMetaScorer:
         best_idx = int(np.argmax([p.macro_f2 for p in points]))
         return RetrievalSweepResult(points=points, suggested_threshold=points[best_idx].threshold)
 
-    @track_eval_usage("retrieval")
     async def _build_cache(self) -> _Cache:
-        """Load scored results from the shared retrieval file cache; run vector store on miss."""
-        from seshat.eval.retrieval.runner import RetrievalEvalRunner
-
-        examples = load_corpus(self._config.retrieval_corpus_dir)
-        runner = RetrievalEvalRunner(
-            search_engine=self._search_engine,
-            vector_store=self._vs,
-            config=self._config,
-            rag_config=self._rag_config,
-        )
+        """Load scored results from the shared file cache; run vector store on miss."""
+        examples = load_corpus(self._corpus_dir)
+        runner = self._runner_factory()
         cache: _Cache = {}
         touched = set()
 
         for ex in examples:
-            cache_fp = build_cache_fp(self._config.retrieval_cache_dir, ex, agent_hash=self._search_mode_hash)
+            cache_fp = build_cache_fp(self._cache_dir, ex, agent_hash=self._search_mode_hash)
             scored, used, _cached = await read_or_run(
                 cache_fp,
                 RetrievalScoredResult,
@@ -97,7 +100,7 @@ class RetrievalMetaScorer:
             touched.add(used)
 
         sweep_stale_entries(
-            self._config.retrieval_cache_dir,
+            self._cache_dir,
             corpus_ids=[ex.corpus_id for ex in examples],
             touched=touched,
             agent_hash=self._search_mode_hash,

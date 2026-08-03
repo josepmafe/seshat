@@ -43,11 +43,11 @@ async def run(eval_config: EvalConfig, seshat_config: SeshatConfig, tag_filter: 
 
 def _ensure_clean_vector_store(seshat_config: SeshatConfig) -> tuple[AbstractVectorStore, VectorIndexConfig]:
     """Ensure the vector store is clean before starting eval, to prevent test contamination from previous runs."""
-    vector_index_cfg = seshat_config.vector_index.model_copy(update={"collection": _EVAL_COLLECTION})
+    vector_index_cfg = seshat_config.vector_index._with(collection=_EVAL_COLLECTION)
 
-    llm_cfg = seshat_config.rag.keyword_extraction_llm
+    llm_cfg = seshat_config.rag.keyword_extraction
     if llm_cfg is not None:
         logger.info("retrieval eval: keyword extractor llm=%s, provider=%s", llm_cfg.model, llm_cfg.provider)
 
-    eval_config = seshat_config.model_copy(update={"vector_index": vector_index_cfg})
+    eval_config = seshat_config._with(vector_index=vector_index_cfg)
     return get_vector_store(eval_config), vector_index_cfg

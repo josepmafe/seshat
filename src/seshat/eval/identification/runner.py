@@ -10,7 +10,7 @@ import pandas as pd
 
 from seshat.app.platform.observability.latency_tracker import track_eval_latency
 from seshat.app.platform.observability.usage_tracker import track_eval_usage
-from seshat.core.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType, EvalHarness
 from seshat.core.models.nodes import IdentificationResult
 from seshat.core.utils.log import set_task_num
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
@@ -36,9 +36,11 @@ class IdentificationEvalRunner:
     def __init__(self, orchestrator: ExtractionOrchestrator, config: EvalConfig) -> None:
         self._orchestrator = orchestrator
         self._config = config
+        self._corpus_dir = config.corpus_dir(EvalHarness.IDENTIFICATION)
+        self._cache_dir = config.cache_dir(EvalHarness.IDENTIFICATION)
 
     async def run(self, tag_filter: CorpusTagFilter | None = None, model_id: str | None = None) -> GateResult:
-        examples = load_corpus(self._config.identification_corpus_dir, tag_filter=tag_filter)
+        examples = load_corpus(self._corpus_dir, tag_filter=tag_filter)
         agent_hash = self._orchestrator._identification_registry.fingerprint()
         result_cache, touched, cache_hits = await self._run_all_predictions(examples, agent_hash=agent_hash)
 
@@ -72,7 +74,7 @@ class IdentificationEvalRunner:
             harness="identification",
             gate_passed=gate.passed,
             harness_passed=gate.harness_passed("identification"),
-            corpus_dir=self._config.identification_corpus_dir,
+            corpus_dir=self._corpus_dir,
             corpus_examples=examples,
             breakdown_artifact=_build_breakdown(eval_result, examples, result_cache),
             tag_filter=tag_filter,
@@ -81,7 +83,7 @@ class IdentificationEvalRunner:
         )
 
         sweep_stale_entries(
-            self._config.identification_cache_dir,
+            self._cache_dir,
             corpus_ids=[ex.corpus_id for ex in examples],
             touched=touched,
             agent_hash=agent_hash,
@@ -102,7 +104,7 @@ class IdentificationEvalRunner:
             task_idx: int, ex: IdentificationCorpusExample
         ) -> tuple[str, IdentificationResult, Path, bool]:
             set_task_num(task_idx)
-            cache_fp = build_cache_fp(self._config.identification_cache_dir, ex, agent_hash=agent_hash)
+            cache_fp = build_cache_fp(self._cache_dir, ex, agent_hash=agent_hash)
             async with sem:
                 result, used, was_cached = await read_or_run(
                     cache_fp,

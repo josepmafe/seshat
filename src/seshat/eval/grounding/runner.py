@@ -10,6 +10,7 @@ import pandas as pd
 from seshat.app.agents.grounding import GroundingResult
 from seshat.app.platform.observability.latency_tracker import track_eval_latency
 from seshat.app.platform.observability.usage_tracker import track_eval_usage
+from seshat.core.models.enums import EvalHarness
 from seshat.core.utils.log import set_task_num
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
 from seshat.eval.gate import upsert_gate
@@ -33,9 +34,11 @@ class GroundingEvalRunner:
     def __init__(self, agent: GroundingAgent, config: EvalConfig) -> None:
         self._agent = agent
         self._config = config
+        self._corpus_dir = config.corpus_dir(EvalHarness.GROUNDING)
+        self._cache_dir = config.cache_dir(EvalHarness.GROUNDING)
 
     async def run(self, tag_filter: CorpusTagFilter | None = None, model_id: str | None = None) -> GateResult:
-        examples = load_corpus(self._config.grounding_corpus_dir, tag_filter=tag_filter)
+        examples = load_corpus(self._corpus_dir, tag_filter=tag_filter)
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="grounding-no-corpus")
 
@@ -75,7 +78,7 @@ class GroundingEvalRunner:
             harness="grounding",
             gate_passed=gate.passed,
             harness_passed=gate.harness_passed("grounding"),
-            corpus_dir=self._config.grounding_corpus_dir,
+            corpus_dir=self._corpus_dir,
             corpus_examples=examples,
             breakdown_artifact=_build_breakdown(examples, result_cache),
             tag_filter=tag_filter,
@@ -84,7 +87,7 @@ class GroundingEvalRunner:
         )
 
         sweep_stale_entries(
-            self._config.grounding_cache_dir,
+            self._cache_dir,
             corpus_ids=[ex.corpus_id for ex in examples],
             touched=touched,
         )
@@ -103,7 +106,7 @@ class GroundingEvalRunner:
             task_idx: int, ex: GroundingCorpusExample, node_idx: int
         ) -> tuple[tuple[str, int], GroundingResult, Path, bool]:
             set_task_num(task_idx)
-            cache_fp = build_cache_fp(self._config.grounding_cache_dir, ex, agent_hash=agent_hash, index=node_idx)
+            cache_fp = build_cache_fp(self._cache_dir, ex, agent_hash=agent_hash, index=node_idx)
             node = ex.nodes[node_idx]
 
             async with sem:

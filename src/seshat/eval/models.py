@@ -111,6 +111,10 @@ class GateResult(BaseModel):
     resolution_metrics: dict[str, MetricEntry] | None = None
     # keys: "recall_at_5", "precision_at_5"
     retrieval_metrics: dict[str, MetricEntry] | None = None
+    # keys: "recall_at_5", "precision_at_5", "mrr_at_5"
+    vector_search_metrics: dict[str, MetricEntry] | None = None
+    # keys: "recall_at_5", "precision_at_5", "mrr_at_5"
+    sparse_search_metrics: dict[str, MetricEntry] | None = None
     # keys: "precision", "recall"
     grounding_metrics: dict[str, MetricEntry] | None = None
     # keys: "group_hit_rate" (gated), "exact_match" (logged, not gated)
@@ -124,6 +128,8 @@ class GateResult(BaseModel):
             self.identification_metrics,
             self.resolution_metrics,
             self.retrieval_metrics,
+            self.vector_search_metrics,
+            self.sparse_search_metrics,
             self.grounding_metrics,
             self.grouping_metrics,
         ]

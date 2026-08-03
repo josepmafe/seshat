@@ -1,12 +1,13 @@
 import pytest
 
 from seshat.core.config.eval_settings import EvalConfig
+from seshat.core.models.enums import EvalHarness
 from seshat.eval.retrieval.corpus_loader import build_kb_nodes, load_corpus
 
 
 @pytest.fixture(scope="class")
 def examples(eval_test_corpus: EvalConfig):
-    return load_corpus(eval_test_corpus.retrieval_corpus_dir)
+    return load_corpus(eval_test_corpus.corpus_dir(EvalHarness.RETRIEVAL))
 
 
 class TestCorpusLoader:
@@ -16,7 +17,7 @@ class TestCorpusLoader:
 
 class TestProductionCorpus:
     def test_all_files_load_and_ids_resolve(self, eval_corpus: EvalConfig):
-        examples = load_corpus(eval_corpus.retrieval_corpus_dir)
+        examples = load_corpus(eval_corpus.corpus_dir(EvalHarness.RETRIEVAL))
         assert len(examples) > 0
 
         for ex in examples:

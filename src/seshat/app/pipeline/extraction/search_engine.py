@@ -31,13 +31,13 @@ class SearchEngine:
         self._rag_config = rag_config
         self._vs = vector_store
         self._keyword_agent = (
-            KeywordAgent(keyword_llm, rag_config.keyword_extraction_llm)
-            if keyword_llm is not None and rag_config.keyword_extraction_llm is not None
+            KeywordAgent(keyword_llm, rag_config.keyword_extraction)
+            if keyword_llm is not None and rag_config.keyword_extraction is not None
             else None
         )
         self._multi_query_agent = (
-            MultiQueryAgent(multi_query_llm, rag_config.multi_query.llm, rag_config.multi_query.num_variants)
-            if multi_query_llm is not None and rag_config.multi_query.llm is not None
+            MultiQueryAgent(multi_query_llm, rag_config.multi_query, rag_config.multi_query.num_variants)
+            if multi_query_llm is not None and rag_config.multi_query is not None
             else None
         )
 
@@ -133,11 +133,6 @@ class SearchEngine:
             self._rag_config.search_mode,
             self._keyword_agent.fingerprint() if self._keyword_agent else "none",
             self._multi_query_agent.fingerprint() if self._multi_query_agent else "none",
-            (
-                f"{self._rag_config.reranker.provider}:{self._rag_config.reranker.model}"
-                if self._rag_config.reranker
-                else "none"
-            ),
         ]
         return fingerprint(":".join(parts))
 

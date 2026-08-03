@@ -5,7 +5,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from seshat.core.config.settings import DEFAULT_EVAL_GATE_PATH, PROJECT_ROOT
-from seshat.core.models.enums import SearchMode
+from seshat.core.models.enums import EvalHarness, SearchMode
 
 _DEFAULT_CORPUS_BASE_DIR: Path = PROJECT_ROOT / "data" / "eval" / "corpora"
 
@@ -45,7 +45,24 @@ class EvalConfig(BaseSettings):
         default=True,
         description=(
             "Run the retrieval eval pass, i.e., "
-            "check if vector search surfaces the right nodes (similar and related neighbors)."
+            "check if the fully assembled retrieval pipeline (search + rerank, as configured) "
+            "surfaces the right nodes (similar and related neighbors)."
+        ),
+    )
+    run_vector_search: bool = Field(
+        default=True,
+        description=(
+            "Run the vector_search eval pass, i.e., "
+            "check if pure dense-embedding similarity surfaces the right nodes, "
+            "isolated from keyword extraction, multi-query, and reranking."
+        ),
+    )
+    run_sparse_search: bool = Field(
+        default=True,
+        description=(
+            "Run the sparse_search eval pass, i.e., "
+            "check if pure full-text (ts_rank_cd) similarity surfaces the right nodes, "
+            "isolated from keyword extraction."
         ),
     )
     run_grounding: bool = Field(
@@ -67,91 +84,56 @@ class EvalConfig(BaseSettings):
         gt=0,
         description="Maximum number of prediction coroutines that may run in parallel during eval.",
     )
-    # Per-mode score thresholds calibrated by the retrieval meta-scorer (argmax macro-F2).
-    # Absent keys default to 0.0 (no filtering). Each mode has its own score scale
-    # (cosine similarity for SEMANTIC, ts_rank_cd for KEYWORD, RRF for HYBRID), so thresholds
-    # must be calibrated independently. Set via EVAL__RETRIEVAL_SCORE_THRESHOLDS__SEMANTIC=0.77 etc.
+    # TODO(Tier 3): remove once the composite retrieval harness is rewritten around
+    # NodeRetriever.retrieve() (no raw scores to threshold-filter) — see docs/superpowers/specs/
+    # 2026-07-31-eval-harness-expansion-design.md §3. Until then, eval/retrieval/runner.py still
+    # uses this field as-is.
     retrieval_score_thresholds: dict[SearchMode, float] = Field(
         default_factory=dict,
         description="Per-mode minimum score thresholds [0, 1] applied during retrieval eval.",
     )
+    # Dense-leg score thresholds calibrated by the vector_search meta-scorer (argmax macro-F2).
+    # Absent keys default to 0.0 (no filtering). Keyed by SearchMode for forward-compat with the
+    # meta-scorer's mode-agnostic sweep logic, but vector_search always runs in SEMANTIC mode.
+    # Set via EVAL__VECTOR_SEARCH_SCORE_THRESHOLDS__SEMANTIC=0.77 etc.
+    vector_search_score_thresholds: dict[SearchMode, float] = Field(
+        default_factory=dict,
+        description="Per-mode minimum cosine-similarity thresholds [0, 1] applied during vector_search eval.",
+    )
+    # Sparse-leg score thresholds calibrated by the sparse_search meta-scorer (argmax macro-F2).
+    # ts_rank_cd has its own score scale distinct from cosine similarity, so this is calibrated
+    # independently from vector_search_score_thresholds. sparse_search always runs in KEYWORD mode.
+    # Set via EVAL__SPARSE_SEARCH_SCORE_THRESHOLDS__KEYWORD=0.05 etc.
+    sparse_search_score_thresholds: dict[SearchMode, float] = Field(
+        default_factory=dict,
+        description="Per-mode minimum ts_rank_cd thresholds [0, 1] applied during sparse_search eval.",
+    )
 
-    _identification_subdir: ClassVar[str] = "identification"
-    _resolution_subdir: ClassVar[str] = "resolution"
-    _retrieval_subdir: ClassVar[str] = "retrieval"
-    _grounding_subdir: ClassVar[str] = "grounding"
-    _grouping_subdir: ClassVar[str] = "grouping"
     # a hidden folder in the project root for caching intermediate results during eval runs; not intended for manual use
     _cache_dir: ClassVar[Path] = PROJECT_ROOT / ".seshat" / "eval_cache"
 
-    def corpus_dir_for(self, harness: str) -> Path:
-        """Return the corpus directory for a harness name (relative to the configured corpus_base_dir)."""
-        subdir = getattr(self, f"_{harness}_subdir", None)
-        if subdir is None:
-            raise ValueError(f"unknown harness: {harness!r}")
-
-        return self.corpus_base_dir / subdir
-
-    @property
-    def identification_corpus_dir(self) -> Path:
-        return self.corpus_dir_for("identification")
-
-    @property
-    def grouping_corpus_dir(self) -> Path:
-        return self.corpus_dir_for("grouping")
-
-    @property
-    def grounding_corpus_dir(self) -> Path:
-        return self.corpus_dir_for("grounding")
-
-    @property
-    def resolution_corpus_dir(self) -> Path:
-        return self.corpus_dir_for("resolution")
-
-    @property
-    def retrieval_corpus_dir(self) -> Path:
-        return self.corpus_dir_for("retrieval")
+    def corpus_dir(self, harness: EvalHarness) -> Path:
+        """Return the corpus directory for a harness (relative to the configured corpus_base_dir)."""
+        return self.corpus_base_dir / harness
 
     @classmethod
-    def cache_dir_for(cls, harness: str) -> Path:
-        """Return the cache directory for a harness name, without constructing an instance."""
-        subdir = getattr(cls, f"_{harness}_subdir", None)
-        if subdir is None:
-            raise ValueError(f"unknown harness: {harness!r}")
-
-        return cls._cache_dir / subdir
+    def cache_dir(cls, harness: EvalHarness) -> Path:
+        """Return the cache directory for a harness, without constructing an instance."""
+        return cls._cache_dir / harness
 
     @property
-    def identification_cache_dir(self) -> Path:
-        return self.cache_dir_for("identification")
-
-    @property
-    def grouping_cache_dir(self) -> Path:
-        return self.cache_dir_for("grouping")
-
-    @property
-    def grounding_cache_dir(self) -> Path:
-        return self.cache_dir_for("grounding")
-
-    @property
-    def resolution_cache_dir(self) -> Path:
-        return self.cache_dir_for("resolution")
-
-    @property
-    def retrieval_cache_dir(self) -> Path:
-        return self.cache_dir_for("retrieval")
-
-    @property
-    def enabled_harnesses(self) -> list[str]:
-        """Harness names whose run_<harness> flag is enabled, in canonical order."""
-        flags = [
-            (self.run_identification, "identification"),
-            (self.run_resolution, "resolution"),
-            (self.run_retrieval, "retrieval"),
-            (self.run_grounding, "grounding"),
-            (self.run_grouping, "grouping"),
-        ]
-        return [name for enabled, name in flags if enabled]
+    def enabled_harnesses(self) -> list[EvalHarness]:
+        """Harnesses whose run_<harness> flag is enabled, in canonical EvalHarness declaration order."""
+        flags = {
+            EvalHarness.IDENTIFICATION: self.run_identification,
+            EvalHarness.RESOLUTION: self.run_resolution,
+            EvalHarness.VECTOR_SEARCH: self.run_vector_search,
+            EvalHarness.SPARSE_SEARCH: self.run_sparse_search,
+            EvalHarness.RETRIEVAL: self.run_retrieval,
+            EvalHarness.GROUNDING: self.run_grounding,
+            EvalHarness.GROUPING: self.run_grouping,
+        }
+        return [h for h in EvalHarness if flags[h]]
 
     @field_validator("gate_path", mode="after")
     @classmethod
@@ -164,19 +146,13 @@ class EvalConfig(BaseSettings):
     @model_validator(mode="after")
     def _validate_corpus_dirs(self) -> "EvalConfig":
         for harness in self.enabled_harnesses:
-            path = self.corpus_dir_for(harness)
+            path = self.corpus_dir(harness)
             if not path.is_dir():
                 raise ValueError(f"corpus dir does not exist: {path}")
         return self
 
     @model_validator(mode="after")
     def _create_cache_dirs(self) -> "EvalConfig":
-        for path in (
-            self.identification_cache_dir,
-            self.resolution_cache_dir,
-            self.retrieval_cache_dir,
-            self.grounding_cache_dir,
-            self.grouping_cache_dir,
-        ):
-            path.mkdir(parents=True, exist_ok=True)
+        for harness in EvalHarness:
+            self.cache_dir(harness).mkdir(parents=True, exist_ok=True)
         return self

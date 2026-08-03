@@ -160,7 +160,7 @@ Optional extract → validate → filter self-review loop. Also used, with indep
 
 ##### `llm` → `_LLMConfig`
 
-Private base class for all LLM-backed configs. Used directly (unsubclassed) as the type of `ReflectiveLLMConfig.llm`, `RAGConfig.keyword_extraction_llm`, and `MultiQueryConfig.llm`; also inherited by the concrete subclasses `IdentificationLLMConfig`, `GroundingLLMConfig`, and `ResolutionLLMConfig` documented elsewhere in this doc. `provider` and `model` have no default here — only subclasses supply them, so a raw `_LLMConfig` field must set both explicitly when enabled.
+Private base class for all LLM-backed configs. Used directly (unsubclassed) as the type of `ReflectiveLLMConfig.llm` and `RAGConfig.keyword_extraction`; also inherited by the concrete subclasses `IdentificationLLMConfig`, `GroundingLLMConfig`, `ResolutionLLMConfig`, and `MultiQueryConfig` documented elsewhere in this doc. `provider` and `model` have no default here — only subclasses supply them, so a raw `_LLMConfig` field must set both explicitly when enabled.
 
 | Field | Default | Definition |
 |---|---|---|
@@ -219,18 +219,25 @@ Configures retrieval-augmented generation: search strategy, similarity/context l
 | `traversal_rel_types` | `None` | Relationship types to follow during traversal; `None` means all. |
 | `max_concurrent_retrievals` | `20` | Maximum number of simultaneous RAG retrieval calls. |
 | `search_mode` | `semantic` | `SearchMode` enum: `semantic` (pgvector ANN), `keyword` (GIN tsvector full-text), `hybrid` (RRF fusion of both), `agent` (reserved). Can be toggled per-request via `SeshatConfigOverride`. |
-| `keyword_extraction_llm` | `None` | Same class as [`llm` → `_LLMConfig`](#llm--_llmconfig). When set, the sparse leg uses it to extract discriminating keywords from the query before `plainto_tsquery`. Applies to `keyword`/`hybrid` modes. |
+| `keyword_extraction` | `None` | Same class as [`llm` → `_LLMConfig`](#llm--_llmconfig). When set, the sparse leg uses it to extract discriminating keywords from the query before `plainto_tsquery`. Applies to `keyword`/`hybrid` modes. |
 | `multi_query` | `None` | See [`multi_query` → `MultiQueryConfig`](#multi_query--multiqueryconfig). `None` disables multi-query. |
 | `reranker` | `None` | See [`reranker` → `RerankerConfig`](#reranker--rerankerconfig). `None` disables reranking. |
 
 #### `multi_query` → `MultiQueryConfig`
 
-Enables multi-query fan-out in `SearchEngine`: generates alternative phrasings of a search query via an LLM and fuses the parallel retrieval results with RRF. Applies to `semantic`/`hybrid` modes.
+Concrete subclass of `_LLMConfig`. When set, `SearchEngine` generates alternative phrasings of a search query via this LLM and fuses the parallel retrieval results with RRF. Applies to `semantic`/`hybrid` modes. `None` disables multi-query.
 
 | Field | Default | Definition |
 |---|---|---|
-| `llm` | *(required)* | Same class as [`llm` → `_LLMConfig`](#llm--_llmconfig). LLM used to generate query variants. |
+| `provider` | *(required)* | `LLMProvider` enum: `openai`, `anthropic`, `azure_openai`, `bedrock_converse`. |
+| `model` | *(required)* | Model identifier string passed to the provider. |
 | `num_variants` | `3` | Number of alternative query phrasings to generate and fan out in parallel (`1`–`10`). |
+| `temperature` | `0.0` | Sampling temperature (`>= 0`). |
+| `max_retries` | `3` | Maximum retry attempts on transient errors. |
+| `timeout_seconds` | `300.0` | Per-request HTTP timeout in seconds. |
+| `max_concurrent_calls` | `5` | Maximum number of simultaneous LLM calls. |
+| `max_output_tokens` | `None` | Maximum tokens the LLM may generate per call; `None` means no limit. |
+| `api_key_secret_key` | `None` → `<provider>_api_key` | Secrets key for the LLM API key. |
 
 #### `reranker` → `RerankerConfig`
 
@@ -424,11 +431,11 @@ RAG__TRAVERSAL_MAX_DEPTH=1
 RAG__MAX_CONCURRENT_RETRIEVALS=20
 RAG__SEARCH_MODE=semantic
 
-# RAG__KEYWORD_EXTRACTION_LLM__PROVIDER=
-# RAG__KEYWORD_EXTRACTION_LLM__MODEL=
+# RAG__KEYWORD_EXTRACTION__PROVIDER=
+# RAG__KEYWORD_EXTRACTION__MODEL=
 
-# RAG__MULTI_QUERY__LLM__PROVIDER=
-# RAG__MULTI_QUERY__LLM__MODEL=
+# RAG__MULTI_QUERY__PROVIDER=
+# RAG__MULTI_QUERY__MODEL=
 # RAG__MULTI_QUERY__NUM_VARIANTS=3
 
 # RAG__RERANKER__PROVIDER=cohere

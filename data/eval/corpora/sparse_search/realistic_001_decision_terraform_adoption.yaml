@@ -1,0 +1,104 @@
+corpus_id: decision-terraform-adoption-mixed-pool
+description: >
+  Realistic mixed-pool positive: a decision to standardise on Terraform v1.5 should surface
+  the prior Ansible/ClickOps decision it supersedes, the open question it resolves, and the
+  Terraform state-locking risk it motivates. Keyword signal is strong — "Terraform" appears
+  in all three positives — so both keyword and semantic paths should agree.
+
+tags:
+  tier: realistic
+  source_type: decision
+  polarity: positive
+  difficulty: hard
+  keyword_signal: strong
+  pool_size: small
+  sparse_saves: false
+
+query_node:
+  id: terraform-adoption-decision
+  type: decision
+  title: "Standardise on Terraform v1.5 with mandatory module registry for all infrastructure provisioning"
+  description: "All infrastructure provisioning must use Terraform v1.5 with modules sourced exclusively from the internal module registry. Ad-hoc Ansible playbooks and manual ClickOps console changes are no longer permitted."
+  quote: "We're standardising on Terraform v1.5, module registry is mandatory. Ansible playbooks and ClickOps are out — full stop."
+
+candidate_nodes:
+  # --- Strong positives: prior decision this one supersedes and OQ it resolves ---
+  - id: ansible-adhoc-decision
+    type: decision
+    title: "Each team provisions infrastructure with Ansible playbooks and manual console changes"
+    description: "Teams currently manage infrastructure through a combination of Ansible playbooks and ad-hoc ClickOps in the cloud console. There is no shared IaC standard or module registry."
+    quote: "Every team does their own thing — some Ansible, some just clicking around in the console. It works, but it doesn't scale."
+
+  - id: terraform-vs-pulumi-oq
+    type: open_question
+    title: "Should we adopt Terraform or Pulumi for the IaC standardisation?"
+    description: "The platform team needs to choose between Terraform and Pulumi as the standard IaC toolchain. Terraform has wider team familiarity; Pulumi offers native language support. No decision has been made."
+    quote: "Do we go Terraform or Pulumi? Both are solid IaC choices but we need to pick one before the migration starts."
+
+  # --- Weak positive: risk motivated by this decision ---
+  - id: terraform-state-locking-risk
+    type: risk
+    title: "Unversioned Terraform state files stored in S3 without locking cause concurrent apply conflicts"
+    description: "If multiple engineers run terraform apply against the same state file simultaneously, the last write wins and earlier changes are silently lost. DynamoDB locking is not yet configured on the S3 state backend."
+    quote: "Two people running apply at the same time against the same state file — that's how you get silent overwrites. We need locking sorted."
+
+  # --- Hard negatives: same infra domain, not linked to this decision ---
+  - id: adopt-kubernetes
+    type: decision
+    title: "Adopt Kubernetes for container orchestration"
+    description: "The team decided to use Kubernetes as the container orchestration platform for all production workloads, replacing the current manually-managed VM fleet."
+    quote: "We're going with Kubernetes, it's the right choice for our scale."
+
+  - id: no-slo-risk
+    type: risk
+    title: "No SLOs defined for the public API"
+    description: "Without agreed service-level objectives for availability and latency, there is no objective basis for measuring whether the service is meeting user expectations."
+    quote: "We don't have SLOs, so we don't know if we're actually meeting customer expectations."
+
+  - id: deploy-strategy-oq
+    type: open_question
+    title: "Should we adopt blue-green or canary deploys for stateful services?"
+    description: "The team has not chosen between blue-green and canary deployment strategies for stateful services that require database migrations."
+    quote: "Blue-green or canary for stateful services? We need a call on this before the next release."
+
+  - id: configure-rotations-action
+    type: action_item
+    title: "Configure PagerDuty on-call rotations for all backend services"
+    description: "The platform team needs to configure the on-call rotation schedules in PagerDuty for all backend services."
+    quote: "Platform team, configure the backend on-call rotations in PagerDuty before next sprint ends."
+
+  - id: api-gateway-decision
+    type: decision
+    title: "Introduce an API gateway for all external traffic"
+    description: "All inbound external requests must route through a centralised API gateway responsible for auth, rate-limiting, and routing."
+    quote: "Everything from outside goes through the gateway first."
+
+  # --- Easy negatives: completely different domain ---
+  - id: hiring-freeze-risk
+    type: risk
+    title: "Anticipated hiring freeze will block two critical engineering hires"
+    description: "A company-wide hiring freeze expected in Q3 would prevent filling two senior engineering roles."
+    quote: "If the freeze happens those two roles won't get filled and we'll miss the roadmap."
+
+  - id: office-lease-oq
+    type: open_question
+    title: "Should we renew the downtown office lease or relocate?"
+    description: "The current downtown office lease expires in eight months and no decision has been made."
+    quote: "The lease is up soon — do we renew or start looking for a new space?"
+
+  - id: crm-migration-decision
+    type: decision
+    title: "Replace legacy CRM with Salesforce"
+    description: "The sales team will migrate from the legacy CRM to Salesforce over the next two quarters."
+    quote: "We're moving to Salesforce — the legacy CRM is holding the sales team back."
+
+  - id: logo-redesign-action
+    type: action_item
+    title: "Commission external agency for company logo redesign"
+    description: "The executive team approved an external brand agency commission for a full logo redesign."
+    quote: "Get an agency brief together for the rebrand by end of next week."
+
+expected_relevant_ids:
+  - ansible-adhoc-decision
+  - terraform-vs-pulumi-oq
+  - terraform-state-locking-risk

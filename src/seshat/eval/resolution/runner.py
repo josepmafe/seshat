@@ -9,7 +9,7 @@ import pandas as pd
 
 from seshat.app.platform.observability.latency_tracker import track_eval_latency
 from seshat.app.platform.observability.usage_tracker import track_eval_usage
-from seshat.core.models.enums import ConceptType
+from seshat.core.models.enums import ConceptType, EvalHarness
 from seshat.core.models.nodes import ResolutionResult
 from seshat.core.utils.log import set_task_num
 from seshat.eval.cache import build_cache_fp, read_or_run, sweep_stale_entries
@@ -35,12 +35,14 @@ class ResolutionEvalRunner:
     def __init__(self, orchestrator: ExtractionOrchestrator, config: EvalConfig) -> None:
         self._orchestrator = orchestrator
         self._config = config
+        self._corpus_dir = config.corpus_dir(EvalHarness.RESOLUTION)
+        self._cache_dir = config.cache_dir(EvalHarness.RESOLUTION)
         self._kb_nodes: dict[str, dict[str, KBNode]] = {}
         self._slug_maps: dict[str, dict[str, UUID]] = {}
 
     async def run(self, tag_filter: CorpusTagFilter | None = None, model_id: str | None = None) -> GateResult:
         mlflow.autolog(disable=True)
-        examples = load_corpus(self._config.resolution_corpus_dir, tag_filter=tag_filter)
+        examples = load_corpus(self._corpus_dir, tag_filter=tag_filter)
         if not examples:
             return upsert_gate(self._config.gate_path, run_id="resolution-no-corpus")
 
@@ -92,7 +94,7 @@ class ResolutionEvalRunner:
             harness="resolution",
             gate_passed=gate.passed,
             harness_passed=gate.harness_passed("resolution"),
-            corpus_dir=self._config.resolution_corpus_dir,
+            corpus_dir=self._corpus_dir,
             corpus_examples=examples,
             breakdown_artifact=_build_breakdown(eval_result, examples, result_cache, self._slug_maps),
             tag_filter=tag_filter,
@@ -103,7 +105,7 @@ class ResolutionEvalRunner:
         corpus_ids = [ex.corpus_id for ex in examples]
         for h in agent_hashes:
             sweep_stale_entries(
-                self._config.resolution_cache_dir,
+                self._cache_dir,
                 corpus_ids=corpus_ids,
                 touched=touched,
                 agent_hash=h,
@@ -127,7 +129,7 @@ class ResolutionEvalRunner:
             agent_hash = self._orchestrator._resolution_registry.fingerprint_for_types(
                 source_types={n.type for n in source_nodes}, target_types={n.type for n in kb_target_nodes}
             )
-            cache_fp = build_cache_fp(self._config.resolution_cache_dir, ex, agent_hash=agent_hash)
+            cache_fp = build_cache_fp(self._cache_dir, ex, agent_hash=agent_hash)
 
             async with sem:
                 result, used, was_cached = await read_or_run(

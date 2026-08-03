@@ -10,6 +10,8 @@ from seshat.core.config.eval_settings import EvalConfig
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from seshat.core.models.enums import EvalHarness
+
 
 _EVAL_DIR = Path(__file__).parent
 
@@ -39,16 +41,16 @@ class TagFilterContractTests:
 
     Subclasses must define:
       - load_corpus: callable with signature (corpus_dir, tag_filter=None)
-      - corpus_dir_attr: name of the EvalConfig attribute for the corpus dir
+      - harness: the EvalHarness this corpus loader serves
       - tag_key: the tag key expected to be present in the production corpus
     """
 
     load_corpus: Callable[..., list[Any]]
-    corpus_dir_attr: str
+    harness: EvalHarness
     tag_key: str
 
     def _corpus_dir(self, eval_corpus: EvalConfig) -> Path:
-        return getattr(eval_corpus, self.corpus_dir_attr)
+        return eval_corpus.corpus_dir(self.harness)
 
     def test_tags_are_parsed(self, eval_corpus: EvalConfig) -> None:
         examples = self.load_corpus(self._corpus_dir(eval_corpus))

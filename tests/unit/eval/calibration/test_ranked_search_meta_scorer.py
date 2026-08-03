@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from seshat.eval.calibration.retrieval_meta_scorer import RetrievalMetaScorer
+from seshat.eval.calibration.ranked_search_meta_scorer import MinimalConfigSearchMetaScorer
 
 
-def _make_scorer(cache: dict, step: float = 0.5) -> tuple[RetrievalMetaScorer, dict]:
-    scorer = RetrievalMetaScorer.__new__(RetrievalMetaScorer)
+def _make_scorer(cache: dict, step: float = 0.5) -> tuple[MinimalConfigSearchMetaScorer, dict]:
+    scorer = MinimalConfigSearchMetaScorer.__new__(MinimalConfigSearchMetaScorer)
     scorer._step = step  # coarse grid: 0.0, 0.5, 1.0
     return scorer, cache
 

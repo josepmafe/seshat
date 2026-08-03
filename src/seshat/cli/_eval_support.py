@@ -26,9 +26,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-HARNESS_TYPES = ["grounding", "grouping", "identification", "resolution", "retrieval"]
-CALIBRATION_TYPES = ["retrieval", "identification"]
-
 
 def bootstrap_eval(harness_type: str) -> tuple[EvalConfig, SeshatConfig, str]:
     """Set up MLflow and configs for an eval or calibration run."""

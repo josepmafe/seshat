@@ -43,9 +43,11 @@ def _make_engine(
     if rag_config is None:
         rag_kwargs: dict = {"search_mode": search_mode}
         if keyword_llm is not None:
-            rag_kwargs["keyword_extraction_llm"] = _LLM_CFG
+            rag_kwargs["keyword_extraction"] = _LLM_CFG
         if multi_query_llm is not None:
-            rag_kwargs["multi_query"] = MultiQueryConfig(llm=_LLM_CFG, num_variants=3)
+            rag_kwargs["multi_query"] = MultiQueryConfig(
+                provider=LLMProvider.OPENAI, model="gpt-4o-mini", num_variants=3
+            )
         rag_config = RAGConfig(**rag_kwargs)
     return SearchEngine(
         rag_config=rag_config,
@@ -121,7 +123,7 @@ class TestSearchEngineMultiQuery:
         dense_mock = AsyncMock(side_effect=[[_search_result(_N1)], [_search_result(_N2)], [], []])
         rag = RAGConfig(
             search_mode=SearchMode.SEMANTIC,
-            multi_query=MultiQueryConfig(llm=_LLM_CFG, num_variants=3),
+            multi_query=MultiQueryConfig(provider=LLMProvider.OPENAI, model="gpt-4o-mini", num_variants=3),
         )
         engine = SearchEngine(
             rag_config=rag,
@@ -146,7 +148,7 @@ class TestSearchEngineMultiQuery:
         dense_mock = AsyncMock(side_effect=[[_search_result(uid) for uid in ids] for ids in leg_ids])
         rag = RAGConfig(
             search_mode=SearchMode.SEMANTIC,
-            multi_query=MultiQueryConfig(llm=_LLM_CFG, num_variants=3),
+            multi_query=MultiQueryConfig(provider=LLMProvider.OPENAI, model="gpt-4o-mini", num_variants=3),
         )
         engine = SearchEngine(
             rag_config=rag,
@@ -162,7 +164,7 @@ class TestSearchEngineMultiQuery:
         dense_mock = AsyncMock(return_value=[_search_result(_N1)])
         rag = RAGConfig(
             search_mode=SearchMode.SEMANTIC,
-            multi_query=MultiQueryConfig(llm=_LLM_CFG),
+            multi_query=MultiQueryConfig(provider=LLMProvider.OPENAI, model="gpt-4o-mini"),
         )
         engine = SearchEngine(
             rag_config=rag,
